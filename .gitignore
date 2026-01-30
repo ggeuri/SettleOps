@@ -1,24 +1,94 @@
-# Compiled class file
-*.class
+############################################
+# OS / Editor
+############################################
+.DS_Store
+.AppleDouble
+.LSOverride
 
-# Log file
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+############################################
+# Logs / Runtime
+############################################
 *.log
+logs/
+*.pid
 
-# BlueJ files
-*.ctxt
+############################################
+# Gradle / Build
+############################################
+.gradle/
+**/.gradle/
+build/
+**/build/
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
+############################################
+# Java compiled / package (defensive)
+############################################
+*.class
 *.jar
 *.war
-*.nar
 *.ear
+*.nar
 *.zip
 *.tar.gz
 *.rar
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+############################################
+# Spring Boot local/secret configs
+# - 공용 application.yml은 커밋
+# - 개인/로컬/시크릿만 제외
+############################################
+**/application-local.yml
+**/application-local.yaml
+**/application-local.properties
+
+**/application-secret.yml
+**/application-secret.yaml
+**/application-secret.properties
+
+# 운영/배포 파일은 "예시만 커밋" 권장 (필요하면 아래 3줄 유지)
+**/application-prod.yml
+**/application-prod.yaml
+**/application-prod.properties
+
+# 예시 파일은 커밋 허용
+!**/application-local.yml.example
+!**/application-local.yaml.example
+!**/application-prod.yml.example
+!**/application-prod.yaml.example
+!**/application-secret.yml.example
+!**/application-secret.yaml.example
+
+############################################
+# Env files (개인/로컬 비밀값)
+############################################
+.env
+.env.*
+!.env.example
+
+############################################
+# DB / local artifacts
+############################################
+*.h2.db
+*.mv.db
+
+############################################
+# Node / Vite / React (monorepo safe)
+############################################
+node_modules/
+dist/
+.vite/
+.eslintcache
+
+############################################
+# Optional: keep lockfiles (recommended)
+############################################
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock
