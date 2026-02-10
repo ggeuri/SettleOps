@@ -91,4 +91,4 @@ dist/
 ############################################
 # package-lock.json
 # pnpm-lock.yaml
-# yarn.lock
+# yarn.lock.env
