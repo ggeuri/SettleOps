@@ -13,6 +13,10 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
+  output:
+    ansi:
+      enabled: always   # 콘솔 ANSI 색상 강제 활성화
+
 management:
   endpoints:
     web:
@@ -25,3 +29,6 @@ management:
 logging:
   level:
     root: info
+  pattern:
+    # [%X{request_id}] 이 부분이 핵심입니다!
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr([%thread]){magenta} %highlight(%-5level) %clr([%X{request_id}]){cyan} %clr(%logger{36}){yellow} - %msg%n"
