@@ -55,11 +55,11 @@ public class RequestIdFilter extends OncePerRequestFilter {
 
 
         try {
-            log.info("[{}] >>> {} {}", requestId, request.getMethod(), fullUri);
+            log.info(">>> {} {}", request.getMethod(), fullUri);
             filterChain.doFilter(request, response);
         } finally {
             long duration = System.currentTimeMillis() - startTime;
-            log.info("[{}] <<< {}ms status={}", requestId, duration, response.getStatus());
+            log.info("<<< {}ms status={}", duration, response.getStatus());
 
             // 5. MDC 정리
             MDC.remove(REQUEST_ID);
