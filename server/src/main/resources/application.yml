@@ -30,5 +30,5 @@ logging:
   level:
     root: info
   pattern:
-    # [%X{request_id}]
-    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr([%thread]){magenta} %highlight(%-5level) %clr([%X{request_id}]){cyan} %clr(%logger{36}){yellow} - %msg%n"
+    # [%X{requestId}]
+    console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr([%thread]){magenta} %highlight(%-5level) %clr([%X{requestId}]){cyan} %clr(%logger{36}){yellow} - %msg%n"
