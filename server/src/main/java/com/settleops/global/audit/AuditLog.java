@@ -1,5 +1,6 @@
 package com.settleops.global.audit;
 
+import com.settleops.global.enums.Action;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -26,16 +27,19 @@ public class AuditLog {
     private LocalDateTime occurredAt;
 
     @Column(name = "actor_type", nullable = false, length = 32)
-    private String actorType;
+    @Enumerated(EnumType.STRING)
+    private ActorType actorType;
 
     @Column(name = "actor_id", nullable = false, length = 32)
     private String actorId;
 
     @Column(name = "action", nullable = false, length = 64)
-    private String action;
+    @Enumerated(EnumType.STRING)
+    private Action action;
 
     @Column(name = "entity_type", nullable = false, length = 32)
-    private String entityType;
+    @Enumerated(EnumType.STRING)
+    private EntityType entityType;
 
     @Column(name = "entity_id", nullable = false, length = 36, columnDefinition = "CHAR(36)")
     private String entityId;
@@ -50,11 +54,11 @@ public class AuditLog {
     private String merchantId;
 
     // MySQL JSON 타입. columnDefinition을 JSON으로 고정해서 ddl validate 충돌 방지.
-    @Column(name = "meta_json", columnDefinition = "JSON")
+    @Column(name="meta_json", nullable = false, columnDefinition="JSON")
     private String metaJson;
 
     @Builder
-    private AuditLog(String requestId, LocalDateTime occurredAt, String actorType, String actorId, String action, String entityType, String entityId, String statusBefore, String statusAfter, String merchantId, String metaJson) {
+    private AuditLog(String requestId, LocalDateTime occurredAt, ActorType actorType, String actorId, Action action, EntityType entityType, String entityId, String statusBefore, String statusAfter, String merchantId, String metaJson) {
         this.requestId = requestId;
         this.occurredAt = occurredAt;
         this.actorType = actorType;
@@ -72,6 +76,7 @@ public class AuditLog {
     @PrePersist
     void prePersist() {
         if (occurredAt == null) occurredAt = LocalDateTime.now();
+        if (metaJson == null || metaJson.isBlank()) metaJson = "{}";
     }
 
 }
