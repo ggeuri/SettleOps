@@ -26,11 +26,6 @@ public class AuditLogger {
         if (cmd.getEntityType() == null) throw new IllegalArgumentException("entityType is null");
         if (cmd.getEntityId() == null) throw new IllegalArgumentException("entityId is null");
 
-
-        String metaJson = (cmd.getMetaJson() != null && !cmd.getMetaJson().isBlank())
-                ? cmd.getMetaJson()
-                : "{}";
-
         AuditLog auditLog = AuditLog.builder()
                 .requestId(cmd.getRequestId())
                 .action(cmd.getAction())
@@ -41,7 +36,7 @@ public class AuditLogger {
                 .entityId(cmd.getEntityId())
                 .statusBefore(cmd.getStatusBefore())
                 .statusAfter(cmd.getStatusAfter())
-                .metaJson(metaJson)
+                .metaJson(cmd.getMetaJson())
                 .merchantId(cmd.getMerchantId())
                 .build();
 

@@ -76,6 +76,7 @@ public class AuditLog {
     @PrePersist
     void prePersist() {
         if (occurredAt == null) occurredAt = LocalDateTime.now();
+        if (metaJson == null || metaJson.isBlank()) metaJson = "{}";
     }
 
 }
