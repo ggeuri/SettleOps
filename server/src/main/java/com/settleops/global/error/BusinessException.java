@@ -1,6 +1,5 @@
 package com.settleops.global.error;
 
-import com.settleops.global.enums.ReasonCode;
 import org.springframework.http.HttpStatus;
 
 /** 최상위 비즈니스 추상 클래스 */

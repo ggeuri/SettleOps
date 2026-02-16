@@ -6,6 +6,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Comparator;
+
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -19,18 +21,63 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * [LOCKED] 400 Bad Request (@Valid 검증 실패)
+     * <p>[LOCKED] 400 Bad Request (@Valid 검증 실패)</p>
+     * <p>400 메시지 선택 규칙 (고정)</p>
+     * <p>1) fieldErrors만 대상으로 한다</p>
+     * <p>2) 필드명 기준 오름차순 정렬</p>
+     * <p>3) 첫 번째 메시지 1개만 반환</p>
+     * <p>4) fieldError 없으면 globalError에서 첫 번째 반환</p>
+     * <p>5) 그래도 없으면 고정 기본 문구 반환</p>
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException e) {
-        String errorMessage = e.getBindingResult().getAllErrors().get(0).getDefaultMessage();
+        // String errorMessage = e.getBindingResult().getAllErrors().get(0).getDefaultMessage();
+
+        // 1. BindingResult 추출
+        var bindingResult = e.getBindingResult();
+
+        // 첫 번째 메시지 선택
+        String errorMessage = bindingResult.getFieldErrors().stream()
+
+                //      필드 별 default 메세지
+                //      @NotNull(message = "결제 금액은 필수 입력 항목입니다.")
+                //      @Min(value = 100, message = "결제 금액은 100원 이상이어야 합니다.")
+                //      Long amount,
+                //
+                //      @NotBlank(message = "통화 코드는 필수 입력 항목입니다.")
+                //      String currency,
+                //
+                //      @NotBlank(message = "가맹점 ID는 필수 입력 항목입니다.")
+                //      String merchantId
+
+                // 2. 필드명 기준 정렬 (항상 동일한 순서 보장 → 테스트 안정성 확보)
+                .sorted(Comparator.comparing(fe -> fe.getField()))
+
+                // 3. 사용자에게 노출할 실제 검증 메시지 추출
+                .map(fe -> fe.getDefaultMessage())
+
+                // 4. 첫 번째 에러 메시지만 선택 (단일 메시지 정책)
+                .findFirst()
+
+                // 5. fieldError가 없는 경우 → globalError 처리
+                .orElseGet(() ->
+                        bindingResult.getGlobalErrors().stream()
+
+                                // globalError 메시지 추출
+                                .map(ge -> ge.getDefaultMessage())
+
+                                // 첫 번째 메시지 선택
+                                .findFirst()
+
+                                // 6. 모든 에러가 비어있을 경우 기본 문구 반환
+                                .orElse("요청 값이 올바르지 않습니다.")
+                );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.ofBadRequest(errorMessage));
     }
 
     /**
      * [LOCKED] 기타 모든 예외 (500 Internal Server Error)
-     * 예기치 못한 시스템 에러 발생 시에도 requestId를 응답 바디에 포함하여 추적 가능하게 함
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleInternalServerError(Exception e) {
