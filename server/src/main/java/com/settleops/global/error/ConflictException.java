@@ -12,6 +12,9 @@ public class ConflictException extends BusinessException {
 
     public ConflictException(ReasonCode reasonCode, String message) {
         super(HttpStatus.CONFLICT, message);
+        if (reasonCode == null) {
+            throw new IllegalArgumentException("ReasonCode must not be null for 409 Conflict");
+        }
         this.reasonCode = reasonCode;
     }
 
