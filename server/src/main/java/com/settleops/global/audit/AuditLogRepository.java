@@ -2,5 +2,5 @@ package com.settleops.global.audit;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
+interface AuditLogRepository extends JpaRepository<AuditLog, Long>,AuditLogQuery {
 }
