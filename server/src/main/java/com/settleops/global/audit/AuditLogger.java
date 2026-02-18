@@ -1,5 +1,6 @@
 package com.settleops.global.audit;
 
+import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,17 +15,17 @@ public class AuditLogger {
     @Transactional
     public void log(AuditLogCommand cmd) {
 
-        if (cmd == null) throw new IllegalArgumentException("auditLogCommand is null");
+        if (cmd == null) throw new BadRequestException("auditLogCommand is null");
 
         if (cmd.getRequestId() == null || cmd.getRequestId().isBlank()) {
-            throw new IllegalArgumentException("requestId is null/blank");
+            throw new BadRequestException("requestId is null/blank");
         }
 
-        if (cmd.getAction() == null) throw new IllegalArgumentException("action is null");
-        if (cmd.getActorType() == null) throw new IllegalArgumentException("actorType is null");
-        if (cmd.getActorId() == null) throw new IllegalArgumentException("actorId is null");
-        if (cmd.getEntityType() == null) throw new IllegalArgumentException("entityType is null");
-        if (cmd.getEntityId() == null) throw new IllegalArgumentException("entityId is null");
+        if (cmd.getAction() == null) throw new BadRequestException("action is null");
+        if (cmd.getActorType() == null) throw new BadRequestException("actorType is null");
+        if (cmd.getActorId() == null) throw new BadRequestException("actorId is null");
+        if (cmd.getEntityType() == null) throw new BadRequestException("entityType is null");
+        if (cmd.getEntityId() == null) throw new BadRequestException("entityId is null");
 
         AuditLog auditLog = AuditLog.builder()
                 .requestId(cmd.getRequestId())
