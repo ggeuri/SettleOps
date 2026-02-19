@@ -1,16 +1,10 @@
 package com.settleops.domain.settlement.entity;
 
 import com.settleops.domain.settlement.enums.SettlementStatus;
-import com.settleops.global.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 import lombok.Getter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -20,10 +14,7 @@ import java.time.LocalDateTime;
 @Table(
         name = "settlement",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_settlement_merchant_base_date",
-                        columnNames = {"merchant_id", "base_date"}
-                )
+                @UniqueConstraint(name = "uk_settlement_merchant_base_date", columnNames = {"merchant_id", "base_date"})
         },
         indexes = {
                 @Index(name = "idx_settlement_status", columnList = "status"),
@@ -33,8 +24,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_settlement_status_base_date", columnList = "status, base_date")
         }
 )
-public class Settlement extends BaseEntity {
-
+public class Settlement {
     @Id
     @Column(name = "settlement_id", nullable = false, columnDefinition = "CHAR(36)")
     private String settlementId;
@@ -79,7 +69,15 @@ public class Settlement extends BaseEntity {
     @Column(name = "paid_approved_at")
     private LocalDateTime paidApprovedAt;
 
-    protected Settlement() {
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    protected Settlement(){
     }
 
     public static Settlement createReady(
@@ -93,25 +91,6 @@ public class Settlement extends BaseEntity {
             long vat,
             long net
     ) {
-        if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalArgumentException("settlementId must not be blank");
-        }
-        if (settlementNo == null || settlementNo.isBlank()) {
-            throw new IllegalArgumentException("settlementNo must not be blank");
-        }
-        if (batchId == null) {
-            throw new IllegalArgumentException("batchId must not be null");
-        }
-        if (merchantId == null || merchantId.isBlank()) {
-            throw new IllegalArgumentException("merchantId must not be blank");
-        }
-        if (baseDate == null) {
-            throw new IllegalArgumentException("baseDate must not be null");
-        }
-        if (gross < 0 || fee < 0 || vat < 0 || net < 0) {
-            throw new IllegalArgumentException("amounts must be >= 0");
-        }
-
         Settlement s = new Settlement();
         s.settlementId = settlementId;
         s.settlementNo = settlementNo;
@@ -122,6 +101,7 @@ public class Settlement extends BaseEntity {
         s.fee = fee;
         s.vat = vat;
         s.net = net;
+
         s.status = SettlementStatus.READY;
         return s;
     }
@@ -151,34 +131,17 @@ public class Settlement extends BaseEntity {
     }
 
     public boolean violatesFourEyes(String approverId) {
-        if (approverId == null || approverId.isBlank()) {
-            throw new IllegalStateException("approverId must not be null/blank");
-        }
-        if (this.paidRequestedBy == null || this.paidRequestedBy.isBlank()) {
-            throw new IllegalStateException("paidRequestedBy must not be null/blank");
-        }
-        return this.paidRequestedBy.equals(approverId);
+        if (approverId == null || approverId.isBlank()) return false; // 또는 true로 막을지 정책
+        return this.paidRequestedBy != null && this.paidRequestedBy.equals(approverId);
     }
 
     public void requestPaid(String requesterId, LocalDateTime at) {
-        if (requesterId == null || requesterId.isBlank()) {
-            throw new IllegalStateException("requesterId must not be null/blank");
-        }
-        if (!canRequestPaid()) {
-            throw new IllegalStateException("cannot request paid in the current state");
-        }
         this.status = SettlementStatus.PAY_REQUESTED;
         this.paidRequestedBy = requesterId;
         this.paidRequestedAt = (at != null ? at : LocalDateTime.now());
     }
 
     public void approvePaid(String approverId, LocalDateTime at) {
-        if (!canApprovePaid()) {
-            throw new IllegalStateException("cannot approve paid in the current state");
-        }
-        if (violatesFourEyes(approverId)) {
-            throw new IllegalStateException("four-eyes violation: requester and approver must be different");
-        }
         this.status = SettlementStatus.PAID;
         this.paidApprovedBy = approverId;
         this.paidApprovedAt = (at != null ? at : LocalDateTime.now());

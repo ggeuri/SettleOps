@@ -1,261 +1,29 @@
 package com.settleops.domain.settlement.application;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
-import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.enums.SettlementBatchResult;
-import com.settleops.domain.settlement.infra.SettlementBatchRepository;
-import com.settleops.domain.settlement.infra.SettlementRepository;
-import com.settleops.global.audit.ActorType;
-import com.settleops.global.audit.AuditLogCommand;
-import com.settleops.global.audit.AuditLogger;
-import com.settleops.global.audit.EntityType;
-import com.settleops.global.enums.Action;
-import com.settleops.global.enums.ReasonCode;
-import com.settleops.global.error.BadRequestException;
-import com.settleops.global.error.ConflictException;
-import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
-@RequiredArgsConstructor
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
-
-    private final SettlementRepository settlementRepository;
-    private final SettlementBatchRepository settlementBatchRepository;
-    private final AuditLogger auditLogger;
-    private final RefundAdjustmentPolicy refundAdjustmentPolicy;
 
     @Override
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
-        throw new ResponseStatusException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "batch run (A2) will be implemented in the next PR."
-        );
+        // TODO: A2 구현
+        throw new UnsupportedOperationException("TODO: runBatch not implemented yet");
     }
 
     @Override
-    @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
-        if (settlementId == null || settlementId.isBlank()) {
-            throw new BadRequestException("settlementId must not be blank");
-        }
-
-        Settlement settlement = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
-
-        // 1) no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환 (+ audit)
-        if (settlement.isPayRequested()) {
-            auditSettlementAction(
-                    Action.SETTLEMENT_PAY_REQUESTED,
-                    settlement,
-                    settlement.getStatus().name(),
-                    settlement.getStatus().name(),
-                    comment
-            );
-            return toPayActionResponse(settlement);
-        }
-
-        // 2) 409 reason 우선순위 고정(LOCKED)
-        // HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
-
-        if (settlement.isHoldActive()) {
-            throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
-        }
-
-        if (!settlement.isReady()) {
-            throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
-        }
-
-        // BATCH_FAILED
-        if (isBatchFailed(settlement.getBatchId())) {
-            throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
-        }
-
-        // REFUND_ADJUSTMENT_PENDING
-        if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
-            throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
-        }
-
-        // 3) 상태 전이 + 저장
-        String before = settlement.getStatus().name();
-        String requesterId = currentActorId();
-
-        settlement.requestPaid(requesterId, LocalDateTime.now());
-        settlementRepository.save(settlement);
-
-        // 4) audit (LOCKED)
-        auditSettlementAction(
-                Action.SETTLEMENT_PAY_REQUESTED,
-                settlement,
-                before,
-                settlement.getStatus().name(),
-                comment
-        );
-
-        return toPayActionResponse(settlement);
+        // TODO: request-paid 구현
+        throw new UnsupportedOperationException("TODO: requestPaid not implemented yet");
     }
 
     @Override
-    @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
-        // fail-fast (계약 강화)
-        if (settlementId == null || settlementId.isBlank()) {
-            throw new BadRequestException("settlementId must not be blank");
-        }
-
-        Settlement current = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
-
-        // 1) no-op 200: 이미 PAID (+ audit)
-        if (current.isPaid()) {
-            auditSettlementAction(
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    current,
-                    current.getStatus().name(),
-                    current.getStatus().name(),
-                    comment
-            );
-            return toPayActionResponse(current);
-        }
-
-        // 2) PAY_REQUESTED 아니면 409
-        if (!current.isPayRequested()) {
-            throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
-        }
-
-        // 3) PAY_REQUESTED일 때만 락 조회
-        Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
-
-        // 락 후 재확인(no-op) (+ audit)
-        if (settlement.isPaid()) {
-            auditSettlementAction(
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    settlement,
-                    settlement.getStatus().name(),
-                    settlement.getStatus().name(),
-                    comment
-            );
-            return toPayActionResponse(settlement);
-        }
-
-        String approverId = currentActorId();
-
-        if (settlement.violatesFourEyes(approverId)) {
-            throw new ConflictException(ReasonCode.SAME_APPROVER_NOT_ALLOWED, "requester and approver must be different");
-        }
-
-        String before = settlement.getStatus().name();
-        settlement.approvePaid(approverId, LocalDateTime.now());
-        settlementRepository.save(settlement);
-
-        auditSettlementAction(
-                Action.SETTLEMENT_PAY_APPROVED,
-                settlement,
-                before,
-                settlement.getStatus().name(),
-                comment
-        );
-
-        return toPayActionResponse(settlement);
-    }
-
-    /**
-     * BATCH_FAILED 판정 (가드레일)
-     * - batchId null 방어 포함.
-     */
-    private boolean isBatchFailed(Long batchId) {
-        if (batchId == null) return false;
-        return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
-    }
-
-    private SettlementPayActionResponse toPayActionResponse(Settlement s) {
-        // PAY_REQUESTED(no-op 200 포함) 규격: paidRequestedAt 필수
-        if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
-            throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
-        }
-
-        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
-        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
-        if (s.isPaid() && paidAt == null) {
-            throw new IllegalStateException("paidAt must not be null when status is PAID");
-        }
-
-        return new SettlementPayActionResponse(
-                currentRequestId(),
-                s.getSettlementId(),
-                s.getStatus(),
-                s.getPaidRequestedAt(),
-                paidAt
-        );
-    }
-
-    private String currentActorId() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new IllegalStateException("actorId must not be null/blank");
-        }
-        return auth.getName();
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get("requestId");
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId must not be null/blank (provided by RequestIdFilter)");
-        }
-        return requestId;
-    }
-
-    private void auditSettlementAction(Action action, Settlement settlement, String before, String after, String comment) {
-        AuditLogCommand cmd = AuditLogCommand.builder()
-                .requestId(currentRequestId())
-                .merchantId(settlement.getMerchantId())
-                .entityType(EntityType.SETTLEMENT)
-                .entityId(settlement.getSettlementId())
-                .occurredAt(LocalDateTime.now())
-                .actorType(ActorType.ADMIN)
-                .actorId(currentActorId())
-                .action(action)
-                .statusBefore(before)
-                .statusAfter(after)
-                // 주입/생성자 안 건드리고도 JSON 안전성 확보
-                // comment == null 이면 develop 의미 유지: "{}"
-                .metaJson(buildMetaJson(comment))
-                .build();
-
-        auditLogger.log(cmd);
-    }
-
-    /**
-     * audit_log.meta_json 생성 (방법 A)
-     * - 주입/필드 변경 없이 내부에서 ObjectMapper 사용
-     * - comment == null 이면 "{}" (기존 의미 유지)
-     * - comment에 따옴표/개행/백슬래시 있어도 유효 JSON 보장
-     */
-    private String buildMetaJson(String comment) {
-        if (comment == null) return "{}";
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            Map<String, Object> meta = new HashMap<>();
-            meta.put("comment", comment);
-            return mapper.writeValueAsString(meta);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("failed to serialize audit metaJson", e);
-        }
+        // TODO: approve-paid 구현
+        throw new UnsupportedOperationException("TODO: approvePaid not implemented yet");
     }
 }
