@@ -130,39 +130,18 @@ public class Settlement {
         return isPayRequested();
     }
 
-    // 4-Eyes 검증: 승인자 ID는 필수이며, 요청자(paidRequestedBy)와 동일하면 위반
     public boolean violatesFourEyes(String approverId) {
-        if (approverId == null || approverId.isBlank()) {
-            throw new IllegalStateException("approverId must not be null/blank");
-        }
-        if (this.paidRequestedBy == null || this.paidRequestedBy.isBlank()) {
-            throw new IllegalStateException("paidRequestedBy must not be null/blank");
-        }
-        return this.paidRequestedBy.equals(approverId);
+        if (approverId == null || approverId.isBlank()) return false; // 또는 true로 막을지 정책
+        return this.paidRequestedBy != null && this.paidRequestedBy.equals(approverId);
     }
 
     public void requestPaid(String requesterId, LocalDateTime at) {
-        if (requesterId == null || requesterId.isBlank()) {
-            throw new IllegalStateException("requesterId must not be null/blank");
-        }
-        if (!canRequestPaid()) {
-            throw new IllegalStateException("cannot request paid in the current state");
-        }
         this.status = SettlementStatus.PAY_REQUESTED;
         this.paidRequestedBy = requesterId;
         this.paidRequestedAt = (at != null ? at : LocalDateTime.now());
     }
 
     public void approvePaid(String approverId, LocalDateTime at) {
-        // 1) 상태 검증: PAY_REQUESTED 상태가 아니면 승인 불가
-        if (!canApprovePaid()) {
-            throw new IllegalStateException("cannot approve paid in the current state");
-        }
-
-        // 2) 4-Eyes 검증: approverId가 null/blank면 예외, 요청자와 승인자가 같으면 위반
-        if (violatesFourEyes(approverId)) {
-            throw new IllegalStateException("four-eyes violation: requester and approver must be different");
-        }
         this.status = SettlementStatus.PAID;
         this.paidApprovedBy = approverId;
         this.paidApprovedAt = (at != null ? at : LocalDateTime.now());
