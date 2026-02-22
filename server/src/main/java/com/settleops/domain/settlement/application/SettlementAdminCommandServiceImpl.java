@@ -64,7 +64,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         Settlement settlement = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환 (+ audit)
+        // no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환(+audit)
         if (settlement.isPayRequested()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -125,7 +125,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         Settlement current = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // no-op 200: 이미 PAID (+ audit)
+        // no-op 200: 이미 PAID(+audit)
         if (current.isPaid()) {
             String before = current.getStatus().name();
             String after = current.getStatus().name();
@@ -146,10 +146,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
         }
 
+        // PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // 락 후 재확인(no-op) (+ audit)
+        // 락 후 재확인(no-op)(+audit)
         if (settlement.isPaid()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -166,6 +167,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
+        // 4-eyes: requester != approver
         if (settlement.violatesFourEyes(approverId)) {
             throw new ConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
@@ -269,24 +271,5 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
         }
-    }
-
-    @SuppressWarnings("unused")
-    private SettlementBatchRunResponse toBatchRunResponse(
-            String requestId,
-            SettlementBatch batch,
-            SettlementBatchRunResponse.RunResult result
-    ) {
-        String failReason = (result == SettlementBatchRunResponse.RunResult.FAIL) ? batch.getFailReason() : null;
-
-        return new SettlementBatchRunResponse(
-                requestId,
-                batch.getBatchKey(),
-                batch.getRunId(),
-                result,
-                failReason,
-                batch.getCreatedAt(),
-                batch.getFinishedAt()
-        );
     }
 }
