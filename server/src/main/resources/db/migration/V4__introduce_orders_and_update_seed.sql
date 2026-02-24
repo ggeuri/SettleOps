@@ -8,6 +8,17 @@
    - payment.order_id = orders.order_id 정합 유지
    - idempotency_record.target_id = orders.order_id 정합 유지
 
+   [LOCKED 정책]
+   1) SoT는 반드시 각 도메인 테이블이 담당
+      - CONFIRMED는 payment.status가 아닌 payment_event로 표현
+      - REFUND 상태 변경은 UPDATE 금지 → insert-only(event 로그)
+   2) meta_json(JSON)은 NOT NULL 유지
+   3) FK는 V99에서 ON (V4에서는 FK 추가 금지)
+   4) settlement.uk_settlement_merchant_base_date 충돌 방지
+      → V2와 날짜 절대 겹치지 않도록 2026-03-10/11 사용
+   5) settlement_batch.batch_key 충돌 방지
+      → V2와 다른 batch_key 사용
+
    [정합 보강(기획서 LOCKED)]
    - CONFIRMED SoT는 payment_event(PAYMENT_CONFIRMED)로만 표현 → 각 케이스에 CONFIRMED 이벤트 추가
    - refund SoT row는 UPDATE 없이 최종 상태로 INSERT(=APPROVED)하되,
@@ -20,7 +31,10 @@
    ========================================================= */
 
 -- ---------------------------------------------------------
--- CASE A (refund reflected in settlement: link exists)
+-- CASE A 환불이 정산에 이미 반영된 케이스 (link 존재)
+-- ---------------------------------------------------------
+-- ---------------------------------------------------------
+-- [1] ID 세팅 (UUID 고정 seed)
 -- ---------------------------------------------------------
 SET @ord_a  = '0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a';
 SET @pay_a  = '41111111-1111-1111-1111-111111111111';
@@ -28,7 +42,7 @@ SET @stl_a  = '44444444-4444-4444-4444-444444444440';
 SET @hold_a = '55555555-5555-5555-5555-555555555550';
 SET @rfd_a  = 'aaaaaaaa-1111-2222-3333-aaaaaaaaaaab';
 
--- V2 seed와 batch_key / base_date 충돌 방지용
+-- LOCKED: V2와 유니크 충돌 방지용 날짜
 SET @base_date_a = '2026-03-10';
 SET @batch_key_a = '2026-03-10';
 SET @settlement_no_a = 'SET-20260310-001';
@@ -166,6 +180,8 @@ INSERT INTO hold_event (
          );
 
 -- 9) REFUND (SoT) + REFUND_EVENT (insert-only)
+-- REFUND (SoT row)
+-- LOCKED: UPDATE 없이 최종 상태 INSERT
 SET @rfd_decided_at_a = NOW(6);
 
 INSERT INTO refund (
@@ -248,7 +264,7 @@ INSERT INTO audit_log (
          );
 
 -- ---------------------------------------------------------
--- CASE B (refund approved but NOT reflected yet: no link)
+-- CASE B (환불 승인됐지만 정산 미반영 (link 없음): no link)
 -- ---------------------------------------------------------
 SET @ord_b = '0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b';
 SET @pay_b = '42222222-2222-2222-2222-222222222222';
@@ -295,6 +311,7 @@ INSERT INTO payment (
          );
 
 -- 2) PAYMENT_EVENT (CREATED → CAPTURED → CONFIRMED)
+-- -- LOCKED: CONFIRMED는 반드시 이벤트로 표현
 INSERT INTO payment_event (payment_id, event_type, request_id, occurred_at)
 VALUES (@pay_b,'PAYMENT_CREATED',  @req_pay_created_b,   NOW(6));
 
@@ -382,6 +399,7 @@ INSERT INTO refund (
              NOW(6), NOW(6)
          );
 
+--  REFUND_EVENT (insert-only)
 INSERT INTO refund_event (
     refund_id,
     event_type, status_before, status_after,
