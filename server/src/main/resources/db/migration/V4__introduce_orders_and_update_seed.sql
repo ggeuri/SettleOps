@@ -15,19 +15,23 @@
    - FK는 V99에서 ON (V4에서는 FK 추가 금지)
 
    [주의]
-   - seed 파일은 개발/데모용이며, 운영 로직(서비스 전이)과 분리된다.
-   - 유니크 제약(uk_payment_order_id, uk_refund_payment 등) 존재 시 재실행하면 충돌 가능.
-     개발 환경에서는 DB drop 후 재마이그레이션 권장.
+   - V2 seed와 유니크 키(배치키/정산(merchant,base_date))가 겹치지 않도록
+     V4는 날짜를 2026-03-10/11로 사용한다.
    ========================================================= */
 
 -- ---------------------------------------------------------
 -- CASE A (refund reflected in settlement: link exists)
 -- ---------------------------------------------------------
 SET @ord_a  = '0a0a0a0a-0a0a-0a0a-0a0a-0a0a0a0a0a0a';
-SET @pay_a  = '11111111-1111-1111-1111-111111111111';
-SET @stl_a  = '44444444-4444-4444-4444-444444444444';
-SET @hold_a = '55555555-5555-5555-5555-555555555555';
-SET @rfd_a  = 'aaaaaaaa-1111-2222-3333-aaaaaaaaaaaa';
+SET @pay_a  = '41111111-1111-1111-1111-111111111111';
+SET @stl_a  = '44444444-4444-4444-4444-444444444440';
+SET @hold_a = '55555555-5555-5555-5555-555555555550';
+SET @rfd_a  = 'aaaaaaaa-1111-2222-3333-aaaaaaaaaaab';
+
+-- V2 seed와 batch_key / base_date 충돌 방지용
+SET @base_date_a = '2026-03-10';
+SET @batch_key_a = '2026-03-10';
+SET @settlement_no_a = 'SET-20260310-001';
 
 -- request ids (seed용 고정)
 SET @req_pay_created_a   = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
@@ -55,7 +59,6 @@ INSERT INTO orders (
          );
 
 -- 1) PAYMENT (order 1:1 payment)
---    ※ payment.status는 결제 라이프사이클만 표현. seed는 최종 상태(CAPTURED)로 생성.
 INSERT INTO payment (
     payment_id, order_id, merchant_id, buyer_id,
     currency, requested_amount, captured_amount,
@@ -73,7 +76,6 @@ VALUES (@pay_a,'PAYMENT_CREATED',  @req_pay_created_a,   NOW(6));
 INSERT INTO payment_event (payment_id, event_type, request_id, occurred_at)
 VALUES (@pay_a,'PAYMENT_CAPTURED', @req_pay_captured_a,  NOW(6));
 
--- [LOCKED] CONFIRMED는 payment_event로만
 INSERT INTO payment_event (payment_id, event_type, request_id, occurred_at)
 VALUES (@pay_a,'PAYMENT_CONFIRMED',@req_pay_confirmed_a, NOW(6));
 
@@ -86,12 +88,12 @@ INSERT INTO idempotency_record (
              @pay_a, 200, @req_idem_a, NOW(3)
          );
 
--- 4) SETTLEMENT_BATCH
+-- 4) SETTLEMENT_BATCH (uk_settlement_batch_key 충돌 방지: 2026-03-10 사용)
 INSERT INTO settlement_batch (
     batch_key, run_id, triggered_by,
     result, request_id, fail_reason, created_at, finished_at
 ) VALUES (
-             '2026-02-10',
+             @batch_key_a,
              '33333333-3333-3333-3333-333333333333',
              'SYSTEM',
              'OK',
@@ -101,7 +103,7 @@ INSERT INTO settlement_batch (
          );
 SET @batch_id_a = LAST_INSERT_ID();
 
--- 5) SETTLEMENT (READY)
+-- 5) SETTLEMENT (uk_settlement_merchant_base_date 충돌 방지: base_date 2026-03-10)
 INSERT INTO settlement (
     settlement_id, settlement_no, batch_id,
     merchant_id, status, base_date,
@@ -111,11 +113,11 @@ INSERT INTO settlement (
     created_at, updated_at
 ) VALUES (
              @stl_a,
-             'SET-20260210-001',
+             @settlement_no_a,
              @batch_id_a,
              'MERCHANT_1001',
              'READY',
-             '2026-02-10',
+             @base_date_a,
              10000, 1000, 100, 8900,
              NULL, NULL,
              NULL, NULL,
@@ -134,7 +136,6 @@ INSERT INTO settlement_line (
          );
 
 -- 7) HOLD (HOLD_ACTIVE)
---    seed 목적상 "승인 이후 상태"를 바로 재현. (운영 플로우는 A4 생성 → A5 approve)
 INSERT INTO hold (
     hold_id, settlement_id,
     status, requested_reason_code, requested_comment,
@@ -165,7 +166,6 @@ INSERT INTO hold_event (
          );
 
 -- 9) REFUND (SoT) + REFUND_EVENT (insert-only)
---    [정합] refund UPDATE 금지 → 최종 상태(APPROVED)로 INSERT
 SET @rfd_decided_at_a = NOW(6);
 
 INSERT INTO refund (
@@ -251,9 +251,14 @@ INSERT INTO audit_log (
 -- CASE B (refund approved but NOT reflected yet: no link)
 -- ---------------------------------------------------------
 SET @ord_b = '0b0b0b0b-0b0b-0b0b-0b0b-0b0b0b0b0b0b';
-SET @pay_b = '22222222-2222-2222-2222-222222222222';
-SET @stl_b = '99999999-9999-9999-9999-999999999999';
-SET @rfd_b = 'bbbbbbbb-1111-2222-3333-bbbbbbbbbbbb';
+SET @pay_b = '42222222-2222-2222-2222-222222222222';
+SET @stl_b = '99999999-9999-9999-9999-999999999990';
+SET @rfd_b = 'bbbbbbbb-1111-2222-3333-bbbbbbbbbbbc';
+
+-- V2 seed와 batch_key / base_date 충돌 방지용
+SET @base_date_b = '2026-03-11';
+SET @batch_key_b = '2026-03-11';
+SET @settlement_no_b = 'SET-20260311-001';
 
 SET @req_pay_created_b   = '12121212-1212-1212-1212-121212121212';
 SET @req_pay_captured_b  = '13131313-1313-1313-1313-131313131313';
@@ -308,12 +313,12 @@ INSERT INTO idempotency_record (
              @pay_b, 200, @req_idem_b, NOW(3)
          );
 
--- 4) SETTLEMENT_BATCH
+-- 4) SETTLEMENT_BATCH (uk_settlement_batch_key 충돌 방지: 2026-03-11 사용)
 INSERT INTO settlement_batch (
     batch_key, run_id, triggered_by,
     result, request_id, fail_reason, created_at, finished_at
 ) VALUES (
-             '2026-02-11',
+             @batch_key_b,
              '88888888-8888-8888-8888-888888888888',
              'SYSTEM',
              'OK',
@@ -323,7 +328,7 @@ INSERT INTO settlement_batch (
          );
 SET @batch_id_b = LAST_INSERT_ID();
 
--- 5) SETTLEMENT
+-- 5) SETTLEMENT (uk_settlement_merchant_base_date 충돌 방지: base_date 2026-03-11)
 INSERT INTO settlement (
     settlement_id, settlement_no, batch_id,
     merchant_id, status, base_date,
@@ -333,11 +338,11 @@ INSERT INTO settlement (
     created_at, updated_at
 ) VALUES (
              @stl_b,
-             'SET-20260211-001',
+             @settlement_no_b,
              @batch_id_b,
              'MERCHANT_2001',
              'READY',
-             '2026-02-11',
+             @base_date_b,
              25000, 2500, 250, 22250,
              NULL, NULL,
              NULL, NULL,
