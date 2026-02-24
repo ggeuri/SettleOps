@@ -54,6 +54,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
+        // 요청 단위 추적(LOCKED): Filter가 세팅한 requestId + 인증 주체(actorId)를 스냅샷으로 잡고 끝까지 동일 사용
         String requestId = currentRequestId();
         String actorId = currentActorId();
 
@@ -64,7 +65,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         Settlement settlement = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환(+audit)
+        // no-op 200(LOCKED): 이미 PAY_REQUESTED면 상태 유지 + audit만 남기고 현재 상태 반환
         if (settlement.isPayRequested()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -81,7 +82,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 409 reason 우선순위(LOCKED): HOLD_ACTIVE → NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+        // 409 reason 우선순위 고정(LOCKED): HOLD_ACTIVE → NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
@@ -95,10 +96,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
 
+        // 상태 전이(SoT): READY -> PAY_REQUESTED
         String before = settlement.getStatus().name();
         settlement.requestPaid(actorId, LocalDateTime.now());
         String after = settlement.getStatus().name();
 
+        // audit(LOCKED): 누가/무엇을/왜(meta_json) 남김
         auditSettlementAction(
                 requestId,
                 actorId,
@@ -115,6 +118,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
+        // 요청 단위 추적(LOCKED): requestId + approverId를 스냅샷으로 고정
         String requestId = currentRequestId();
         String approverId = currentActorId();
 
@@ -122,10 +126,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
+        // 1) 락 없이 조회(없으면 404)
         Settlement current = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // no-op 200: 이미 PAID(+audit)
+        // 2) no-op 200(LOCKED): 이미 PAID면 상태 유지 + audit만 남기고 현재 상태 반환
         if (current.isPaid()) {
             String before = current.getStatus().name();
             String after = current.getStatus().name();
@@ -142,15 +147,16 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(current, requestId);
         }
 
+        // 3) 409: PAY_REQUESTED가 아니면 승인 불가
         if (!current.isPayRequested()) {
             throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
         }
 
-        // PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
+        // 4) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE) → 동시 PAID 전이 1회 보장
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
-        // 락 후 재확인(no-op)(+audit)
+        // 락 후 재확인(no-op)(LOCKED)
         if (settlement.isPaid()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -167,7 +173,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 4-eyes: requester != approver
+        // 4-eyes(LOCKED): requester != approver
         if (settlement.violatesFourEyes(approverId)) {
             throw new ConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
@@ -175,6 +181,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             );
         }
 
+        // 상태 전이(SoT): PAY_REQUESTED -> PAID
         String before = settlement.getStatus().name();
         settlement.approvePaid(approverId, LocalDateTime.now());
         String after = settlement.getStatus().name();
@@ -219,6 +226,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
     }
 
+    // request_id 생성/주입은 Filter 단일 책임(Freeze). 여기서는 읽기만 한다.
     private String currentRequestId() {
         String requestId = MDC.get(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
@@ -227,6 +235,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         return requestId;
     }
 
+    // 인증 누락은 401로 귀결(500 금지). Security가 막아주지만 서비스도 방어적으로 체크.
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
