@@ -18,7 +18,12 @@ public class RefundReadRepository {
     //admin 리스트/필터/기간 등
     private final JPAQueryFactory queryFactory;
 
-    public boolean existsApprovedRefundBySettlementId(String settlementId) {
+    /**
+     * READ/DEBUG 전용.
+     * LOCKED: REFUND_ADJUSTMENT_PENDING 정책 판정에는 사용 금지.
+     * (조인 추론 금지, SoT는 refund_settlement_link 단일)
+     */
+    public boolean existsApprovedRefundBySettlementIdForDebug(String settlementId) {
         Integer one = queryFactory
                 .selectOne()
                 .from(settlementLine)
