@@ -16,6 +16,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
+import static com.settleops.global.logging.RequestIdKeys.HEADER;
+import static com.settleops.global.logging.RequestIdKeys.MDC_KEY;
+
 /**
  * 🚨 requestId는 시스템 전역에서 본 Filter에서만 생성/주입한다.
  * 다른 계층(Interceptor, AOP 등)에서 중복 생성 금지
@@ -25,8 +28,8 @@ import java.util.UUID;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
-    private static final String REQUEST_ID_HEADER = "X-Request-Id";
-    private static final String REQUEST_ID = "requestId";
+    private static final String REQUEST_ID_HEADER = HEADER;
+    private static final String REQUEST_ID = MDC_KEY;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
