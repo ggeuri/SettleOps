@@ -1,4 +1,4 @@
 package com.settleops.domain.refund.domain;
 
-public class RefundEventType {
+public enum RefundEventType {
 }
