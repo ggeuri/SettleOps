@@ -33,6 +33,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
+    private final RefundAdjustmentPolicy refundAdjustmentPolicy;
 
     @Override
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
@@ -45,6 +46,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
+        // fail-fast (계약 강화)
+        if (settlementId == null || settlementId.isBlank()) {
+            throw new IllegalStateException("settlementId must not be null/blank");
+        }
+
         Settlement settlement = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
@@ -60,9 +66,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED)
-        // 2-1) SETTLEMENT_NOT_READY (단, HOLD_ACTIVE는 별도 reason으로 내보내기 위해 제외)
-        if (!settlement.isReady() && !settlement.isHoldActive()) {
+        // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
+        //    SETTLEMENT_NOT_READY → HOLD_ACTIVE → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+
+        // 2-1) SETTLEMENT_NOT_READY (READY 아니면 무조건 최우선)
+        if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
@@ -76,8 +84,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING 은 C 의존 → 다음 PR에서 추가
-        // if (refundAdjustmentPending(...)) throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "...");
+        // 2-4) REFUND_ADJUSTMENT_PENDING
+        if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
+            throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
+        }
 
         // 3) 상태 전이 + 저장
         String before = settlement.getStatus().name();
@@ -101,6 +111,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
+        // fail-fast (계약 강화)
+        if (settlementId == null || settlementId.isBlank()) {
+            throw new IllegalStateException("settlementId must not be null/blank");
+        }
+
         Settlement current = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
@@ -169,6 +184,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     }
 
     private SettlementPayActionResponse toPayActionResponse(Settlement s) {
+        // PAY_REQUESTED(no-op 200 포함) 규격: paidRequestedAt 필수
+        if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
+            throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
+        }
+
+        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
         LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
         if (s.isPaid() && paidAt == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
@@ -211,6 +232,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
+                // PR#2에서는 기존 방식 유지(충돌 최소). ObjectMapper 전환은 PR#3에서 처리.
                 .metaJson(comment == null ? "{}" : "{\"comment\":" + toJsonString(comment) + "}")
                 .build();
 
