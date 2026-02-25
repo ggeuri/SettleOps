@@ -61,7 +61,6 @@ class SettlementAdminCommandServiceImplTest {
                 objectMapper
         );
 
-        // MDC 키 통일
         MDC.put(RequestIdKeys.MDC_KEY, "test-request-id");
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
@@ -77,7 +76,6 @@ class SettlementAdminCommandServiceImplTest {
     @Test
     void requestPaid_refundAdjustmentPending_true_then409_REFUND_ADJUSTMENT_PENDING() {
         Settlement settlement = Mockito.mock(Settlement.class);
-
         LocalDate baseDate = LocalDate.of(2026, 3, 4);
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
@@ -90,9 +88,9 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        // 현재 서비스 isBatchFailed(baseDate) 정합: findByBatchKey(baseDate)로 스텁
+        // 서비스 isBatchFailed(baseDate) 정합: findByBatchKey(baseDate)로 스텁
         SettlementBatch batch = Mockito.mock(SettlementBatch.class);
-        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now()); // 완료된 배치
+        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now()); // 완료된 배치만 판정
         Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.OK); // FAIL 아님
         Mockito.when(settlementBatchRepository.findByBatchKey(baseDate)).thenReturn(Optional.of(batch));
 
@@ -107,7 +105,6 @@ class SettlementAdminCommandServiceImplTest {
                 });
 
         verifyNoInteractions(auditLogger);
-
         verify(settlementBatchRepository, times(1)).findByBatchKey(baseDate);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
         Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
@@ -126,7 +123,7 @@ class SettlementAdminCommandServiceImplTest {
     }
 
     @Test
-    void requestPaid_requestIdMissing_thenFailFast() {
+    void requestPaid_requestIdMissing_then400_BadRequest() {
         MDC.clear();
 
         Settlement settlement = Mockito.mock(Settlement.class);
@@ -145,16 +142,16 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     void requestPaid_actorMissing_then401() {
-        // given
         SecurityContextHolder.clearContext(); // 인증 제거
 
         Settlement settlement = Mockito.mock(Settlement.class);
-        Mockito.when(settlement.isPayRequested()).thenReturn(true); // no-op 분기 타게
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED); // 혹시 호출돼도 안전
+        Mockito.when(settlement.isPayRequested()).thenReturn(true);
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        // when/then
         assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
@@ -170,6 +167,12 @@ class SettlementAdminCommandServiceImplTest {
     }
 
     @Test
+    void requestPaid_settlementIdNull_then400() {
+        assertThatThrownBy(() -> service.requestPaid(null, "memo"))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
     void requestPaid_holdActive_then409_HOLD_ACTIVE_even_if_not_ready() {
         Settlement settlement = Mockito.mock(Settlement.class);
 
@@ -178,6 +181,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
+        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -189,7 +193,6 @@ class SettlementAdminCommandServiceImplTest {
                             .isEqualTo(ReasonCode.HOLD_ACTIVE.name());
                 });
 
-        // HOLD_ACTIVE에서 fail-fast라 아래 의존성들은 호출되면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
@@ -218,7 +221,6 @@ class SettlementAdminCommandServiceImplTest {
                             .isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
                 });
 
-        // NOT_READY에서 fail-fast라 아래 의존성들은 호출되면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
