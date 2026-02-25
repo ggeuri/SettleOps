@@ -2,6 +2,7 @@ package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
+import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.AuditLogger;
@@ -94,8 +95,10 @@ class SettlementAdminCommandServiceImplTest {
 
         verify(settlementBatchRepository, times(1))
                 .existsByBatchIdAndResult(1L, SettlementBatchResult.FAIL);
+
         verify(refundAdjustmentPolicy, times(1))
                 .isRefundAdjustmentPending("S1");
+        Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
     }
 
     @Test
@@ -152,10 +155,8 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
-        // HOLD가 우선으로 막혀야 함
+        // HOLD가 우선으로 막혀야 함 (여기서 isReady() 스텁은 불필요 → 제거)
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
-        // (선택) 뒤쪽 가드로 진행 안 하는지 강조하고 싶으면 둬도 됨
-        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -180,8 +181,11 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
 
-        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+        // "READY인데 isReady=false" 같은 불가능한 스텁 방지:
+        // READY가 아닌 합리적 상태를 하나 지정
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
 
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(false);
         Mockito.when(settlement.isReady()).thenReturn(false);
 
