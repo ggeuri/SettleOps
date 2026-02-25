@@ -101,6 +101,7 @@ public class Payment {
             return; // no-op (멱등 안전)
         }
         this.status = PaymentStatus.CAPTURED;
+        this.capturedAmount = this.requestedAmount; // 전액 캡처 고정
         this.updatedAt = LocalDateTime.now();
     }
 

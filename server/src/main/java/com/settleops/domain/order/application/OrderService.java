@@ -27,7 +27,8 @@ public class OrderService {
     }
 
     @Transactional
-    public Orders markPaid(Orders order) {
+    public Orders markPaid(String orderId) {
+        Orders order = getByOrderId(orderId);
         order.markPaid();   // 엔티티 내부 상태 변경
         return order;       // 별도 save 필요 없음 (영속 상태라면)
     }

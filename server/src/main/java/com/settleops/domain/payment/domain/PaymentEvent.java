@@ -50,9 +50,11 @@ public class PaymentEvent {
     @Column(name = "event_type", length = 32, nullable = false)
     private Action eventType;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status_before", length = 64)
     private PaymentStatus statusBefore;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status_after", length = 64)
     private PaymentStatus statusAfter;
 
@@ -63,11 +65,12 @@ public class PaymentEvent {
     @Column(name = "occurred_at", nullable = false, insertable = false, updatable = false)
     private LocalDateTime occurredAt;
 
-    public static PaymentEvent create(String paymentId, Action eventType, PaymentStatus statusBefore, PaymentStatus statusAfter){
-        String requestId = MDC.get(MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId가 MDC에 없습니다. RequestIdFilter 설정을 확인하세요.");
-        }
+    private static PaymentEvent of(
+            String paymentId,
+            Action eventType,
+            PaymentStatus before,
+            PaymentStatus after
+    ) {
         if (paymentId == null || paymentId.isBlank()) {
             throw new IllegalArgumentException("paymentId는 필수입니다.");
         }
@@ -75,28 +78,14 @@ public class PaymentEvent {
             throw new IllegalArgumentException("eventType은 필수입니다.");
         }
 
-        PaymentEvent e = new PaymentEvent();
-        e.paymentId = paymentId;
-        e.eventType = eventType;
-        e.statusBefore = statusBefore;
-        e.statusAfter = statusAfter;
-        e.requestId = requestId;
-        return e;
-    }
-    private static PaymentEvent of(
-            String paymentId,
-            Action action,
-            PaymentStatus before,
-            PaymentStatus after
-    ) {
-        String requestId = MDC.get("requestId");
+        String requestId = MDC.get(MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId가 없습니다.");
+            throw new IllegalStateException("requestId가 MDC에 없습니다.");
         }
 
         PaymentEvent e = new PaymentEvent();
         e.paymentId = paymentId;
-        e.eventType = action;
+        e.eventType = eventType;
         e.statusBefore = before;
         e.statusAfter = after;
         e.requestId = requestId;
@@ -104,18 +93,12 @@ public class PaymentEvent {
     }
 
     public static PaymentEvent created(String paymentId) {
-        String requestId = MDC.get("requestId");
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId가 없습니다.");
-        }
-
-        PaymentEvent e = new PaymentEvent();
-        e.paymentId = paymentId;
-        e.eventType = Action.PAYMENT_CREATED;
-        e.statusBefore = null;
-        e.statusAfter = PaymentStatus.CREATED;
-        e.requestId = requestId;
-        return e;
+        return of(
+                paymentId,
+                Action.PAYMENT_CREATED,
+                null,
+                PaymentStatus.CREATED
+        );
     }
 
     public static PaymentEvent captured(String paymentId) {
