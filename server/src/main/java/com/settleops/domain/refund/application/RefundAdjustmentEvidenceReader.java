@@ -11,10 +11,12 @@ public class RefundAdjustmentEvidenceReader {
     private final RefundSettlementLinkRepository linkRepository;
 
     /**
-     * LOCKED: REFUND_ADJUSTMENT_PENDING 판정 SoT는 refund_settlement_link 단일.
-     * join/추론 금지.
+     * LOCKED:
+     * refund_settlement_link(증거 테이블) 존재 여부만 확인.
+     * REFUND_ADJUSTMENT_PENDING 전체 판정이 아님.
+     * (APPROVED 존재 여부는 별도 로직)
      */
-    public boolean existsEvidenceForSettlement(String settlementId) {
+    public boolean existsLinkForSettlement(String settlementId) {
         return linkRepository.existsBySettlementId(settlementId);
     }
 }
