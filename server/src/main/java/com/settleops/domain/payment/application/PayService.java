@@ -11,16 +11,27 @@ import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.IdempotencyRecordRepository;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
+import com.settleops.global.audit.ActorType;
+import com.settleops.global.audit.AuditLogCommand;
+import com.settleops.global.audit.AuditLogger;
+import com.settleops.global.audit.EntityType;
 import com.settleops.global.db.DbConstraintUtils;
+import com.settleops.global.enums.Action;
 import com.settleops.global.enums.IdempotencyTargetType;
+import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
+
+import static com.settleops.global.logging.RequestIdKeys.MDC_KEY;
 
 @Slf4j
 @Service
@@ -32,202 +43,272 @@ public class PayService {
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final OrderService orderService;
 
+    private final AuditLogger auditLogger;
+
     /**
-    * <p>1. `X-Idempotency-Key` 헤더가 들어왔는지 확인 (없으면 400).</p>
-    * <p>2. DB에서 `(orderId, idempotencyKey)` 조합으로 이미 성공한 기록이 있는지 조회.</p>
-    * <p>3. 있다면 실제 결제 로직을 타지 않고 **기존 결과 반환 (no-op 200)**.</p>
-    * <p>4. 없다면 결제 처리 후 `payment_event`에 기록. </p>
-    */
+     * 결제 진입점.
+     *
+     * <p><b>처리 순서</b></p>
+     * <ol>
+     *     <li>입력값 검증</li>
+     *     <li>멱등키 기반 기존 성공 요청 조회 (no-op 처리)</li>
+     *     <li>order=PAID 이지만 멱등 레코드가 없는 복구 케이스 처리</li>
+     *     <li>Payment 생성 (UNIQUE 충돌 시 기존 payment로 수렴)</li>
+     *     <li>CREATED 이벤트 적재 (insert-only)</li>
+     *     <li>capture 수행 + flush 보장</li>
+     *     <li>CAPTURED 이벤트 적재 (중복 시 DB 상태로 수렴)</li>
+     *     <li>Order 상태 전이</li>
+     *     <li>멱등 레코드 저장 (중복 시 기존 payment로 수렴)</li>
+     * </ol>
+     */
     @Transactional
     public PayResponseDTO pay(String orderId, String idempotencyKey) {
 
-        // 입력 검증(400)
-        if (idempotencyKey == null || idempotencyKey.isBlank()) {
-            throw new BadRequestException("X-Idempotency-Key는 필수입니다.");
-        }
-        if (orderId == null || orderId.isBlank()) {
-            throw new BadRequestException("orderId는 필수입니다.");
-        }
+        // 1. 필수 파라미터 검증
+        validateInputs(orderId, idempotencyKey);
 
-        final IdempotencyTargetType idempotencytype = IdempotencyTargetType.PAY_ORDER;
+        final IdempotencyTargetType targetType = IdempotencyTargetType.PAY_ORDER;
 
-// ------ 0) 이미 처리된 요청인 경우
-        Optional<IdempotencyRecord> recordOpt = idempotencyRecordRepository.findByTargetTypeAndTargetIdAndIdempotencyKey(
-                idempotencytype,
-                orderId,
-                idempotencyKey
-        );
-
-        if(recordOpt.isPresent()) {
-            IdempotencyRecord idempotencyRecord = recordOpt.get();
-            Payment payment = paymentRepository.findById( // find by ~~~ 설정필요!
-                        idempotencyRecord.getPaymentId()
-                    ).orElseThrow(()->(new IllegalStateException("멱등 레코드가 가리키는 payment가 없습니다. 정합성 오류"))); // 데이터 정합성방어용 코드
-            // 기존 응답 재반환 no-op 200 *** 캡쳐시간 타 테이블에서 조회 필요
-            return PayResponseDTO.from(payment);
+        // 2. 멱등키 기반 기존 성공 요청 조회 (이미 처리된 경우 즉시 반환)
+        Payment idempotent = findIdempotentPaymentOrNull(targetType, orderId, idempotencyKey);
+        if (idempotent != null) {
+            return PayResponseDTO.from(idempotent);
         }
 
-// ------ 1) 신규 결제 처리
+        // 3. 주문 조회
         Orders orders = orderService.getByOrderId(orderId);
-        if (orders.getStatus() == OrderStatus.PAID) { // 기존데이터 충돌 방지용
-            // 1-1. 기존 payment 조회 (1:1 전제)
-            Payment existingPayment = paymentRepository.findByOrderId(orderId)
-                    .orElseThrow(() -> new IllegalStateException("order가 PAID인데 payment가 없습니다. 정합성 오류"));
+        assertOrderNotPaid(orders);
 
-            // 1-2. idempotency_record 복구 저장 (동시성 대비 try-catch)
-            try {
-                idempotencyRecordRepository.save(
-                        IdempotencyRecord.create(
-                                idempotencytype,
-                                orderId,
-                                idempotencyKey,
-                                existingPayment.getPaymentId(),
-                                200)
-                );
-            } catch (DataIntegrityViolationException e) {
-                if (DbConstraintUtils.isDuplicateKey(e)) {
-                    log.info("IDEMPOTENCY_RECORD 복구 저장 중복(UNIQUE)으로 무시. orderId={}, paymentId={}, cause={}",
-                            orderId, existingPayment.getPaymentId(), DbConstraintUtils.rootMessage(e));
-                } else {
-                    log.error("IDEMPOTENCY_RECORD 복구 저장 실패(UNIQUE 외). orderId={}, paymentId={}, cause={}",
-                            orderId, existingPayment.getPaymentId(), DbConstraintUtils.rootMessage(e), e);
-                    throw e;
-                }
-            }
-            return PayResponseDTO.from(existingPayment);
-        }
-
-// ------ 2) PAYMENT_CREATED
-        Payment payment = Payment.create(
+        // 5. 신규 Payment 엔티티 생성
+        Payment newPayment = Payment.create(
                 orders.getOrderId(),
                 orders.getMerchantId(),
                 orders.getBuyerId(),
                 orders.getAmount()
         );
 
-        try {
-            paymentRepository.save(payment);
-        } catch (DataIntegrityViolationException e) {
-            if (!DbConstraintUtils.isDuplicateKey(e)) {
-                log.error("PAYMENT 저장 실패(UNIQUE 외). orderId={}, cause={}",
-                        orderId, DbConstraintUtils.rootMessage(e), e);
-                throw e;
+        // 6. payment insert 시 UNIQUE 충돌이면 기존 payment로 수렴
+        Payment payment = createPaymentOrConverge(newPayment, orderId);
+        if (payment != newPayment) {
+            if (payment.getStatus() != PaymentStatus.CAPTURED) {
+                throw new ConflictException(ReasonCode.IN_PROGRESS, "결제가 진행 중입니다.");
             }
-
-            log.info("PAYMENT 생성 중복(UNIQUE)으로 기존 payment로 수렴. orderId={}, cause={}",
-                    orderId, DbConstraintUtils.rootMessage(e));
-            Payment existingPayment = paymentRepository.findByOrderId(orderId)
-                    .orElseThrow(() -> e);  // duplicate인데 조회가 안되면 비정상
-
-            // 멱등레코드 best-effort 저장: duplicate만 무시
-            try {
-                idempotencyRecordRepository.save(
-                        IdempotencyRecord.create(
-                                idempotencytype,
-                                orderId,
-                                idempotencyKey,
-                                existingPayment.getPaymentId(),
-                                200
-                        )
-                );
-            } catch (DataIntegrityViolationException ex) {
-                if (DbConstraintUtils.isDuplicateKey(ex)) {
-                    log.info("IDEMPOTENCY_RECORD best-effort 저장 중복(UNIQUE)으로 무시. orderId={}, paymentId={}, cause={}",
-                            orderId, existingPayment.getPaymentId(), DbConstraintUtils.rootMessage(ex));
-                } else {
-                    log.error("IDEMPOTENCY_RECORD best-effort 저장 실패(UNIQUE 외). orderId={}, paymentId={}, cause={}",
-                            orderId, existingPayment.getPaymentId(), DbConstraintUtils.rootMessage(ex), ex);
-                    throw ex;
-                }
-            }
-            return PayResponseDTO.from(existingPayment);
+            // CAPTURED가 확정된 경우에만 멱등 저장
+            saveIdempotencyIgnoreDuplicate(targetType, orderId, idempotencyKey, payment.getPaymentId());
+            return PayResponseDTO.from(payment);
         }
 
-// ------ 3) PAYMENT_EVENT[insert-only] :: CREATED (before=null, after=CREATED)
-        try {
-            // 내부에서 requestId(MDC) 주입
-            paymentEventRepository.save(PaymentEvent.created(payment.getPaymentId()));
-        }catch (DataIntegrityViolationException e) {
-            if (DbConstraintUtils.isDuplicateKey(e)) {
-                log.info("PAYMENT_EVENT CREATED 중복(UNIQUE)으로 무시. paymentId={}, cause={}",
-                        payment.getPaymentId(), DbConstraintUtils.rootMessage(e));
-            } else {
-                log.error("PAYMENT_EVENT CREATED 저장 실패(UNIQUE 외). paymentId={}, cause={}",
-                        payment.getPaymentId(), DbConstraintUtils.rootMessage(e), e);
-                throw e;
-            }
-        }
+        // 7. PAYMENT_EVENT :: CREATED (insert-only, duplicate ignore)
+        saveEventIgnoreDuplicate(PaymentEvent.created(payment.getPaymentId()));
 
-// ------ 4) CAPTURE(도메인에서 amount/status 확정)
-        payment.capture(); // status=CAPTURED, capturedAmount=requestedAmount
-        log.info("PAY 성공. orderId={}, paymentId={}, amount={}", orderId, payment.getPaymentId(), payment.getRequestedAmount());
+        PaymentStatus paymentStatusBefore = payment.getStatus();
 
-// ------ 5) PAYMENT_EVENT[insert-only] :: CAPTURED (before=CREATED, after=CAPTURED)
-        try {
-            paymentEventRepository.save(PaymentEvent.captured(payment.getPaymentId()));
-            // transaction commit 시 payment update 자동반영
-        } catch (DataIntegrityViolationException e) {
+        // 8. CAPTURE 수행 (도메인 로직)
+        payment.capture();
 
-            if (!DbConstraintUtils.isDuplicateKey(e)) {
-                log.error("PAYMENT_EVENT CAPTURED 저장 실패(UNIQUE 외). paymentId={}, cause={}",
-                        payment.getPaymentId(), DbConstraintUtils.rootMessage(e), e);
-                throw e;
-            }// duplicate인 경우만 수렴 로직
+        // 9. flush 보장 (UPDATE SQL 실행 시점 확정)
+        payment = paymentRepository.saveAndFlush(payment);
 
-            // 이미 CAPTURED 이벤트가 존재(=다른 요청이 먼저 적재) → payment 상태 확정 검증(재조회 1회)
-            Payment dbPayment = paymentRepository.findById(payment.getPaymentId())
-                    .orElseThrow(() -> new IllegalStateException("payment가 없습니다. 정합성 오류"));
+        // 10. PAYMENT_EVENT :: CAPTURED (duplicate면 DB 상태로 수렴)
+        payment = saveCapturedEventOrConverge(payment);
 
-            if (dbPayment.getStatus() != PaymentStatus.CAPTURED) {
-                throw new IllegalStateException("CAPTURED 이벤트는 있는데 payment.status가 CAPTURED가 아닙니다. 정합성 오류");
-            }
-            if (dbPayment.getCapturedAmount() != dbPayment.getRequestedAmount()) {
-                throw new IllegalStateException("CAPTURED인데 capturedAmount != requestedAmount 입니다. 정합성 오류");
-            }
+        // MVP: pay에서는 PAYMENT_CAPTURED만 audit (PAYMENT_CREATED는 payment_event로 대체)
+        auditLogger.log(AuditLogCommand.builder()
+                .requestId(MDC.get(MDC_KEY))            // MDC에서 전역 requestId 획득
+                .action(Action.PAYMENT_CAPTURED)            // 기획서 명시 액션 코드
+                .actorType(ActorType.BUYER)                 // 또는 SYSTEM
+                .actorId(orders.getBuyerId())
+                .entityType(EntityType.PAYMENT)
+                .entityId(payment.getPaymentId())
+                .statusBefore(paymentStatusBefore.name())   // 상태 전이 기록
+                .statusAfter(payment.getStatus().name())
+                .merchantId(orders.getMerchantId())
+                .occurredAt(LocalDateTime.now())
+                .metaJson("{}")                             // 필요 시 추가 상세 데이터
+                .build());
 
-            // 이 요청의 payment 객체는 stale일 수 있으니, 이후 응답/흐름은 dbPayment로 수렴하는게 안전
-            payment = dbPayment;
+        log.info("PAY 성공. orderId={}, paymentId={}, amount={}",
+                orderId, payment.getPaymentId(), payment.getRequestedAmount());
 
-            log.info("PAYMENT_CAPTURED 이벤트 중복(UNIQUE). 이미 처리됨으로 수렴. paymentId={}", payment.getPaymentId());
-        }
-
-
-// ------ 7) order 상태 전이 (OrderService에게 위임)
+        // 11. 주문 상태 PAID 전이
         orderService.markPaid(orderId);
 
-// ------ 8). idempotency_record 저장 (UNIQUE 충돌 시 기존 레코드로 수렴)
-        try{
-            idempotencyRecordRepository.save(
-                IdempotencyRecord.create(
-                        idempotencytype, // Locked
-                        orderId,
-                        idempotencyKey,
-                        payment.getPaymentId(),
-                        200
-                )
-            );
-        } catch (DataIntegrityViolationException e) {
-            // 이미 응답 처리 된 payment 라면 200 결과 재반환
-            if (DbConstraintUtils.isDuplicateKey(e)) {
-                log.info("IDEMPOTENCY_RECORD 중복(UNIQUE)으로 수렴. orderId={}, paymentId={}, cause={}",
-                        orderId, payment.getPaymentId(), DbConstraintUtils.rootMessage(e));
+        // 12. idempotency_record 저장 (duplicate면 기존 payment로 수렴)
+        Payment finalPayment = saveIdempotencyOrConverge(targetType, orderId, idempotencyKey, payment);
 
-                IdempotencyRecord existing =
-                    idempotencyRecordRepository.findByTargetTypeAndTargetIdAndIdempotencyKey(idempotencytype, orderId, idempotencyKey)
-                        .orElseThrow(() -> e);
-
-                Payment existingPayment = paymentRepository.findById(existing.getPaymentId())
-                        .orElseThrow(() -> new IllegalStateException("멱등 레코드가 가리키는 payment가 없습니다. 정합성 오류"));
-
-                return PayResponseDTO.from(existingPayment);
-            }
-            log.error("IDEMPOTENCY_RECORD 저장 실패(UNIQUE 외). orderId={}, paymentId={}, cause={}",
-                    orderId, payment.getPaymentId(), DbConstraintUtils.rootMessage(e), e);
-            throw e;
-        }
-
-        return PayResponseDTO.from(payment);
+        return PayResponseDTO.from(finalPayment);
     }
 
+    /**
+     * 입력값 검증.
+     *
+     * <p>orderId와 idempotencyKey는 필수값이다.</p>
+     * <p>누락 시 400 BadRequestException 발생.</p>
+     */
+    private static void validateInputs(String orderId, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            throw new BadRequestException("X-Idempotency-Key는 필수입니다.");
+        }
+        if (orderId == null || orderId.isBlank()) {
+            throw new BadRequestException("orderId는 필수입니다.");
+        }
+    }
 
+    /**
+     * 중복키 예외 판별.
+     *
+     * <p>DB UNIQUE 제약 위반 여부를 판별한다.</p>
+     */
+    private boolean isDuplicate(DataIntegrityViolationException e) {
+        return DbConstraintUtils.isDuplicateKey(e);
+    }
+
+    /**
+     * payment 생성 시 UNIQUE 충돌이 발생하면 기존 payment로 수렴한다.
+     *
+     * <p>동시성 상황에서 orderId UNIQUE 제약으로 인해 insert 충돌이 발생할 수 있다.</p>
+     */
+    private Payment createPaymentOrConverge(Payment payment,
+                                            String orderId) {
+        try {
+            return paymentRepository.save(payment);
+        } catch (DataIntegrityViolationException e) {
+            if (!isDuplicate(e)) throw e;
+
+            log.info("PAYMENT 생성 중복. orderId={}", orderId);
+
+            Payment existing = paymentRepository.findByOrderId(orderId)
+                    .orElseThrow(() -> new IllegalStateException("기존 payment 조회 실패"));
+            return existing; // UNIQUE 충돌
+        }
+    }
+
+    /**
+     * payment 이벤트 insert-only 저장.
+     *
+     * <p>UNIQUE 중복은 무시하고, 그 외 예외는 전파한다.</p>
+     */
+    private void saveEventIgnoreDuplicate(PaymentEvent event) {
+        try {
+            paymentEventRepository.save(event);
+        } catch (DataIntegrityViolationException e) {
+            if (isDuplicate(e)) {
+                log.info("EVENT 중복 무시. paymentId={}", event.getPaymentId());
+                return;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * CAPTURED 이벤트 적재.
+     *
+     * <p>이미 존재하는 경우 DB의 payment 상태를 재조회하여 수렴한다.</p>
+     */
+    private Payment saveCapturedEventOrConverge(Payment payment) {
+        try {
+            paymentEventRepository.save(PaymentEvent.captured(payment.getPaymentId()));
+            return payment;
+        } catch (DataIntegrityViolationException e) {
+            if (!isDuplicate(e)) throw e;
+
+            Payment dbPayment = paymentRepository.findById(payment.getPaymentId())
+                    .orElseThrow(() -> new IllegalStateException("payment 조회 실패"));
+
+            if (dbPayment.getStatus() != PaymentStatus.CAPTURED) {
+                throw new IllegalStateException("CAPTURED 이벤트 존재하지만 상태 불일치");
+            }
+
+            return dbPayment;
+        }
+    }
+
+    /**
+     * 멱등 레코드 저장.
+     *
+     * <p>이미 존재하는 경우 기존 레코드가 가리키는 payment로 수렴한다.</p>
+     */
+    private Payment saveIdempotencyOrConverge(IdempotencyTargetType targetType,
+                                              String orderId,
+                                              String idempotencyKey,
+                                              Payment payment) {
+        try {
+            idempotencyRecordRepository.save(
+                    IdempotencyRecord.create(
+                            targetType,
+                            orderId,
+                            idempotencyKey,
+                            payment.getPaymentId(),
+                            200
+                    )
+            );
+            return payment;
+        } catch (DataIntegrityViolationException e) {
+            if (!isDuplicate(e)) throw e;
+
+            IdempotencyRecord existing = idempotencyRecordRepository
+                    .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, orderId, idempotencyKey)
+                    .orElseThrow(() -> new IllegalStateException("멱등 레코드 조회 실패"));
+
+            return paymentRepository.findById(existing.getPaymentId())
+                    .orElseThrow(() -> new IllegalStateException("payment 조회 실패"));
+        }
+    }
+
+    /**
+     * 멱등 레코드 best-effort 저장.
+     *
+     * <p>중복은 무시하고 그 외 예외는 전파한다.</p>
+     */
+    private void saveIdempotencyIgnoreDuplicate(IdempotencyTargetType targetType,
+                                                String orderId,
+                                                String idempotencyKey,
+                                                String paymentId) {
+        try {
+            idempotencyRecordRepository.save(
+                    IdempotencyRecord.create(
+                            targetType,
+                            orderId,
+                            idempotencyKey,
+                            paymentId,
+                            200
+                    )
+            );
+        } catch (DataIntegrityViolationException e) {
+            if (!isDuplicate(e)) throw e;
+        }
+    }
+
+    /**
+     * 멱등키 기반 기존 성공 payment 조회.
+     *
+     * <p>존재하지 않으면 null 반환.</p>
+     */
+    private Payment findIdempotentPaymentOrNull(IdempotencyTargetType targetType,
+                                                String orderId,
+                                                String idempotencyKey) {
+
+        Optional<IdempotencyRecord> record =
+                idempotencyRecordRepository
+                        .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, orderId, idempotencyKey);
+
+        if (record.isEmpty()) return null;
+
+        return paymentRepository.findById(record.get().getPaymentId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "idempotency_record는 존재하지만 참조 payment가 없습니다. 정합성 오류"
+                ));
+    }
+
+    /**
+     * 주문이 이미 PAID이면 새 결제 요청을 차단한다.
+     *
+     * <p>동일 (orderId, idempotencyKey) 재시도는 2단계에서 이미 no-op 200으로 반환되므로,
+     * 여기서는 '멱등 레코드 없음 + order=PAID' = 새 멱등키 재요청(상태 위반)만 처리한다.</p>
+     */
+    private static void assertOrderNotPaid(Orders orders) {
+        if (orders.getStatus() == OrderStatus.PAID) {
+            throw new ConflictException(ReasonCode.PAID_ALREADY, "이미 PAID 상태입니다.");
+        }
+    }
 }

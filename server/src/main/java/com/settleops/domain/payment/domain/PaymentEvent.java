@@ -2,6 +2,7 @@ package com.settleops.domain.payment.domain;
 
 import com.settleops.global.enums.Action;
 import jakarta.persistence.*;
+import lombok.Getter;
 import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
@@ -19,6 +20,7 @@ import java.time.LocalDateTime;
 // | occurred_at      | datetime(6) | NO   |     | CURRENT_TIMESTAMP(6) | DEFAULT_GENERATED |
 // +------------------+-------------+------+-----+----------------------+-------------------+
 
+@Getter
 @Entity
 @Table(
         name="payment_event",
