@@ -39,7 +39,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
-    private final SettlementBatchRunRecorder settlementBatchRunRecorder; // 사용 예정(A2)
+    private final SettlementBatchRunRecorder settlementBatchRunRecorder; // A2에서 사용 예정
     private final ObjectMapper objectMapper;
 
     @Override
@@ -204,14 +204,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     /**
      * BATCH_FAILED 판정 (가드레일)
-     * - batchId가 없으면(비정상) fail로 보지 않고 false로 방어한다.
-     * - 가능하면 existsBy... 로 바꾸는 것이 효율적이지만, 현재는 findById 기반으로 유지.
+     * - settlement.batchId 기반으로 settlement_batch.result == FAIL 인지만 확인한다.
+     * - batchId가 null이면(비정상) FAIL로 간주하지 않고 false로 방어한다.
      */
     private boolean isBatchFailed(Long batchId) {
         if (batchId == null) return false;
-
-        // 권장 형태(Repository에 메서드 추가 시):
-        // return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
 
         return settlementBatchRepository.findById(batchId)
                 .map(b -> b.getResult() == SettlementBatchResult.FAIL)
@@ -224,11 +221,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
 
-        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
-        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
-        if (s.isPaid() && paidAt == null) {
+        // PAID(no-op 200 포함) 규격: paidApprovedAt 필수
+        if (s.isPaid() && s.getPaidApprovedAt() == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
+
+        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
 
         return new SettlementPayActionResponse(
                 requestId,
