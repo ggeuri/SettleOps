@@ -33,6 +33,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
+    private final RefundAdjustmentPolicy refundAdjustmentPolicy;
 
     @Override
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
@@ -45,6 +46,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
+        if (settlementId == null || settlementId.isBlank()) {
+            throw new IllegalStateException("settlementId must not be null/blank");
+        }
+
         Settlement settlement = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
@@ -61,7 +66,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         // 2) 409 reason 우선순위 고정(LOCKED)
-        // 2-1) SETTLEMENT_NOT_READY (단, HOLD_ACTIVE는 별도 reason으로 내보내기 위해 제외)
+        // 2-1) SETTLEMENT_NOT_READY는 HOLD_ACTIVE보다 우선 reason이지만, HOLD_ACTIVE는 별도 reason으로 반환해야 하므로 NOT_READY 판정에서 제외한다
         if (!settlement.isReady() && !settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
@@ -76,8 +81,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING 은 C 의존 → 다음 PR에서 추가
-        // if (refundAdjustmentPending(...)) throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "...");
+        // 2-4) REFUND_ADJUSTMENT_PENDING (C 오너 구현체 연결 전까지는 Noop=false)
+        if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
+            throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
+        }
 
         // 3) 상태 전이 + 저장
         String before = settlement.getStatus().name();
@@ -101,6 +108,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
+        if (settlementId == null || settlementId.isBlank()) {
+            throw new IllegalStateException("settlementId must not be null/blank");
+        }
+
         Settlement current = settlementRepository.findById(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 

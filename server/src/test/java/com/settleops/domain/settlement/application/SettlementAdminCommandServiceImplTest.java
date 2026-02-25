@@ -1,7 +1,7 @@
 package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.enums.SettlementStatus;
+import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.AuditLogger;
@@ -15,11 +15,15 @@ import org.mockito.Mockito;
 import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 class SettlementAdminCommandServiceImplTest {
@@ -38,7 +42,6 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
 
-        // 현재 코드 기준: ObjectMapper 없는 생성자 사용
         service = new SettlementAdminCommandServiceImpl(
                 settlementRepository,
                 settlementBatchRepository,
@@ -59,7 +62,88 @@ class SettlementAdminCommandServiceImplTest {
     }
 
     @Test
-    void requestPaid_holdActive_should_return_409_HOLD_ACTIVE_even_if_not_ready() {
+    void requestPaid_refundAdjustmentPending_true_then409_REFUND_ADJUSTMENT_PENDING() {
+        Settlement settlement = Mockito.mock(Settlement.class);
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+        Mockito.when(settlement.isHoldActive()).thenReturn(false);
+        Mockito.when(settlement.isReady()).thenReturn(true);
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        // batch 실패 아님
+        Mockito.when(settlementBatchRepository.existsByBatchIdAndResult(1L, SettlementBatchResult.FAIL))
+                .thenReturn(false);
+
+        // 환불 차감정산 pending
+        Mockito.when(refundAdjustmentPolicy.isRefundAdjustmentPending("S1")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException ce = (ConflictException) ex;
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.REFUND_ADJUSTMENT_PENDING.name());
+                });
+
+        // pending에서 audit까지 가면 안 됨
+        verifyNoInteractions(auditLogger);
+
+        verify(settlementBatchRepository, times(1))
+                .existsByBatchIdAndResult(1L, SettlementBatchResult.FAIL);
+        verify(refundAdjustmentPolicy, times(1))
+                .isRefundAdjustmentPending("S1");
+    }
+
+    @Test
+    void requestPaid_settlementNotFound_then404() {
+        Mockito.when(settlementRepository.findById("S404")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.requestPaid("S404", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode().value()).isEqualTo(404);
+                });
+    }
+
+    @Test
+    void requestPaid_requestIdMissing_thenFailFast() {
+        // requestId 미세팅
+        MDC.clear();
+
+        Settlement settlement = Mockito.mock(Settlement.class);
+        Mockito.when(settlement.isPayRequested()).thenReturn(true);
+
+        // no-op 경로에서 응답 생성에 필요한 최소 필드
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("requestId must not be null/blank");
+    }
+
+    @Test
+    void requestPaid_settlementIdBlank_then400() {
+        assertThatThrownBy(() -> service.requestPaid("   ", null))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void requestPaid_settlementIdNull_then400() {
+        assertThatThrownBy(() -> service.requestPaid(null, "memo"))
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void requestPaid_holdActive_then409_HOLD_ACTIVE_even_if_not_ready() {
         Settlement settlement = Mockito.mock(Settlement.class);
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
@@ -68,8 +152,10 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
-        // 핵심: HOLD가 우선(READY=false여도 HOLD 먼저)
+        // HOLD가 우선으로 막혀야 함
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
+        // (선택) 뒤쪽 가드로 진행 안 하는지 강조하고 싶으면 둬도 됨
+        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -77,17 +163,17 @@ class SettlementAdminCommandServiceImplTest {
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
-                    assertThat(ce.toErrorResponse().reason()).isEqualTo(ReasonCode.HOLD_ACTIVE.name());
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.HOLD_ACTIVE.name());
                 });
 
-        // HOLD에서 뒤쪽 가드로 진행하면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
     }
 
     @Test
-    void requestPaid_notReady_should_return_409_SETTLEMENT_NOT_READY() {
+    void requestPaid_notReady_then409_SETTLEMENT_NOT_READY() {
         Settlement settlement = Mockito.mock(Settlement.class);
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
@@ -96,7 +182,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
-        // 핵심: HOLD=false, READY=false → NOT_READY
         Mockito.when(settlement.isHoldActive()).thenReturn(false);
         Mockito.when(settlement.isReady()).thenReturn(false);
 
@@ -106,18 +191,12 @@ class SettlementAdminCommandServiceImplTest {
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
-                    assertThat(ce.toErrorResponse().reason()).isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
                 });
 
-        // NOT_READY에서 뒤쪽 가드로 진행하면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
-    }
-
-    @Test
-    void requestPaid_settlementId_blank_should_throw_BadRequestException() {
-        assertThatThrownBy(() -> service.requestPaid("   ", "memo"))
-                .isInstanceOf(BadRequestException.class);
     }
 }
