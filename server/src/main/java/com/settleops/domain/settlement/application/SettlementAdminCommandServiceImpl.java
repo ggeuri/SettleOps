@@ -1,9 +1,10 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
@@ -25,6 +26,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +37,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
+    private final ObjectMapper objectMapper;
 
     @Override
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
@@ -65,9 +69,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED)
-        // 2-1) SETTLEMENT_NOT_READY는 HOLD_ACTIVE보다 우선 reason이지만, HOLD_ACTIVE는 별도 reason으로 반환해야 하므로 NOT_READY 판정에서 제외한다
-        if (!settlement.isReady() && !settlement.isHoldActive()) {
+        // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
+        //    SETTLEMENT_NOT_READY → HOLD_ACTIVE → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+
+        // 2-1) SETTLEMENT_NOT_READY (READY 아니면 무조건 최우선)
+        if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
@@ -77,11 +83,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         // 2-3) BATCH_FAILED
-        if (isBatchFailed(settlement)) {
+        if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING (C 오너 구현체 연결 전까지는 Noop=false)
+        // 2-4) REFUND_ADJUSTMENT_PENDING
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
@@ -169,17 +175,30 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         return toPayActionResponse(settlement);
     }
 
-    private boolean isBatchFailed(Settlement settlement) {
-        Long batchId = settlement.getBatchId();
-        if (batchId == null) return false; // 방어 (DDL상 nullable=false지만 안전하게 유지)
+    /**
+     * BATCH_FAILED 판정 (가드레일)
+     * - 가능한 경우 existsBy... 로 바꾸는 것을 권장하지만, 현재 Repository에 메서드가 없으면 findById 기반으로 유지 가능.
+     * - batchId null 방어 포함.
+     */
+    private boolean isBatchFailed(Long batchId) {
+        if (batchId == null) return false;
 
+        // 권장 형태(Repository에 메서드 추가 시):
+        // return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
+
+        // 현재 PR에서 즉시 반영 가능한 형태(findById 유지):
         return settlementBatchRepository.findById(batchId)
-                .map(SettlementBatch::getResult)
-                .map(r -> r == SettlementBatchResult.FAIL)
+                .map(b -> b.getResult() == SettlementBatchResult.FAIL)
                 .orElse(false);
     }
 
     private SettlementPayActionResponse toPayActionResponse(Settlement s) {
+        // PAY_REQUESTED(no-op 200 포함) 규격: paidRequestedAt 필수
+        if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
+            throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
+        }
+
+        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
         LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
         if (s.isPaid() && paidAt == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
@@ -222,15 +241,25 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                .metaJson(comment == null ? "{}" : "{\"comment\":" + toJsonString(comment) + "}")
+                // 안전 JSON + comment 규칙 단일화: 항상 {"comment": ...} (없으면 null)
+                .metaJson(buildMetaJson(comment))
                 .build();
 
         auditLogger.log(cmd);
     }
 
-    private String toJsonString(String s) {
-        if (s == null) return "null";
-        String escaped = s.replace("\\", "\\\\").replace("\"", "\\\"");
-        return "\"" + escaped + "\"";
+    /**
+     * audit_log.meta_json 생성(LOCKED)
+     * - 문자열 조립 금지: 제어문자/개행/따옴표로 JSON 파손 방지
+     * - comment 키는 항상 포함(없으면 null)하여 MemoThreading/필터 품질을 고정한다.
+     */
+    private String buildMetaJson(String comment) {
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("comment", comment); // null이면 JSON null
+            return objectMapper.writeValueAsString(meta);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("failed to serialize audit metaJson", e);
+        }
     }
 }
