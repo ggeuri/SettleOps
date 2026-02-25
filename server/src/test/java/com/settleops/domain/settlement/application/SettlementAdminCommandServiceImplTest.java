@@ -81,6 +81,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBaseDate()).thenReturn(baseDate);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY); // 테스트 안정성(미래 방어)
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(false);
@@ -105,6 +106,7 @@ class SettlementAdminCommandServiceImplTest {
                 });
 
         verifyNoInteractions(auditLogger);
+
         verify(settlementBatchRepository, times(1)).findByBatchKey(baseDate);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
         Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
@@ -181,7 +183,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
-        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
