@@ -8,6 +8,22 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
+/*
+* mysql> desc orders;
+ * +-------------+--------------+------+-----+---------+-------+
+ * | Field       | Type         | Null | Key | Default | Extra |
+ * +-------------+--------------+------+-----+---------+-------+
+ * | order_id    | char(36)     | NO   | PRI | NULL    |       |
+ * | merchant_id | varchar(32)  | NO   | MUL | NULL    |       |
+ * | buyer_id    | varchar(32)  | NO   | MUL | NULL    |       |
+ * | item_name   | varchar(255) | NO   |     | NULL    |       |
+ * | amount      | bigint       | NO   |     | NULL    |       |
+ * | currency    | char(3)      | NO   |     | KRW     |       |
+ * | status      | varchar(16)  | NO   | MUL | NULL    |       |
+ * | created_at  | datetime(6)  | NO   | MUL | NULL    |       |
+ * | updated_at  | datetime(6)  | NO   |     | NULL    |       |
+ * +-------------+--------------+------+-----+---------+-------+
+* */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity

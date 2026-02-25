@@ -91,6 +91,7 @@ public class Payment {
         payment.capturedAmount = 0L;
         payment.status = PaymentStatus.CREATED;
         payment.createdAt = LocalDateTime.now();
+        payment.updatedAt = payment.createdAt;
 
         return payment;
     }
