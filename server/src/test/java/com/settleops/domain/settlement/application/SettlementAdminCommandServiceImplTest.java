@@ -68,7 +68,10 @@ public class SettlementAdminCommandServiceImplTest {
                     ConflictException ce = (ConflictException) ex;
                     assertThat(ce.toErrorResponse().reason()).isEqualTo(ReasonCode.REFUND_ADJUSTMENT_PENDING.name());
                 });
-        Mockito.verify(auditLogger, Mockito.never()).log(Mockito.any());
+        Mockito.verify(refundAdjustmentPolicy, Mockito.times(1))
+                .isRefundAdjustmentPending("S1");
+
+        Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
     }
 
     @Test
