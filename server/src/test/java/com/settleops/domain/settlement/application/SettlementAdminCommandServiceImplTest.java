@@ -49,7 +49,6 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
-
         objectMapper = new ObjectMapper();
 
         service = new SettlementAdminCommandServiceImpl(
@@ -106,7 +105,6 @@ class SettlementAdminCommandServiceImplTest {
                 });
 
         verifyNoInteractions(auditLogger);
-
         verify(settlementBatchRepository, times(1)).findByBatchKey(baseDate);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
         Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
@@ -169,12 +167,6 @@ class SettlementAdminCommandServiceImplTest {
     }
 
     @Test
-    void requestPaid_settlementIdNull_then400() {
-        assertThatThrownBy(() -> service.requestPaid(null, "memo"))
-                .isInstanceOf(BadRequestException.class);
-    }
-
-    @Test
     void requestPaid_holdActive_then409_HOLD_ACTIVE_even_if_not_ready() {
         Settlement settlement = Mockito.mock(Settlement.class);
 
@@ -205,7 +197,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-
         Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);

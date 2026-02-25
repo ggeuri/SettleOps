@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
@@ -40,7 +39,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
-    private final SettlementBatchRunRecorder settlementBatchRunRecorder;
+    private final SettlementBatchRunRecorder settlementBatchRunRecorder; // 사용 예정(A2)
     private final ObjectMapper objectMapper;
 
     @Override
@@ -84,7 +83,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         // 2) 409 reason 우선순위(LOCKED)
         //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
-        //    (HOLD_ACTIVE는 별도 reason으로 반환되어야 하므로 최우선으로 분리)
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
@@ -93,7 +91,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
-        if (isBatchFailed(settlement.getBaseDate())) {
+        if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
@@ -204,23 +202,33 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         return toPayActionResponse(settlement, requestId);
     }
 
-    private boolean isBatchFailed(LocalDate baseDate) {
-        if (baseDate == null) return false;
-        return settlementBatchRepository.findByBatchKey(baseDate)
-                .filter(b -> b.getFinishedAt() != null)
+    /**
+     * BATCH_FAILED 판정 (가드레일)
+     * - batchId가 없으면(비정상) fail로 보지 않고 false로 방어한다.
+     * - 가능하면 existsBy... 로 바꾸는 것이 효율적이지만, 현재는 findById 기반으로 유지.
+     */
+    private boolean isBatchFailed(Long batchId) {
+        if (batchId == null) return false;
+
+        // 권장 형태(Repository에 메서드 추가 시):
+        // return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
+
+        return settlementBatchRepository.findById(batchId)
                 .map(b -> b.getResult() == SettlementBatchResult.FAIL)
                 .orElse(false);
     }
 
     private SettlementPayActionResponse toPayActionResponse(Settlement s, String requestId) {
+        // PAY_REQUESTED(no-op 200 포함) 규격: paidRequestedAt 필수
         if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
-        if (s.isPaid() && s.getPaidApprovedAt() == null) {
+
+        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
+        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
+        if (s.isPaid() && paidAt == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
-
-        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
 
         return new SettlementPayActionResponse(
                 requestId,
@@ -275,34 +283,18 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         auditLogger.log(cmd);
     }
 
+    /**
+     * audit_log.meta_json 생성(LOCKED)
+     * - 문자열 조립 금지: 제어문자/개행/따옴표로 JSON 파손 방지
+     * - comment 키는 항상 포함(없으면 null)하여 MemoThreading/필터 품질을 고정한다.
+     */
     private String buildMetaJson(String comment) {
         try {
             Map<String, Object> meta = new HashMap<>();
-            if (comment != null && !comment.isBlank()) {
-                meta.put("comment", comment);
-            }
+            meta.put("comment", comment); // null이면 JSON null
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
         }
-    }
-
-    @SuppressWarnings("unused")
-    private SettlementBatchRunResponse toBatchRunResponse(
-            String requestId,
-            SettlementBatch batch,
-            SettlementBatchRunResponse.RunResult result
-    ) {
-        String failReason = (result == SettlementBatchRunResponse.RunResult.FAIL) ? batch.getFailReason() : null;
-
-        return new SettlementBatchRunResponse(
-                requestId,
-                batch.getBatchKey(),
-                batch.getRunId(),
-                result,
-                failReason,
-                batch.getCreatedAt(),
-                batch.getFinishedAt()
-        );
     }
 }
