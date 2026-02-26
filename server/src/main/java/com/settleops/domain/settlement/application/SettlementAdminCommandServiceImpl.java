@@ -81,16 +81,20 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 2) 409 reason 우선순위(LOCKED)
-        //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+// 2) 409 reason 우선순위 고정(LOCKED)
+//    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+
+// 2-1) HOLD_ACTIVE (운영 UX/CTA를 위해 별도 reason을 반드시 우선 반환)
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
 
+// 2-2) SETTLEMENT_NOT_READY
         if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
+// 2-3) BATCH_FAILED
         if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
