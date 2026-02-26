@@ -14,6 +14,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
@@ -29,8 +30,6 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.settleops.global.error.BadRequestException;
-
 @Service
 @RequiredArgsConstructor
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
@@ -39,7 +38,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final SettlementBatchRepository settlementBatchRepository;
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
-    private final ObjectMapper objectMapper;
 
     @Override
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
@@ -71,25 +69,23 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
-        //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+        // 2) 409 reason 우선순위 고정(LOCKED)
+        // HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
 
-        // 2-1) HOLD_ACTIVE (운영 UX/CTA를 위해 별도 reason을 반드시 우선 반환)
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
 
-        // 2-2) SETTLEMENT_NOT_READY
         if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
-        // 2-3) BATCH_FAILED
+        // BATCH_FAILED
         if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING
+        // REFUND_ADJUSTMENT_PENDING
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
@@ -101,7 +97,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         settlement.requestPaid(requesterId, LocalDateTime.now());
         settlementRepository.save(settlement);
 
-        // 4) audit (LOCKED): comment는 meta_json.comment에 반드시 기록
+        // 4) audit (LOCKED)
         auditSettlementAction(
                 Action.SETTLEMENT_PAY_REQUESTED,
                 settlement,
@@ -116,6 +112,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
+        // fail-fast (계약 강화)
         if (settlementId == null || settlementId.isBlank()) {
             throw new BadRequestException("settlementId must not be blank");
         }
@@ -192,12 +189,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
 
-        // PAID(no-op 200 포함) 규격: paidApprovedAt 필수
-        if (s.isPaid() && s.getPaidApprovedAt() == null) {
+        // PAID(no-op 200 포함) 규격: paidAt(=paidApprovedAt) 필수
+        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
+        if (s.isPaid() && paidAt == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
-
-        LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
 
         return new SettlementPayActionResponse(
                 currentRequestId(),
@@ -236,7 +232,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                // 안전 JSON + comment 규칙 단일화: 항상 {"comment": ...} (없으면 null)
+                // 주입/생성자 안 건드리고도 JSON 안전성 확보
+                // comment == null 이면 develop 의미 유지: "{}"
                 .metaJson(buildMetaJson(comment))
                 .build();
 
@@ -244,15 +241,19 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     }
 
     /**
-     * audit_log.meta_json 생성(LOCKED)
-     * - 문자열 조립 금지: 제어문자/개행/따옴표로 JSON 파손 방지
-     * - comment 키는 항상 포함(없으면 null)하여 MemoThreading/필터 품질을 고정한다.
+     * audit_log.meta_json 생성 (방법 A)
+     * - 주입/필드 변경 없이 내부에서 ObjectMapper 사용
+     * - comment == null 이면 "{}" (기존 의미 유지)
+     * - comment에 따옴표/개행/백슬래시 있어도 유효 JSON 보장
      */
     private String buildMetaJson(String comment) {
+        if (comment == null) return "{}";
+
         try {
+            ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> meta = new HashMap<>();
-            meta.put("comment", comment); // null이면 JSON null
-            return objectMapper.writeValueAsString(meta);
+            meta.put("comment", comment);
+            return mapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
         }
