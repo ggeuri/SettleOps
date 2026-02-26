@@ -13,6 +13,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
@@ -46,9 +47,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
-        // fail-fast (계약 강화)
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be blank");
         }
 
         Settlement settlement = settlementRepository.findById(settlementId)
@@ -66,17 +66,15 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
-        //    SETTLEMENT_NOT_READY → HOLD_ACTIVE → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+        // 2) 409 reason 우선순위 고정(LOCKED)
+        // HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
 
-        // 2-1) SETTLEMENT_NOT_READY (READY 아니면 무조건 최우선)
-        if (!settlement.isReady()) {
-            throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
-        }
-
-        // 2-2) HOLD_ACTIVE
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
+        }
+
+        if (!settlement.isReady()) {
+            throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
         // 2-3) BATCH_FAILED
@@ -113,7 +111,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
         // fail-fast (계약 강화)
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be blank");
         }
 
         Settlement current = settlementRepository.findById(settlementId)
