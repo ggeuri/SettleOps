@@ -3,6 +3,7 @@ package com.settleops.domain.refund.domain;
 import com.settleops.global.audit.ActorType;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Immutable;
 
 import java.time.LocalDateTime;
 
@@ -10,6 +11,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Builder
+@Immutable
 @Entity
 @Table(name = "refund_event")
 public class RefundEvent {
@@ -34,7 +36,7 @@ public class RefundEvent {
     @Column(name = "status_after", nullable = false, length = 32)
     private RefundStatus statusAfter;
 
-    @Column(name = "request_id", nullable = false, columnDefinition = "CHAR(36)")
+    @Column(name = "request_id", nullable = false, columnDefinition = "CHAR(36)", updatable=false)
     private String requestId;
 
     @Enumerated(EnumType.STRING)
@@ -44,6 +46,14 @@ public class RefundEvent {
     @Column(name = "actor_id", nullable = false, length = 32)
     private String actorId;
 
-    @Column(name = "occurred_at", nullable = false, columnDefinition = "DATETIME(6)")
+    @Column(name = "occurred_at", nullable = false, columnDefinition = "DATETIME(6)", updatable = false)
     private LocalDateTime occurredAt;
+
+    @PrePersist
+    void prePersist() {
+        if (occurredAt == null) {
+            occurredAt = LocalDateTime.now();
+        }
+    }
+
 }
