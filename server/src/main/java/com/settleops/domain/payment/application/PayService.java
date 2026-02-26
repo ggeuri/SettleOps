@@ -52,7 +52,7 @@ public class PayService {
      * <ol>
      *     <li>입력값 검증</li>
      *     <li>멱등키 기반 기존 성공 요청 조회 (no-op 처리)</li>
-     *     <li>order=PAID 이지만 멱등 레코드가 없는 복구 케이스 처리</li>
+     *     <li>order=PAID 이지만 결제 시도 시 409 처리</li>
      *     <li>Payment 생성 (UNIQUE 충돌 시 기존 payment로 수렴)</li>
      *     <li>CREATED 이벤트 적재 (insert-only)</li>
      *     <li>capture 수행 + flush 보장</li>
