@@ -72,7 +72,8 @@ public class PayService {
         // 2. 멱등키 기반 기존 성공 요청 조회 (이미 처리된 경우 즉시 반환)
         Payment idempotent = findIdempotentPaymentOrNull(targetType, orderId, idempotencyKey);
         if (idempotent != null) {
-            return PayResponseDTO.from(idempotent);
+            LocalDateTime capturedAt = getCapturedAtOrThrow(idempotent);
+            return PayResponseDTO.from(idempotent, capturedAt);
         }
 
         // 3. 주문 조회
@@ -95,7 +96,9 @@ public class PayService {
             }
             // CAPTURED가 확정된 경우에만 멱등 저장
             saveIdempotencyIgnoreDuplicate(targetType, orderId, idempotencyKey, payment.getPaymentId());
-            return PayResponseDTO.from(payment);
+
+            LocalDateTime capturedAt = getCapturedAtOrThrow(payment);
+            return PayResponseDTO.from(payment,capturedAt);
         }
 
         // 7. PAYMENT_EVENT :: CREATED (insert-only, duplicate ignore)
@@ -123,7 +126,7 @@ public class PayService {
                 .statusBefore(paymentStatusBefore.name())   // 상태 전이 기록
                 .statusAfter(payment.getStatus().name())
                 .merchantId(orders.getMerchantId())
-                .occurredAt(LocalDateTime.now())
+                .occurredAt(getCapturedAtOrThrow(payment))
                 .metaJson("{}")                             // 필요 시 추가 상세 데이터
                 .build());
 
@@ -136,7 +139,10 @@ public class PayService {
         // 12. idempotency_record 저장 (duplicate면 기존 payment로 수렴)
         Payment finalPayment = saveIdempotencyOrConverge(targetType, orderId, idempotencyKey, payment);
 
-        return PayResponseDTO.from(finalPayment);
+        // capturedAt 체크
+        LocalDateTime capturedAt = getCapturedAtOrThrow(finalPayment);
+
+        return PayResponseDTO.from(finalPayment, capturedAt);
     }
 
     /**
@@ -221,6 +227,40 @@ public class PayService {
 
             return dbPayment;
         }
+    }
+
+    /**
+     * PAYMENT_CAPTURED 이벤트의 occurred_at을 조회한다.
+     *
+     * <p>capturedAt은 payment.updatedAt이 아니라,
+     * PAYMENT_CAPTURED 이벤트의 발생 시각(occurred_at)을 SoT로 사용한다.</p>
+     *
+     * <p>전제:
+     * (payment_id, event_type) 유니크 제약으로
+     * PAYMENT_CAPTURED 이벤트는 최대 1건 존재해야 한다.</p>
+     *
+     * <p>예외:
+     * - CAPTURED 상태가 아닌데 조회 시도 시 IllegalStateException
+     * - 이벤트가 존재하지 않으면 정합성 오류로 간주</p>
+     */
+    private LocalDateTime getCapturedAtOrThrow(Payment payment) {
+
+        if (payment.getStatus() != PaymentStatus.CAPTURED) {
+            throw new IllegalStateException(
+                    "CAPTURED 상태가 아닌데 capturedAt 조회 시도. paymentId="
+                            + payment.getPaymentId()
+            );
+        }
+
+        return paymentEventRepository
+                .findOccurredAtByPaymentIdAndEventType(
+                        payment.getPaymentId(),
+                        Action.PAYMENT_CAPTURED
+                )
+                .orElseThrow(() -> new IllegalStateException(
+                        "CAPTURE 이벤트가 존재하지 않습니다. paymentId="
+                                + payment.getPaymentId()
+                ));
     }
 
     /**

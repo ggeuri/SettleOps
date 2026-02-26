@@ -1,5 +1,6 @@
 package com.settleops.domain.order.domain;
 
+import com.settleops.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -35,16 +36,16 @@ import java.util.UUID;
                 @Index(name = "idx_order_status", columnList = "status")
         }
 )
-public class Orders {
+public class Orders extends BaseEntity {
 
     @Id
     @Column(name = "order_id", columnDefinition = "char(36)", nullable = false, updatable = false)
     private String orderId;   // 서버 발급 불변 ID (UUIDv7/ULID 권장)
 
-    @Column(name = "merchant_id", length = 64, nullable = false)
+    @Column(name = "merchant_id", length = 32, nullable = false)
     private String merchantId;
 
-    @Column(name = "buyer_id", length = 64, nullable = false)
+    @Column(name = "buyer_id", length = 32, nullable = false)
     private String buyerId;
 
     @Column(name = "item_name", length = 255, nullable = false)
@@ -54,17 +55,12 @@ public class Orders {
     @Column(name = "amount", nullable = false)
     private long amount;
 
+    @Column(name = "currency", columnDefinition = "char(3)", nullable = false)
+    private String currency;
+
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", length = 20, nullable = false)
+    @Column(name = "status", length = 16, nullable = false)
     private OrderStatus status; // CREATED | PAID (MVP 2상태 LOCKED)
-
-    @Column(name = "created_at", nullable = false, updatable = false,
-            columnDefinition = "datetime(6)")
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false,
-            columnDefinition = "datetime(6)")
-    private LocalDateTime updatedAt;
 
     /* =========================
        생성/상태전이 메서드 (SoT 변경은 Service에서만 호출)
@@ -84,10 +80,9 @@ public class Orders {
         orders.merchantId = merchantId;
         orders.buyerId = buyerId;
         orders.itemName = itemName;
+        orders.currency = "KRW";
         orders.amount = amount;
         orders.status = OrderStatus.CREATED;
-        orders.createdAt = LocalDateTime.now();
-        orders.updatedAt = LocalDateTime.now();
         return orders;
     }
 
@@ -96,6 +91,5 @@ public class Orders {
             return; // no-op (멱등 안전)
         }
         this.status = OrderStatus.PAID;
-        this.updatedAt = LocalDateTime.now();
     }
 }

@@ -1,6 +1,7 @@
 package com.settleops.domain.payment.domain;
 
 import com.settleops.domain.order.domain.OrderStatus;
+import com.settleops.global.entity.BaseEntity;
 import com.settleops.global.enums.Action;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -40,7 +41,7 @@ import java.util.UUID;
                 @Index(name = "idx_payment_buyer_id", columnList = "buyer_id")
         }
 )
-public class Payment {
+public class Payment extends BaseEntity {
 
     @Id
     @Column(name = "payment_id", columnDefinition = "char(36)", nullable = false)
@@ -68,12 +69,6 @@ public class Payment {
     @Column(name = "status", length = 32, nullable = false)
     private PaymentStatus status;
 
-    @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
     public static Payment create(
             String orderId,
             String merchantId,
@@ -90,8 +85,6 @@ public class Payment {
         payment.requestedAmount = amount;
         payment.capturedAmount = 0L;
         payment.status = PaymentStatus.CREATED;
-        payment.createdAt = LocalDateTime.now();
-        payment.updatedAt = payment.createdAt;
 
         return payment;
     }
@@ -103,7 +96,6 @@ public class Payment {
         }
         this.status = PaymentStatus.CAPTURED;
         this.capturedAmount = this.requestedAmount; // 전액 캡처 고정
-        this.updatedAt = LocalDateTime.now();
     }
 
 }

@@ -10,11 +10,11 @@ public record PayResponseDTO(
         String status,
         LocalDateTime capturedAt
 ) {
-    public static PayResponseDTO from(Payment payment) {
+    public static PayResponseDTO from(Payment payment, LocalDateTime capturedAt) {
         return new PayResponseDTO(
                 payment.getPaymentId(),
                 payment.getStatus().name(), // status = PaymentStatus enum
-                payment.getUpdatedAt() // 추후 변경 예정 PAYMENT_CAPTURED event의 occurred_at을 조회
+                capturedAt // 추후 변경 예정 PAYMENT_CAPTURED event의 occurred_at을 조회
         );
     }
 }
