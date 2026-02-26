@@ -1,17 +1,7 @@
 package com.settleops.domain.settlement.entity;
 
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
-import com.settleops.global.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 import lombok.Getter;
 
 import java.time.LocalDate;
@@ -29,7 +19,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_settlement_batch_created_at", columnList = "created_at")
         }
 )
-public class SettlementBatch extends BaseEntity {
+public class SettlementBatch {
 
     private static final int FAIL_REASON_MAX_LEN = 2000;
     private static final String DEFAULT_FAIL_REASON = "UNEXPECTED_ERROR";
@@ -50,7 +40,7 @@ public class SettlementBatch extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "result", nullable = false, length = 20)
-    private SettlementBatchResult result; // OK / FAIL (SKIP은 audit_log)
+    private SettlementBatchResult result;
 
     @Column(name = "request_id", nullable = false, columnDefinition = "CHAR(36)")
     private String requestId;
@@ -58,10 +48,20 @@ public class SettlementBatch extends BaseEntity {
     @Column(name = "fail_reason", columnDefinition = "TEXT")
     private String failReason;
 
+    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
+    private LocalDateTime createdAt;
+
     @Column(name = "finished_at")
     private LocalDateTime finishedAt;
 
     protected SettlementBatch() {
+    }
+
+    @PrePersist
+    protected void prePersist() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
     }
 
     public static SettlementBatch completed(
@@ -91,16 +91,12 @@ public class SettlementBatch extends BaseEntity {
     }
 
     private static String normalizeFailReason(SettlementBatchResult result, String failReason) {
-        if (result == SettlementBatchResult.OK) {
-            return null;
-        }
+        if (result == SettlementBatchResult.OK) return null;
 
         String v = (failReason == null) ? "" : failReason.trim();
         if (v.isEmpty()) v = DEFAULT_FAIL_REASON;
 
-        if (v.length() > FAIL_REASON_MAX_LEN) {
-            v = v.substring(0, FAIL_REASON_MAX_LEN);
-        }
+        if (v.length() > FAIL_REASON_MAX_LEN) v = v.substring(0, FAIL_REASON_MAX_LEN);
         return v;
     }
 }

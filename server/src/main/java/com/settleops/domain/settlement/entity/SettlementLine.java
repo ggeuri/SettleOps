@@ -1,17 +1,10 @@
 package com.settleops.domain.settlement.entity;
 
 import com.settleops.domain.settlement.enums.SettlementLineType;
-import com.settleops.global.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Getter
@@ -23,7 +16,7 @@ import lombok.Getter;
                 @Index(name = "idx_settlement_line_type", columnList = "line_type")
         }
 )
-public class SettlementLine extends BaseEntity {
+public class SettlementLine {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,12 +31,22 @@ public class SettlementLine extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "line_type", nullable = false, length = 20)
-    private SettlementLineType lineType; // PAYMENT / REFUND
+    private SettlementLineType lineType;
 
     @Column(name = "amount", nullable = false)
-    private long amount; // 항상 양수
+    private long amount;
+
+    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
+    private LocalDateTime createdAt;
 
     protected SettlementLine() {
+    }
+
+    @PrePersist
+    protected void prePersist() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
     }
 
     public static SettlementLine of(
@@ -52,18 +55,10 @@ public class SettlementLine extends BaseEntity {
             SettlementLineType lineType,
             long amount
     ) {
-        if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalArgumentException("settlementId must not be blank");
-        }
-        if (paymentId == null || paymentId.isBlank()) {
-            throw new IllegalArgumentException("paymentId must not be blank");
-        }
-        if (lineType == null) {
-            throw new IllegalArgumentException("lineType must not be null");
-        }
-        if (amount <= 0) {
-            throw new IllegalArgumentException("amount must be positive");
-        }
+        if (settlementId == null || settlementId.isBlank()) throw new IllegalArgumentException("settlementId must not be blank");
+        if (paymentId == null || paymentId.isBlank()) throw new IllegalArgumentException("paymentId must not be blank");
+        if (lineType == null) throw new IllegalArgumentException("lineType must not be null");
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
 
         SettlementLine l = new SettlementLine();
         l.settlementId = settlementId;
