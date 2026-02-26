@@ -1,4 +1,5 @@
 package com.settleops.domain.settlement.application;
+
 /**
  * Refund adjustment pending 판정 정책(LOCKED)
  *
