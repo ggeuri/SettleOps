@@ -70,16 +70,16 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
-        //    SETTLEMENT_NOT_READY → HOLD_ACTIVE → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
+        //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
 
-        // 2-1) SETTLEMENT_NOT_READY (READY 아니면 무조건 최우선)
-        if (!settlement.isReady()) {
-            throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
-        }
-
-        // 2-2) HOLD_ACTIVE
+        // 2-1) HOLD_ACTIVE (운영 UX/CTA를 위해 별도 reason을 반드시 우선 반환)
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
+        }
+
+        // 2-2) SETTLEMENT_NOT_READY
+        if (!settlement.isReady()) {
+            throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
         // 2-3) BATCH_FAILED
