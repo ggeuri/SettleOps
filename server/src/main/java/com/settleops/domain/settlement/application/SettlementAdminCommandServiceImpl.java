@@ -23,6 +23,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import com.settleops.global.error.BadRequestException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -51,7 +52,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be blank");
         }
 
         Settlement settlement = settlementRepository.findById(settlementId)
@@ -115,7 +116,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be blank");
         }
 
         Settlement current = settlementRepository.findById(settlementId)

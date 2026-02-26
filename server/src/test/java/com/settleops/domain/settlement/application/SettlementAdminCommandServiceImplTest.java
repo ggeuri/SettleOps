@@ -9,6 +9,7 @@ import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.AuditLogCommand;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -115,28 +116,39 @@ public class SettlementAdminCommandServiceImplTest {
         Settlement settlement = Mockito.mock(Settlement.class);
         Mockito.when(settlement.isPayRequested()).thenReturn(true);
 
-        // toPayActionResponse에서 필요한 최소 스텁
+        // audit 경로에서 최소 접근할 수 있는 값들
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
         Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", null))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("requestId must not be null/blank");
     }
 
     @Test
-    void requestPaid_settlementIdBlank_thenFailFast() {
+    void requestPaid_settlementIdBlank_then400() {
         MDC.put("requestId", "test-request-id");
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
         );
 
         assertThatThrownBy(() -> service.requestPaid("   ", null))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("settlementId must not be null/blank");
+                .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void requestPaid_settlementIdNull_then400() {
+        MDC.put("requestId", "test-request-id");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin1", "N/A")
+        );
+
+        assertThatThrownBy(() -> service.requestPaid(null, "memo"))
+                .isInstanceOf(BadRequestException.class);
     }
 
     @Test
@@ -164,12 +176,12 @@ public class SettlementAdminCommandServiceImplTest {
 
         assertThat(metaJson).contains("\"comment\"");
 
-        // no-op 경로에서는 policy 호출이 없어야 한다는 Freeze 의도를 박아두기
+        // no-op 경로에서는 policy 호출이 없어야 한다는 Freeze 의도
         Mockito.verifyNoInteractions(refundAdjustmentPolicy);
     }
 
     @Test
-    void requestPaid_holdActive_then409_HOLD_ACTIVE() {
+    void requestPaid_holdActive_then409_HOLD_ACTIVE_even_if_not_ready() {
         MDC.put("requestId", "test-request-id");
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
@@ -180,16 +192,13 @@ public class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.HOLD_ACTIVE);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
         // 핵심: HOLD가 우선
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
-
-        // READY=false여도 HOLD가 먼저 나가야 함
         Mockito.when(settlement.isReady()).thenReturn(false);
-
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.HOLD_ACTIVE);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -200,13 +209,47 @@ public class SettlementAdminCommandServiceImplTest {
                     assertThat(ce.toErrorResponse().reason()).isEqualTo(ReasonCode.HOLD_ACTIVE.name());
                 });
 
-        // HOLD에서 뒤쪽 guard(policy)까지 가면 안 됨
         Mockito.verifyNoInteractions(refundAdjustmentPolicy);
 
         verify(settlementBatchRepository, Mockito.never())
                 .existsByBatchIdAndResult(Mockito.anyLong(), Mockito.eq(SettlementBatchResult.FAIL));
 
-        // (정책상 실패 케이스 audit 안 남기면 유지)
+        Mockito.verifyNoInteractions(auditLogger);
+    }
+
+    @Test
+    void requestPaid_notReady_then409_SETTLEMENT_NOT_READY() {
+        MDC.put("requestId", "test-request-id");
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("admin1", "N/A")
+        );
+
+        Settlement settlement = Mockito.mock(Settlement.class);
+
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
+
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+
+        Mockito.when(settlement.isHoldActive()).thenReturn(false);
+        Mockito.when(settlement.isReady()).thenReturn(false);
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException ce = (ConflictException) ex;
+                    assertThat(ce.toErrorResponse().reason()).isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
+                });
+
+        Mockito.verifyNoInteractions(refundAdjustmentPolicy);
+
+        verify(settlementBatchRepository, Mockito.never())
+                .existsByBatchIdAndResult(Mockito.anyLong(), Mockito.eq(SettlementBatchResult.FAIL));
+
         Mockito.verifyNoInteractions(auditLogger);
     }
 }
