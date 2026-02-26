@@ -17,7 +17,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -36,7 +37,6 @@ class SettlementAdminApprovePaidConcurrencyIT {
     @Autowired SettlementRepository settlementRepository;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired TransactionTemplate tx; // seed를 "커밋"시키기 위해 필요
 
     @AfterEach
     void tearDown() {
@@ -46,36 +46,41 @@ class SettlementAdminApprovePaidConcurrencyIT {
 
     @Test
     void approvePaid_concurrent_two_requests_should_write_two_audits_and_return_paid_for_both() throws Exception {
-        String settlementId = UUID.randomUUID().toString(); // CHAR(36) 맞춤
+        String settlementId = UUID.randomUUID().toString(); // CHAR(36)
+        String merchantId = "M1";
+        Long batchId = 1L;
         LocalDate baseDate = LocalDate.now();
 
-        seedPayRequestedCommitted(settlementId, "M1", 1L, baseDate); // 커밋된 상태 보장
+        seedPayRequestedCommitted(settlementId, merchantId, batchId, baseDate);
         assertThat(settlementRepository.findById(settlementId).orElseThrow().getStatus())
                 .isEqualTo(SettlementStatus.PAY_REQUESTED);
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
-            CountDownLatch readyGate = new CountDownLatch(2);
-            CountDownLatch startGate = new CountDownLatch(1);
+            CyclicBarrier barrier = new CyclicBarrier(2);
 
-            Future<SettlementStatus> f1 = pool.submit(() -> callApprovePaid(readyGate, startGate, settlementId, "approverA"));
-            Future<SettlementStatus> f2 = pool.submit(() -> callApprovePaid(readyGate, startGate, settlementId, "approverB"));
-
-            assertThat(readyGate.await(5, TimeUnit.SECONDS)).isTrue();
-            startGate.countDown();
+            Future<SettlementStatus> f1 = pool.submit(() ->
+                    callApprovePaidWithThreadContext(barrier, settlementId, "approverA")
+            );
+            Future<SettlementStatus> f2 = pool.submit(() ->
+                    callApprovePaidWithThreadContext(barrier, settlementId, "approverB")
+            );
 
             SettlementStatus r1 = getOrFailFast(f1);
             SettlementStatus r2 = getOrFailFast(f2);
 
+            // then: 둘 다 PAID 반환 (LOCKED no-op 200)
             assertThat(r1).isEqualTo(SettlementStatus.PAID);
             assertThat(r2).isEqualTo(SettlementStatus.PAID);
 
+            // DB 최종값 재조회
             em.clear();
             Settlement saved = settlementRepository.findById(settlementId).orElseThrow();
             assertThat(saved.getStatus()).isEqualTo(SettlementStatus.PAID);
             assertThat(saved.getPaidApprovedAt()).isNotNull();
             assertThat(saved.getPaidApprovedBy()).isIn("approverA", "approverB");
 
+            // audit_log 2건(각 스레드 1건) + actorId 2명 + requestId 중복 없음
             Long auditCount = jdbcTemplate.queryForObject(
                     """
                     select count(*)
@@ -124,20 +129,23 @@ class SettlementAdminApprovePaidConcurrencyIT {
 
         } finally {
             pool.shutdown();
-            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) pool.shutdownNow();
+            if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
+                pool.shutdownNow();
+            }
         }
     }
 
     @Test
     void approvePaid_invalidActorId_should_throw_400_BadRequestException_from_AuditLogger_validation() {
         String settlementId = UUID.randomUUID().toString();
-        LocalDate baseDate = LocalDate.now().minusDays(1);
+        String merchantId = "M1";
+        Long batchId = 1L;
 
-        seedPayRequestedCommitted(settlementId, "M1", 1L, baseDate);
+        seedPayRequestedCommitted(settlementId, merchantId, batchId, LocalDate.now());
 
         MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("bad actor", "N/A")
+                new UsernamePasswordAuthenticationToken("bad actor", "N/A") // 공백 포함(ASCII/공백 금지 규칙 위반)
         );
 
         assertThatThrownBy(() -> settlementAdminCommandService.approvePaid(settlementId, "ok"))
@@ -145,9 +153,8 @@ class SettlementAdminApprovePaidConcurrencyIT {
                 .hasMessageContaining("actorId");
     }
 
-    private SettlementStatus callApprovePaid(
-            CountDownLatch readyGate,
-            CountDownLatch startGate,
+    private SettlementStatus callApprovePaidWithThreadContext(
+            CyclicBarrier barrier,
             String settlementId,
             String approverId
     ) throws Exception {
@@ -157,8 +164,16 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     new UsernamePasswordAuthenticationToken(approverId, "N/A")
             );
 
-            readyGate.countDown();
-            if (!startGate.await(5, TimeUnit.SECONDS)) throw new AssertionError("START_LATCH_TIMEOUT");
+            try {
+                barrier.await(5, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                throw new AssertionError("BARRIER_TIMEOUT: other thread did not reach barrier in time", e);
+            } catch (BrokenBarrierException e) {
+                throw new AssertionError("BARRIER_BROKEN: barrier broken (other thread failed/timeout)", e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("BARRIER_INTERRUPTED", e);
+            }
 
             return settlementAdminCommandService.approvePaid(settlementId, "ok").status();
         } finally {
@@ -178,27 +193,26 @@ class SettlementAdminApprovePaidConcurrencyIT {
         }
     }
 
-    private void seedPayRequestedCommitted(String settlementId, String merchantId, Long batchId, LocalDate baseDate) {
-        tx.executeWithoutResult(status -> {
-            Settlement s = Settlement.createReady(
-                    settlementId,
-                    "NO-" + UUID.randomUUID(),
-                    batchId,
-                    merchantId,
-                    baseDate,
-                    1000L,
-                    10L,
-                    1L,
-                    989L
-            );
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    void seedPayRequestedCommitted(String settlementId, String merchantId, Long batchId, LocalDate baseDate) {
+        Settlement s = Settlement.createReady(
+                settlementId,
+                "NO-" + UUID.randomUUID(),
+                batchId,
+                merchantId,
+                baseDate,
+                1000L,
+                10L,
+                1L,
+                989L
+        );
 
-            settlementRepository.save(s);
+        settlementRepository.save(s);
 
-            s.requestPaid("requesterX", LocalDateTime.now());
-            settlementRepository.save(s);
+        s.requestPaid("requesterX", LocalDateTime.now());
+        settlementRepository.save(s);
 
-            em.flush();
-            em.clear();
-        });
+        em.flush();
+        em.clear();
     }
 }
