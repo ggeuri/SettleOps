@@ -71,4 +71,23 @@ public class Refund {
             nullable = false,
             columnDefinition = "DATETIME(6)")
     private LocalDateTime updatedAt;
+
+    public void approve(LocalDateTime decidedAt) {
+        // 결정은 REQUESTED에서만
+        if (this.status != RefundStatus.REQUESTED) {
+            throw new IllegalStateException("Refund is not in REQUESTED status");
+        }
+        this.status = RefundStatus.APPROVED;
+        this.decidedAt = decidedAt;
+        this.updatedAt = decidedAt; // 또는 LocalDateTime.now()
+    }
+
+    public void reject(LocalDateTime decidedAt) {
+        if (this.status != RefundStatus.REQUESTED) {
+            throw new IllegalStateException("Refund is not in REQUESTED status");
+        }
+        this.status = RefundStatus.REJECTED;
+        this.decidedAt = decidedAt;
+        this.updatedAt = decidedAt; // 또는 LocalDateTime.now()
+    }
 }
