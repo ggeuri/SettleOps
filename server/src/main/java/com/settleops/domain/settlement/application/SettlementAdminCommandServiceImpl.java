@@ -139,6 +139,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         // 3) PAY_REQUESTED일 때만 락 조회
+        // [FREEZE] PAY_REQUESTED에서만 DB 락(PESSIMISTIC_WRITE)으로 PAID 전이를 1회로 수렴시킨다.
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
