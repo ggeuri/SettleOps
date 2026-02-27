@@ -1,6 +1,7 @@
 package com.settleops.domain.payment.domain;
 
 import com.settleops.global.enums.IdempotencyTargetType;
+import com.settleops.global.logging.RequestIdProvider;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -78,10 +79,7 @@ public class IdempotencyRecord {
                         throw new IllegalArgumentException("paymentId는 필수입니다.");
                 }
 
-                String requestId = MDC.get(MDC_KEY);
-                if (requestId == null || requestId.isBlank()) {
-                        throw new IllegalStateException("requestId가 존재하지 않습니다. Filter 설정을 확인하세요.");
-                }
+                String requestId = RequestIdProvider.current();
 
                 IdempotencyRecord record = new IdempotencyRecord();
                 record.targetType = targetType;

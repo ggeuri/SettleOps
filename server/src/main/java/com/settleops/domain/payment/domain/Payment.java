@@ -60,10 +60,10 @@ public class Payment extends BaseEntity {
     private String currency;
 
     @Column(name = "requested_amount", nullable = false)
-    private Long requestedAmount;
+    private long requestedAmount;
 
     @Column(name = "captured_amount", nullable = false)
-    private Long capturedAmount;
+    private long capturedAmount;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", length = 32, nullable = false)
@@ -73,7 +73,7 @@ public class Payment extends BaseEntity {
             String orderId,
             String merchantId,
             String buyerId,
-            Long amount
+            long amount
     ) {
         Payment payment = new Payment();
 

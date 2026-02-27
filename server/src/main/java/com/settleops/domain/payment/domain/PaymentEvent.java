@@ -1,6 +1,7 @@
 package com.settleops.domain.payment.domain;
 
 import com.settleops.global.enums.Action;
+import com.settleops.global.logging.RequestIdProvider;
 import jakarta.persistence.*;
 import lombok.Getter;
 import org.slf4j.MDC;
@@ -50,7 +51,7 @@ public class PaymentEvent {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", length = 32, nullable = false)
-    private Action eventType;
+    private PaymentEventType eventType;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status_before", length = 64)
@@ -69,7 +70,7 @@ public class PaymentEvent {
 
     private static PaymentEvent of(
             String paymentId,
-            Action eventType,
+            PaymentEventType eventType,
             PaymentStatus before,
             PaymentStatus after
     ) {
@@ -80,10 +81,7 @@ public class PaymentEvent {
             throw new IllegalArgumentException("eventType은 필수입니다.");
         }
 
-        String requestId = MDC.get(MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId가 MDC에 없습니다.");
-        }
+        String requestId = RequestIdProvider.current();
 
         PaymentEvent e = new PaymentEvent();
         e.paymentId = paymentId;
@@ -97,7 +95,7 @@ public class PaymentEvent {
     public static PaymentEvent created(String paymentId) {
         return of(
                 paymentId,
-                Action.PAYMENT_CREATED,
+                PaymentEventType.PAYMENT_CREATED,
                 null,
                 PaymentStatus.CREATED
         );
@@ -106,7 +104,7 @@ public class PaymentEvent {
     public static PaymentEvent captured(String paymentId) {
         return of(
                 paymentId,
-                Action.PAYMENT_CAPTURED,
+                PaymentEventType.PAYMENT_CAPTURED,
                 PaymentStatus.CREATED,
                 PaymentStatus.CAPTURED
         );

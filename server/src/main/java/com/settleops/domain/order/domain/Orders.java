@@ -71,6 +71,10 @@ public class Orders extends BaseEntity {
                                 String itemName,
                                 long amount) {
 
+        validateNotBlank(merchantId, "merchantId");
+        validateNotBlank(buyerId, "buyerId");
+        validateNotBlank(itemName, "itemName");
+
         if (amount <= 0) {
             throw new IllegalArgumentException("amount must be positive");
         }
@@ -91,5 +95,11 @@ public class Orders extends BaseEntity {
             return; // no-op (멱등 안전)
         }
         this.status = OrderStatus.PAID;
+    }
+
+    private static void validateNotBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be null or blank");
+        }
     }
 }

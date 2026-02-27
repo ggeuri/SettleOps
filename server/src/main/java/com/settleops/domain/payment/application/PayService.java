@@ -4,10 +4,7 @@ import com.settleops.domain.order.application.OrderService;
 import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.order.domain.Orders;
 import com.settleops.domain.payment.api.dto.PayResponseDTO;
-import com.settleops.domain.payment.domain.IdempotencyRecord;
-import com.settleops.domain.payment.domain.Payment;
-import com.settleops.domain.payment.domain.PaymentEvent;
-import com.settleops.domain.payment.domain.PaymentStatus;
+import com.settleops.domain.payment.domain.*;
 import com.settleops.domain.payment.infra.IdempotencyRecordRepository;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
@@ -21,17 +18,15 @@ import com.settleops.global.enums.IdempotencyTargetType;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.logging.RequestIdProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
-
-import static com.settleops.global.logging.RequestIdKeys.MDC_KEY;
 
 @Slf4j
 @Service
@@ -117,7 +112,7 @@ public class PayService {
 
         // MVP: pay에서는 PAYMENT_CAPTURED만 audit (PAYMENT_CREATED는 payment_event로 대체)
         auditLogger.log(AuditLogCommand.builder()
-                .requestId(MDC.get(MDC_KEY))            // MDC에서 전역 requestId 획득
+                .requestId(RequestIdProvider.current())            // MDC에서 전역 requestId 획득
                 .action(Action.PAYMENT_CAPTURED)            // 기획서 명시 액션 코드
                 .actorType(ActorType.BUYER)                 // 또는 SYSTEM
                 .actorId(orders.getBuyerId())
@@ -255,7 +250,7 @@ public class PayService {
         return paymentEventRepository
                 .findOccurredAtByPaymentIdAndEventType(
                         payment.getPaymentId(),
-                        Action.PAYMENT_CAPTURED
+                        PaymentEventType.PAYMENT_CREATED
                 )
                 .orElseThrow(() -> new IllegalStateException(
                         "CAPTURE 이벤트가 존재하지 않습니다. paymentId="

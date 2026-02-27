@@ -1,7 +1,7 @@
 package com.settleops.domain.payment.infra;
 
 import com.settleops.domain.payment.domain.PaymentEvent;
-import com.settleops.global.enums.Action;
+import com.settleops.domain.payment.domain.PaymentEventType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +18,6 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent,Long>
     """)
     Optional<LocalDateTime> findOccurredAtByPaymentIdAndEventType(
             @Param("paymentId") String paymentId,
-            @Param("eventType") Action eventType
+            @Param("eventType") PaymentEventType eventType
     );
 }

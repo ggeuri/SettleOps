@@ -14,7 +14,7 @@ public record PayResponseDTO(
         return new PayResponseDTO(
                 payment.getPaymentId(),
                 payment.getStatus().name(), // status = PaymentStatus enum
-                capturedAt // 추후 변경 예정 PAYMENT_CAPTURED event의 occurred_at을 조회
+                capturedAt // PAYMENT_CAPTURED event의 occurred_at
         );
     }
 }
