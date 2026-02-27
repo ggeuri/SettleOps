@@ -250,7 +250,7 @@ public class PayService {
         return paymentEventRepository
                 .findOccurredAtByPaymentIdAndEventType(
                         payment.getPaymentId(),
-                        PaymentEventType.PAYMENT_CREATED
+                        PaymentEventType.PAYMENT_CAPTURED
                 )
                 .orElseThrow(() -> new IllegalStateException(
                         "CAPTURE 이벤트가 존재하지 않습니다. paymentId="
