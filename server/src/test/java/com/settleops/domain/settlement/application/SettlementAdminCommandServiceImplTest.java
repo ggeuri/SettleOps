@@ -38,7 +38,7 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
 
-        // PR#2 기준: ObjectMapper 없는 생성자 사용
+        // 현재 코드 기준: ObjectMapper 없는 생성자 사용
         service = new SettlementAdminCommandServiceImpl(
                 settlementRepository,
                 settlementBatchRepository,
@@ -62,17 +62,14 @@ class SettlementAdminCommandServiceImplTest {
     void requestPaid_holdActive_should_return_409_HOLD_ACTIVE_even_if_not_ready() {
         Settlement settlement = Mockito.mock(Settlement.class);
 
-        // 공통 스텁(서비스가 접근할 수 있는 필드들)
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.HOLD_ACTIVE);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
         // 핵심: HOLD가 우선(READY=false여도 HOLD 먼저)
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
-        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -96,7 +93,6 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
@@ -119,7 +115,6 @@ class SettlementAdminCommandServiceImplTest {
         verifyNoInteractions(auditLogger);
     }
 
-    // 옵션(권장): 400 계약을 “예외 타입”으로 고정해두면 PR 코멘트 대응이 더 깔끔해짐
     @Test
     void requestPaid_settlementId_blank_should_throw_BadRequestException() {
         assertThatThrownBy(() -> service.requestPaid("   ", "memo"))

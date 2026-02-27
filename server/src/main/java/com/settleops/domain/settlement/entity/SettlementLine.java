@@ -3,7 +3,6 @@ package com.settleops.domain.settlement.entity;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import jakarta.persistence.*;
 import lombok.Getter;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -18,6 +17,7 @@ import java.time.LocalDateTime;
         }
 )
 public class SettlementLine {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "settlement_line_id", nullable = false)
@@ -31,16 +31,22 @@ public class SettlementLine {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "line_type", nullable = false, length = 20)
-    private SettlementLineType lineType; // payment / refund
+    private SettlementLineType lineType;
 
     @Column(name = "amount", nullable = false)
-    private long amount; //항상 양수
+    private long amount;
 
-    @CreationTimestamp
-    @Column(name="created_at", nullable=false, updatable=false)
+    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     private LocalDateTime createdAt;
 
-    protected SettlementLine(){
+    protected SettlementLine() {
+    }
+
+    @PrePersist
+    protected void prePersist() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
     }
 
     public static SettlementLine of(
@@ -48,9 +54,12 @@ public class SettlementLine {
             String paymentId,
             SettlementLineType lineType,
             long amount
-    ){
-        if(amount <= 0) throw new IllegalArgumentException("amount must be positive");
+    ) {
+        if (settlementId == null || settlementId.isBlank()) throw new IllegalArgumentException("settlementId must not be blank");
+        if (paymentId == null || paymentId.isBlank()) throw new IllegalArgumentException("paymentId must not be blank");
         if (lineType == null) throw new IllegalArgumentException("lineType must not be null");
+        if (amount <= 0) throw new IllegalArgumentException("amount must be positive");
+
         SettlementLine l = new SettlementLine();
         l.settlementId = settlementId;
         l.paymentId = paymentId;
@@ -59,7 +68,6 @@ public class SettlementLine {
         return l;
     }
 
-    /** 정합성 계산용: DDL상 amount는 양수이고, 부호는 line_type으로만 해석한다. */
     public long signedAmount() {
         return lineType.applySign(amount);
     }
