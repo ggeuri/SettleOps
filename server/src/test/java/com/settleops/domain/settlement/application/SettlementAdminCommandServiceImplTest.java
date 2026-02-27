@@ -65,13 +65,11 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.HOLD_ACTIVE);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
         // 핵심: HOLD가 우선(READY=false여도 HOLD 먼저)
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
-        Mockito.when(settlement.isReady()).thenReturn(false);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
@@ -95,7 +93,6 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getBatchId()).thenReturn(1L);
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
 
