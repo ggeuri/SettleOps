@@ -110,4 +110,14 @@ public class PaymentEvent {
         );
     }
 
+    // CONFIRMED는 이벤트 SoT(PAYMENT_CONFIRMED)로 고정
+    public static PaymentEvent confirmed(String paymentId) {
+        return of(
+                paymentId,
+                PaymentEventType.PAYMENT_CONFIRMED,
+                PaymentStatus.CAPTURED,
+                PaymentStatus.CAPTURED
+        );
+    }
+
 }

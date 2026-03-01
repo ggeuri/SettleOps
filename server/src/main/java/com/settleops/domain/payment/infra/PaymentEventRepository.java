@@ -20,4 +20,7 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent,Long>
             @Param("paymentId") String paymentId,
             @Param("eventType") PaymentEventType eventType
     );
+
+    boolean existsByPaymentIdAndEventType(String paymentId, PaymentEventType eventType);
+
 }
