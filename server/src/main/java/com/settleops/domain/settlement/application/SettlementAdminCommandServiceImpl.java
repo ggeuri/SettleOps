@@ -1,9 +1,10 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
@@ -26,6 +27,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -77,12 +80,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
-        // 2-3) BATCH_FAILED
-        if (isBatchFailed(settlement)) {
+        // BATCH_FAILED
+        if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING
+        // REFUND_ADJUSTMENT_PENDING
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
@@ -94,7 +97,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         settlement.requestPaid(requesterId, LocalDateTime.now());
         settlementRepository.save(settlement);
 
-        // 4) audit (LOCKED): comment는 meta_json.comment에 반드시 기록
+        // 4) audit (LOCKED)
         auditSettlementAction(
                 Action.SETTLEMENT_PAY_REQUESTED,
                 settlement,
@@ -171,14 +174,13 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         return toPayActionResponse(settlement);
     }
 
-    private boolean isBatchFailed(Settlement settlement) {
-        Long batchId = settlement.getBatchId();
-        if (batchId == null) return false; // 방어 (DDL상 nullable=false지만 안전하게 유지)
-
-        return settlementBatchRepository.findById(batchId)
-                .map(SettlementBatch::getResult)
-                .map(r -> r == SettlementBatchResult.FAIL)
-                .orElse(false);
+    /**
+     * BATCH_FAILED 판정 (가드레일)
+     * - batchId null 방어 포함.
+     */
+    private boolean isBatchFailed(Long batchId) {
+        if (batchId == null) return false;
+        return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
     }
 
     private SettlementPayActionResponse toPayActionResponse(Settlement s) {
@@ -230,16 +232,30 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                // PR#2에서는 기존 방식 유지(충돌 최소). ObjectMapper 전환은 PR#3에서 처리.
-                .metaJson(comment == null ? "{}" : "{\"comment\":" + toJsonString(comment) + "}")
+                // 주입/생성자 안 건드리고도 JSON 안전성 확보
+                // comment == null 이면 develop 의미 유지: "{}"
+                .metaJson(buildMetaJson(comment))
                 .build();
 
         auditLogger.log(cmd);
     }
 
-    private String toJsonString(String s) {
-        if (s == null) return "null";
-        String escaped = s.replace("\\", "\\\\").replace("\"", "\\\"");
-        return "\"" + escaped + "\"";
+    /**
+     * audit_log.meta_json 생성 (방법 A)
+     * - 주입/필드 변경 없이 내부에서 ObjectMapper 사용
+     * - comment == null 이면 "{}" (기존 의미 유지)
+     * - comment에 따옴표/개행/백슬래시 있어도 유효 JSON 보장
+     */
+    private String buildMetaJson(String comment) {
+        if (comment == null) return "{}";
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("comment", comment);
+            return mapper.writeValueAsString(meta);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("failed to serialize audit metaJson", e);
+        }
     }
 }
