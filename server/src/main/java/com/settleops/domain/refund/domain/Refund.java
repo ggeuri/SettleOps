@@ -54,6 +54,7 @@ public class Refund extends BaseEntity {
             length = 255)
     private String reasonText;
 
+    // requested_at = 환불 요청 업무시각(SoT)
     @Column(name = "requested_at",
             nullable = false,
             columnDefinition = "DATETIME(6)")

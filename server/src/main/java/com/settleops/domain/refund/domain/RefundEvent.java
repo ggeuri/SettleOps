@@ -16,6 +16,11 @@ import java.time.LocalDateTime;
 @Table(name = "refund_event")
 public class RefundEvent {
 
+    /**
+     * insert-only event table.
+     * UPDATE/DELETE 금지(재현 품질 보호). 저장은 append만 한다.
+     */
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "refund_event_id", nullable = false)
@@ -46,11 +51,13 @@ public class RefundEvent {
     @Column(name = "actor_id", nullable = false, length = 32)
     private String actorId;
 
+    // occurred_at = 이벤트 기록 시각(insert-only)
     @Column(name = "occurred_at", nullable = false, columnDefinition = "DATETIME(6)", updatable = false)
     private LocalDateTime occurredAt;
 
     @PrePersist
     void prePersist() {
+        // occurred_at SoT = App(@PrePersist) 로 통일 (DB default는 안전망)
         if (occurredAt == null) {
             occurredAt = LocalDateTime.now();
         }
