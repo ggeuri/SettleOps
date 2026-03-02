@@ -1,5 +1,7 @@
 package com.settleops.domain.refund.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.domain.Payment;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.PaymentRepository;
@@ -17,12 +19,15 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -33,6 +38,7 @@ public class RefundCommandService {
     private final RefundEventRepository refundEventRepository;
     private final PaymentRepository paymentRepository;
     private final AuditLogger auditLogger;
+    private final ObjectMapper objectMapper;
 
     /**
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
@@ -125,7 +131,7 @@ public class RefundCommandService {
     }
 
     private String currentRequestId() {
-        String requestId = MDC.get("requestId");
+        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
             throw new IllegalStateException("Missing requestId in MDC");
         }
@@ -133,14 +139,23 @@ public class RefundCommandService {
     }
 
     private String buildMetaJsonForRequested(String reasonText) {
-        return "{"
-                + "\"reasonText\":" + toJsonString(reasonText) + ","
-                + "\"diff\":{\"status\":{\"before\":null,\"after\":\"REQUESTED\"}}"
-                + "}";
-    }
+        try {
+            Map<String, Object> meta = new HashMap<>();
+            meta.put("reasonText", reasonText);
 
-    private String toJsonString(String s) {
-        if (s == null) return "null";
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            Map<String, Object> statusDiff = new HashMap<>();
+            statusDiff.put("before", null);
+            statusDiff.put("after", "REQUESTED");
+
+            Map<String, Object> diff = new HashMap<>();
+            diff.put("status", statusDiff);
+
+            meta.put("diff", diff);
+
+            return objectMapper.writeValueAsString(meta);
+
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize metaJson", e);
+        }
     }
 }

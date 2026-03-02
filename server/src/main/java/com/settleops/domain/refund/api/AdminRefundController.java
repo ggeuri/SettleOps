@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -25,7 +26,8 @@ public class AdminRefundController {
             @RequestBody @Valid AdminRefundDecisionRequestDTO req,
             Authentication authentication
     ) {
-        String adminId = authentication.getName();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String adminId = userDetails.getUsername();
         return ResponseEntity.ok(refundAdminService.approve(refundId, adminId, req.getComment()));
     }
 
@@ -35,7 +37,8 @@ public class AdminRefundController {
             @RequestBody @Valid AdminRefundDecisionRequestDTO req,
             Authentication authentication
     ) {
-        String adminId = authentication.getName();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String adminId = userDetails.getUsername();
         return ResponseEntity.ok(refundAdminService.reject(refundId, adminId, req.getComment()));
     }
 

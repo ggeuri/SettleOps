@@ -1,5 +1,7 @@
 package com.settleops.domain.refund.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundEvent;
@@ -13,12 +15,15 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +39,7 @@ public class RefundAdminService {
     private final RefundRepository refundRepository;
     private final RefundEventRepository refundEventRepository;
     private final AuditLogger auditLogger;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public AdminRefundDecisionResponseDTO approve(String refundId, String adminId, String comment) {
@@ -158,7 +164,7 @@ public class RefundAdminService {
     }
 
     private String currentRequestId() {
-        String requestId = MDC.get("requestId");
+        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
             // [필수] request_id 누락 insert 금지 → 저장 전에 실패
             throw new IllegalStateException("Missing requestId in MDC");
@@ -167,17 +173,25 @@ public class RefundAdminService {
     }
 
     private String buildMetaJson(String comment, String before, String after) {
-        // 최소: comment + status diff
-        String safeComment = comment; // comment는 requireComment에서 이미 notBlank 보장
-        return "{"
-                + "\"comment\":" + toJsonString(safeComment) + ","
-                + "\"diff\":{\"status\":{\"before\":" + toJsonString(before) + ",\"after\":" + toJsonString(after) + "}}"
-                + "}";
-    }
+        try {
+            Map<String, Object> meta = new HashMap<>();
 
-    private String toJsonString(String s) {
-        if (s == null) return "null";
-        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            meta.put("comment", comment);
+
+            Map<String, Object> statusDiff = new HashMap<>();
+            statusDiff.put("before", before);
+            statusDiff.put("after", after);
+
+            Map<String, Object> diff = new HashMap<>();
+            diff.put("status", statusDiff);
+
+            meta.put("diff", diff);
+
+            return objectMapper.writeValueAsString(meta);
+
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Failed to serialize metaJson", e);
+        }
     }
 
 }
