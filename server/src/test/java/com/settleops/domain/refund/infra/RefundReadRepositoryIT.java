@@ -68,8 +68,6 @@ class RefundReadRepositoryIT {
                 .reasonText("test")
                 .requestedAt(LocalDateTime.now().minusMinutes(10))
                 .decidedAt(LocalDateTime.now())
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
                 .build());
 
         em.flush();
