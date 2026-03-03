@@ -14,7 +14,9 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
@@ -50,8 +52,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
+        // LOCKED fail-fast (request_id / actor_id SoT)
+        String requestId = currentRequestId();
+        String actorId = currentActorId();
+
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be null/blank");
         }
 
         Settlement settlement = settlementRepository.findById(settlementId)
@@ -60,47 +66,45 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         // 1) no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환 (+ audit)
         if (settlement.isPayRequested()) {
             auditSettlementAction(
+                    requestId,
+                    actorId,
                     Action.SETTLEMENT_PAY_REQUESTED,
                     settlement,
                     settlement.getStatus().name(),
                     settlement.getStatus().name(),
                     comment
             );
-            return toPayActionResponse(settlement);
+            return toPayActionResponse(settlement, requestId);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED, 기획서 SoT)
+        // 2) 409 reason 우선순위 고정(LOCKED)
         //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
 
-        // 2-1) HOLD_ACTIVE (운영 UX/CTA를 위해 별도 reason을 반드시 우선 반환)
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
 
-        // 2-2) SETTLEMENT_NOT_READY
         if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
 
-        // 2-3) BATCH_FAILED
         if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
 
-        // 2-4) REFUND_ADJUSTMENT_PENDING
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
 
         // 3) 상태 전이 + 저장
         String before = settlement.getStatus().name();
-        String requesterId = currentActorId();
-
-        settlement.requestPaid(requesterId, LocalDateTime.now());
+        settlement.requestPaid(actorId, LocalDateTime.now());
         settlementRepository.save(settlement);
 
-        // 4) audit (LOCKED): comment는 meta_json.comment에 반드시 기록
+        // 4) audit (LOCKED)
         auditSettlementAction(
+                requestId,
+                actorId,
                 Action.SETTLEMENT_PAY_REQUESTED,
                 settlement,
                 before,
@@ -108,14 +112,18 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 comment
         );
 
-        return toPayActionResponse(settlement);
+        return toPayActionResponse(settlement, requestId);
     }
 
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
+        // LOCKED fail-fast (request_id / actor_id SoT)
+        String requestId = currentRequestId();
+        String approverId = currentActorId(); // ✅ 한번만 스냅샷(끝까지 동일하게 사용)
+
         if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalStateException("settlementId must not be null/blank");
+            throw new BadRequestException("settlementId must not be null/blank");
         }
 
         Settlement current = settlementRepository.findById(settlementId)
@@ -124,13 +132,15 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         // 1) no-op 200: 이미 PAID (+ audit)
         if (current.isPaid()) {
             auditSettlementAction(
+                    requestId,
+                    approverId,
                     Action.SETTLEMENT_PAY_APPROVED,
                     current,
                     current.getStatus().name(),
                     current.getStatus().name(),
                     comment
             );
-            return toPayActionResponse(current);
+            return toPayActionResponse(current, requestId);
         }
 
         // 2) PAY_REQUESTED 아니면 409
@@ -138,27 +148,30 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
         }
 
-        // 3) PAY_REQUESTED일 때만 락 조회
-        // [FREEZE] PAY_REQUESTED에서만 DB 락(PESSIMISTIC_WRITE)으로 PAID 전이를 1회로 수렴시킨다.
+        // 3) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
 
         // 락 후 재확인(no-op) (+ audit)
         if (settlement.isPaid()) {
             auditSettlementAction(
+                    requestId,
+                    approverId,
                     Action.SETTLEMENT_PAY_APPROVED,
                     settlement,
                     settlement.getStatus().name(),
                     settlement.getStatus().name(),
                     comment
             );
-            return toPayActionResponse(settlement);
+            return toPayActionResponse(settlement, requestId);
         }
 
-        String approverId = currentActorId();
-
+        // 4-eyes 검사: requester != approver
         if (settlement.violatesFourEyes(approverId)) {
-            throw new ConflictException(ReasonCode.SAME_APPROVER_NOT_ALLOWED, "requester and approver must be different");
+            throw new ConflictException(
+                    ReasonCode.SAME_APPROVER_NOT_ALLOWED,
+                    "requester and approver must be different"
+            );
         }
 
         String before = settlement.getStatus().name();
@@ -166,6 +179,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         settlementRepository.save(settlement);
 
         auditSettlementAction(
+                requestId,
+                approverId,
                 Action.SETTLEMENT_PAY_APPROVED,
                 settlement,
                 before,
@@ -173,25 +188,19 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 comment
         );
 
-        return toPayActionResponse(settlement);
+        return toPayActionResponse(settlement, requestId);
     }
 
-    /**
-     * BATCH_FAILED 판정 (가드레일)
-     * - batchId null 방어 포함.
-     */
     private boolean isBatchFailed(Long batchId) {
         if (batchId == null) return false;
         return settlementBatchRepository.existsByBatchIdAndResult(batchId, SettlementBatchResult.FAIL);
     }
 
-    private SettlementPayActionResponse toPayActionResponse(Settlement s) {
-        // PAY_REQUESTED(no-op 200 포함) 규격: paidRequestedAt 필수
+    private SettlementPayActionResponse toPayActionResponse(Settlement s, String requestId) {
         if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
 
-        // PAID(no-op 200 포함) 규격: paidApprovedAt 필수
         if (s.isPaid() && s.getPaidApprovedAt() == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
@@ -199,12 +208,20 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         LocalDateTime paidAt = s.isPaid() ? s.getPaidApprovedAt() : null;
 
         return new SettlementPayActionResponse(
-                currentRequestId(),
+                requestId,
                 s.getSettlementId(),
                 s.getStatus(),
                 s.getPaidRequestedAt(),
                 paidAt
         );
+    }
+
+    private String currentRequestId() {
+        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalStateException("requestId must not be null/blank (provided by RequestIdFilter)");
+        }
+        return requestId;
     }
 
     private String currentActorId() {
@@ -215,42 +232,40 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         return auth.getName();
     }
 
-    private String currentRequestId() {
-        String requestId = MDC.get("requestId");
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId must not be null/blank (provided by RequestIdFilter)");
-        }
-        return requestId;
-    }
-
-    private void auditSettlementAction(Action action, Settlement settlement, String before, String after, String comment) {
+    /**
+     *  requestId/actorId를 호출자가 스냅샷으로 넘겨주도록 강제
+     * - 동시성/스레드 전환/컨텍스트 꼬임이 있어도 audit이 흔들리지 않게 한다.
+     */
+    private void auditSettlementAction(
+            String requestId,
+            String actorId,
+            Action action,
+            Settlement settlement,
+            String before,
+            String after,
+            String comment
+    ) {
         AuditLogCommand cmd = AuditLogCommand.builder()
-                .requestId(currentRequestId())
+                .requestId(requestId)
                 .merchantId(settlement.getMerchantId())
                 .entityType(EntityType.SETTLEMENT)
                 .entityId(settlement.getSettlementId())
                 .occurredAt(LocalDateTime.now())
                 .actorType(ActorType.ADMIN)
-                .actorId(currentActorId())
+                .actorId(actorId)
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                // 안전 JSON + comment 규칙 단일화: 항상 {"comment": ...} (없으면 null)
                 .metaJson(buildMetaJson(comment))
                 .build();
 
         auditLogger.log(cmd);
     }
 
-    /**
-     * audit_log.meta_json 생성(LOCKED)
-     * - 문자열 조립 금지: 제어문자/개행/따옴표로 JSON 파손 방지
-     * - comment 키는 항상 포함(없으면 null)하여 MemoThreading/필터 품질을 고정한다.
-     */
     private String buildMetaJson(String comment) {
         try {
             Map<String, Object> meta = new HashMap<>();
-            meta.put("comment", comment); // null이면 JSON null
+            meta.put("comment", comment);
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
