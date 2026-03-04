@@ -1,8 +1,10 @@
 package com.settleops.global.auth.controller;
 
+import com.settleops.global.error.BadRequestException;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -53,8 +55,17 @@ public class DevSessionController {
             @RequestParam String buyerId,
             HttpSession session
     ) {
+        // [필수] blank 방지
+        if (!StringUtils.hasText(buyerId)) {
+            throw new BadRequestException("buyerId는 필수입니다.");
+        }
+
+        // 공백 제거(세션 오염 방지)
+        String normalizedBuyerId = buyerId.trim();
+        if (normalizedBuyerId.length() > 32) throw new BadRequestException("buyerId 길이가 올바르지 않습니다.(max 32)");
+
         session.setAttribute(MeController.SessionKeys.ROLE, "CONSUMER");
-        session.setAttribute(MeController.SessionKeys.BUYER_ID, buyerId);
+        session.setAttribute(MeController.SessionKeys.BUYER_ID, normalizedBuyerId);
         session.setAttribute(MeController.SessionKeys.MERCHANT_ID, null);
         return ResponseEntity.ok().build();
     }
@@ -64,9 +75,20 @@ public class DevSessionController {
             @RequestParam String merchantId,
             HttpSession session
     ) {
+        // [필수] blank 방지
+        if (!StringUtils.hasText(merchantId)) {
+            throw new BadRequestException("merchantId는 필수입니다.");
+        }
+
+        // 공백 제거(세션 오염 방지)
+        String normalizedMerchantId = merchantId.trim();
+
+        // [필수] 길이 제한(정책 충돌 방지)
+        if (normalizedMerchantId.length() > 32) throw new BadRequestException("merchantId 길이가 올바르지 않습니다.(max 32)");
+
         session.setAttribute(MeController.SessionKeys.ROLE, "MERCHANT");
         session.setAttribute(MeController.SessionKeys.BUYER_ID, null);
-        session.setAttribute(MeController.SessionKeys.MERCHANT_ID, merchantId);
+        session.setAttribute(MeController.SessionKeys.MERCHANT_ID, normalizedMerchantId);
         return ResponseEntity.ok().build();
     }
 }
