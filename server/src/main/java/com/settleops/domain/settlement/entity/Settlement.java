@@ -2,14 +2,7 @@ package com.settleops.domain.settlement.entity;
 
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.global.entity.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.*;
 import lombok.Getter;
 
 import java.time.LocalDate;
@@ -20,10 +13,7 @@ import java.time.LocalDateTime;
 @Table(
         name = "settlement",
         uniqueConstraints = {
-                @UniqueConstraint(
-                        name = "uk_settlement_merchant_base_date",
-                        columnNames = {"merchant_id", "base_date"}
-                )
+                @UniqueConstraint(name = "uk_settlement_merchant_base_date", columnNames = {"merchant_id", "base_date"})
         },
         indexes = {
                 @Index(name = "idx_settlement_status", columnList = "status"),
@@ -34,7 +24,6 @@ import java.time.LocalDateTime;
         }
 )
 public class Settlement extends BaseEntity {
-
     @Id
     @Column(name = "settlement_id", nullable = false, columnDefinition = "CHAR(36)")
     private String settlementId;
@@ -93,25 +82,6 @@ public class Settlement extends BaseEntity {
             long vat,
             long net
     ) {
-        if (settlementId == null || settlementId.isBlank()) {
-            throw new IllegalArgumentException("settlementId must not be blank");
-        }
-        if (settlementNo == null || settlementNo.isBlank()) {
-            throw new IllegalArgumentException("settlementNo must not be blank");
-        }
-        if (batchId == null) {
-            throw new IllegalArgumentException("batchId must not be null");
-        }
-        if (merchantId == null || merchantId.isBlank()) {
-            throw new IllegalArgumentException("merchantId must not be blank");
-        }
-        if (baseDate == null) {
-            throw new IllegalArgumentException("baseDate must not be null");
-        }
-        if (gross < 0 || fee < 0 || vat < 0 || net < 0) {
-            throw new IllegalArgumentException("amounts must be >= 0");
-        }
-
         Settlement s = new Settlement();
         s.settlementId = settlementId;
         s.settlementNo = settlementNo;
@@ -122,6 +92,7 @@ public class Settlement extends BaseEntity {
         s.fee = fee;
         s.vat = vat;
         s.net = net;
+
         s.status = SettlementStatus.READY;
         return s;
     }
@@ -150,6 +121,7 @@ public class Settlement extends BaseEntity {
         return isPayRequested();
     }
 
+    // 4-Eyes 검증: 승인자 ID는 필수이며, 요청자(paidRequestedBy)와 동일하면 위반
     public boolean violatesFourEyes(String approverId) {
         if (approverId == null || approverId.isBlank()) {
             throw new IllegalStateException("approverId must not be null/blank");
@@ -173,9 +145,12 @@ public class Settlement extends BaseEntity {
     }
 
     public void approvePaid(String approverId, LocalDateTime at) {
+        // 1) 상태 검증: PAY_REQUESTED 상태가 아니면 승인 불가
         if (!canApprovePaid()) {
             throw new IllegalStateException("cannot approve paid in the current state");
         }
+
+        // 2) 4-Eyes 검증: approverId가 null/blank면 예외, 요청자와 승인자가 같으면 위반
         if (violatesFourEyes(approverId)) {
             throw new IllegalStateException("four-eyes violation: requester and approver must be different");
         }
