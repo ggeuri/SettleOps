@@ -19,26 +19,28 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>동작 방식</p>
  * <ul>
- *   <li>요청 파라미터로 전달된 buyerId를 HttpSession에 저장한다.</li>
- *   <li>세션에 ROLE, BUYER_ID 값을 설정하여 이후 API에서 현재 사용자 식별에 사용한다.</li>
+ *   <li>요청 파라미터로 전달된 buyerId 또는 merchantId를 HttpSession에 저장한다.</li>
+ *   <li>세션에 ROLE, BUYER_ID, MERCHANT_ID 값을 설정하여 이후 API에서 현재 사용자 식별에 사용한다.</li>
  * </ul>
  *
  * <p>예시</p>
  * <pre>
  * POST /api/dev/login-consumer?buyerId=BUYER_1
+ * POST /api/dev/login-merchant?merchantId=MERCHANT_1
  * </pre>
  *
  * <p>사용 흐름</p>
  * <ol>
- *   <li>/api/dev/login-consumer 호출 → 세션 생성</li>
- *   <li>/api/me 호출 → 현재 사용자 확인</li>
- *   <li>Consumer API 호출 시 세션 기반 사용자 검증 수행</li>
+ *   <li>/api/dev/login-consumer 또는 /api/dev/login-merchant 호출 → 세션 생성</li>
+ *   <li>/api/me 호출 → 현재 사용자(role / id) 확인</li>
+ *   <li>이후 Consumer / Merchant API 호출 시 세션 기반 사용자 검증 수행</li>
  * </ol>
  *
  * <p>주의</p>
  * <ul>
  *   <li>DEV / LOCAL 환경에서만 사용한다.</li>
- *   <li>운영 환경에서는 제거하거나 비활성화해야 한다.</li>
+ *   <li>@Profile({"local","dev"}) 설정으로 운영 환경에서는 빈이 등록되지 않는다.</li>
+ *   <li>실제 인증 시스템(OAuth/JWT 등)은 MVP 범위 밖이며 추후 대체될 수 있다.</li>
  * </ul>
  */
 @Profile({"local","dev"})
@@ -54,6 +56,17 @@ public class DevSessionController {
         session.setAttribute(MeController.SessionKeys.ROLE, "CONSUMER");
         session.setAttribute(MeController.SessionKeys.BUYER_ID, buyerId);
         session.setAttribute(MeController.SessionKeys.MERCHANT_ID, null);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/login-merchant")
+    public ResponseEntity<Void> loginMerchant(
+            @RequestParam String merchantId,
+            HttpSession session
+    ) {
+        session.setAttribute(MeController.SessionKeys.ROLE, "MERCHANT");
+        session.setAttribute(MeController.SessionKeys.BUYER_ID, null);
+        session.setAttribute(MeController.SessionKeys.MERCHANT_ID, merchantId);
         return ResponseEntity.ok().build();
     }
 }
