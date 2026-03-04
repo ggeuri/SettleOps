@@ -1,9 +1,14 @@
 package com.settleops.domain.refund.infra;
+import com.querydsl.core.BooleanBuilder;
+import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.domain.Refund;
+import com.settleops.domain.refund.domain.RefundStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static com.settleops.domain.refund.domain.QRefund.refund;
@@ -38,6 +43,47 @@ public class RefundReadRepository {
         return one != null;
     }
 
+    /**
+     * A6 운영 큐 조회(READ).
+     * - status/from/to 옵션 조건으로 refund 목록을 조회한다.
+     * - 시간 기준 SoT: refund.requestedAt (DB: requested_at)
+     * - 정렬: requestedAt DESC (최신 요청 우선)
+     */
+    public List<AdminRefundListItemDTO> findAdminRefundQueue(
+            RefundStatus status,
+            LocalDateTime from,
+            LocalDateTime to
+    ) {
+        BooleanBuilder where = new BooleanBuilder();
+
+        if (status != null) {
+            where.and(refund.status.eq(status)); // enum(@Enumerated STRING) 비교
+        }
+        if (from != null) {
+            where.and(refund.requestedAt.goe(from)); // requested_at >= from
+        }
+        if (to != null) {
+            where.and(refund.requestedAt.loe(to));   // requested_at <= to
+        }
+
+        return queryFactory
+                .select(Projections.constructor(
+                        AdminRefundListItemDTO.class,
+                        refund.refundId,
+                        refund.paymentId,
+                        refund.merchantId,
+                        refund.amount,
+                        refund.status.stringValue(), // DTO status가 String이라 stringValue()
+                        refund.requestedAt,
+                        refund.decidedAt
+                ))
+                .from(refund)
+                .where(where)
+                .orderBy(refund.requestedAt.desc()) // requestedAt DESC 고정
+                .fetch();
+    }
+
+    // 기존 개발 확인용 메서드는 유지해도 됨(다만 A6에서는 쓰지 않음)
     public List<Refund> findAllByOrderByCreatedAtDesc() {
         return queryFactory
                 .selectFrom(refund)

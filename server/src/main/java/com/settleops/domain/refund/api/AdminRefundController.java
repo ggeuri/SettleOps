@@ -2,23 +2,44 @@ package com.settleops.domain.refund.api;
 
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
+import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.util.List;
+
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/refunds")
 public class AdminRefundController {
-    //GET /api/admin/refunds?status=
+    //GET /api/admin/refunds?status=&from=&to=
     //PATCH /api/admin/refunds/{refundId}/approve
     //PATCH /api/admin/refunds/{refundId}/reject
 
     private final RefundAdminService refundAdminService;
+    private final RefundAdminQueryService refundAdminQueryService;
+
+    /**
+     * A6 운영 큐 조회(READ).
+     * - status/from/to는 옵션.
+     * - 기준 시각: requestedAt (DB requested_at)
+     */
+    @GetMapping
+    public ResponseEntity<List<AdminRefundListItemDTO>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+    ) {
+        return ResponseEntity.ok(refundAdminQueryService.list(status, from, to));
+    }
 
     @PatchMapping("/{refundId}/approve")
     public ResponseEntity<AdminRefundDecisionResponseDTO> approve(
