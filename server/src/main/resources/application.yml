@@ -32,3 +32,6 @@ logging:
   pattern:
     # [%X{requestId}]
     console: "%clr(%d{HH:mm:ss.SSS}){faint} %clr([%thread]){magenta} %highlight(%-5level) %clr([%X{requestId}]){cyan} %clr(%logger{36}){yellow} - %msg%n"
+
+dev-session:
+  enabled: false
