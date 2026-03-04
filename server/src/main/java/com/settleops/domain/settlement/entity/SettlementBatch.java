@@ -3,7 +3,6 @@ package com.settleops.domain.settlement.entity;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import jakarta.persistence.*;
 import lombok.Getter;
-import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -22,7 +21,7 @@ import java.time.LocalDateTime;
 )
 public class SettlementBatch {
 
-    private static final int FAIL_REASON_MAX_LEN = 2000; // TEXT지만 화면/로그용 요약이라 과도한 폭주 방지
+    private static final int FAIL_REASON_MAX_LEN = 2000;
     private static final String DEFAULT_FAIL_REASON = "UNEXPECTED_ERROR";
 
     @Id
@@ -40,28 +39,29 @@ public class SettlementBatch {
     private String triggeredBy;
 
     @Enumerated(EnumType.STRING)
-    @Column( name = "result", nullable = false, length = 20)
-    private SettlementBatchResult result; // ok, fail (skip은 audit_log에)
+    @Column(name = "result", nullable = false, length = 20)
+    private SettlementBatchResult result;
 
     @Column(name = "request_id", nullable = false, columnDefinition = "CHAR(36)")
     private String requestId;
 
-    /**
-     * DDL: TEXT NULL, '[운영] FAIL 시 에러 메시지 원본(옵션)'
-     * - FAIL 기록이 절대 롤백되면 안 되므로(운영 재현/SoT 방향),
-     *   FAIL인데 비어있으면 기본값으로 보정한다.
-     */
     @Column(name = "fail_reason", columnDefinition = "TEXT")
     private String failReason;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false, columnDefinition = "datetime(6)")
     private LocalDateTime createdAt;
 
     @Column(name = "finished_at")
     private LocalDateTime finishedAt;
 
-    protected SettlementBatch(){
+    protected SettlementBatch() {
+    }
+
+    @PrePersist
+    protected void prePersist() {
+        if (this.createdAt == null) {
+            this.createdAt = LocalDateTime.now();
+        }
     }
 
     public static SettlementBatch completed(
@@ -72,14 +72,12 @@ public class SettlementBatch {
             String requestId,
             String failReason,
             LocalDateTime finishedAt
-    ){
+    ) {
         if (result == null) throw new IllegalArgumentException("result must not be null");
         if (batchKey == null) throw new IllegalArgumentException("batchKey must not be null");
         if (runId == null || runId.isBlank()) throw new IllegalArgumentException("runId must not be blank");
         if (triggeredBy == null || triggeredBy.isBlank()) throw new IllegalArgumentException("triggeredBy must not be blank");
         if (requestId == null || requestId.isBlank()) throw new IllegalArgumentException("requestId must not be blank");
-
-        String normalizedFailReason = normalizeFailReason(result, failReason);
 
         SettlementBatch b = new SettlementBatch();
         b.batchKey = batchKey;
@@ -87,25 +85,30 @@ public class SettlementBatch {
         b.triggeredBy = triggeredBy;
         b.result = result;
         b.requestId = requestId;
-        b.failReason = normalizedFailReason;
+        b.failReason = normalizeFailReason(result, failReason);
         b.finishedAt = finishedAt;
         return b;
     }
 
     private static String normalizeFailReason(SettlementBatchResult result, String failReason) {
-        if (result == SettlementBatchResult.OK) {
-            // OK에서는 failReason을 남기지 않음(있어도 저장 실패시키지 않고 null로 정규화)
-            return null;
-        }
+        if (result == SettlementBatchResult.OK) return null;
 
-        // FAIL: 없으면 기본값으로 보정
         String v = (failReason == null) ? "" : failReason.trim();
         if (v.isEmpty()) v = DEFAULT_FAIL_REASON;
 
-        // 폭주 방지(너무 긴 stacktrace/메시지 통째로 넣는 실수 방지)
-        if (v.length() > FAIL_REASON_MAX_LEN) {
-            v = v.substring(0, FAIL_REASON_MAX_LEN);
-        }
+        if (v.length() > FAIL_REASON_MAX_LEN) v = v.substring(0, FAIL_REASON_MAX_LEN);
         return v;
+    }
+
+    public void markOk(LocalDateTime finishedAt){
+        this.result = SettlementBatchResult.OK;
+        this.failReason = null;
+        this.finishedAt = finishedAt;
+    }
+
+    public void markFail(String failReason, LocalDateTime finishedAt){
+        this.result = SettlementBatchResult.FAIL;
+        this.failReason = normalizeFailReason(SettlementBatchResult.FAIL, failReason);
+        this.finishedAt = finishedAt;
     }
 }
