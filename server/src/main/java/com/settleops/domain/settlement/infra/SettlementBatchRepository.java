@@ -1,9 +1,12 @@
 package com.settleops.domain.settlement.infra;
 
 import com.settleops.domain.settlement.entity.SettlementBatch;
-import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDate;
+import java.util.Optional;
+
 public interface SettlementBatchRepository extends JpaRepository<SettlementBatch, Long> {
-    boolean existsByBatchIdAndResult(Long batchId, SettlementBatchResult result);
+    Optional<SettlementBatch> findByBatchKey(LocalDate batchKey);
+    Optional<SettlementBatch> findByRunId(String runId);
 }
