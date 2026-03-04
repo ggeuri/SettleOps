@@ -139,8 +139,28 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
         assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("requestId must not be null/blank");
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("requestId");
+    }
+
+    @Test
+    void requestPaid_actorMissing_then401() {
+        // given
+        SecurityContextHolder.clearContext(); // 인증 제거
+
+        Settlement settlement = Mockito.mock(Settlement.class);
+        Mockito.when(settlement.isPayRequested()).thenReturn(true); // no-op 분기 타게
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED); // 혹시 호출돼도 안전
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        // when/then
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> {
+                    ResponseStatusException rse = (ResponseStatusException) ex;
+                    assertThat(rse.getStatusCode().value()).isEqualTo(401);
+                });
     }
 
     @Test

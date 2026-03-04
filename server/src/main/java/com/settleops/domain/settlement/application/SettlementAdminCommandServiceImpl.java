@@ -232,16 +232,23 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     private String currentRequestId() {
         String requestId = MDC.get(RequestIdKeys.MDC_KEY);
+
+        // request_id 생성/주입은 Filter 단일 책임(Freeze).
+        // 여기서 null/blank가 나오면 "클라이언트 입력" 문제가 아니라
+        // 테스트/필터 설정/호출 경로가 계약을 위반한 것으로 보고 400으로 표준화한다(500 금지).
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId must not be null/blank (provided by RequestIdFilter)");
+            throw new BadRequestException("requestId must not be null/blank (RequestIdFilter contract violated)");
         }
         return requestId;
     }
 
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        // 인증 누락은 401로 귀결(500 금지).
+        // 보통 Security FilterChain에서 차단되지만, 테스트/내부호출/설정 실수 대비로 서비스에서도 방어한다.
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new IllegalStateException("actorId must not be null/blank");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized (authentication required)");
         }
         return auth.getName();
     }
