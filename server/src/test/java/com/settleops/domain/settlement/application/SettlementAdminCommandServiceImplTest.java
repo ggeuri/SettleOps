@@ -30,11 +30,16 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.settlement.infra.SettlementLineRepository;
 
 class SettlementAdminCommandServiceImplTest {
 
     private SettlementRepository settlementRepository;
     private SettlementBatchRepository settlementBatchRepository;
+    private SettlementLineRepository settlementLineRepository;
+    private PaymentEventRepository paymentEventRepository;
+
     private AuditLogger auditLogger;
     private RefundAdjustmentPolicy refundAdjustmentPolicy;
     private SettlementBatchRunRecorder settlementBatchRunRecorder;
@@ -46,6 +51,9 @@ class SettlementAdminCommandServiceImplTest {
     void setUp() {
         settlementRepository = Mockito.mock(SettlementRepository.class);
         settlementBatchRepository = Mockito.mock(SettlementBatchRepository.class);
+        settlementLineRepository = Mockito.mock(SettlementLineRepository.class);
+        paymentEventRepository = Mockito.mock(PaymentEventRepository.class);
+
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
@@ -57,7 +65,9 @@ class SettlementAdminCommandServiceImplTest {
                 auditLogger,
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
-                objectMapper
+                objectMapper,
+                paymentEventRepository,       // ✅ 생성자에 추가
+                settlementLineRepository      // ✅ 생성자에 추가
         );
 
         MDC.put(RequestIdKeys.MDC_KEY, "test-request-id");
