@@ -1,10 +1,9 @@
 package com.settleops.domain.settlement.entity;
 
 import com.settleops.domain.settlement.enums.SettlementStatus;
+import com.settleops.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.Getter;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,7 +23,7 @@ import java.time.LocalDateTime;
                 @Index(name = "idx_settlement_status_base_date", columnList = "status, base_date")
         }
 )
-public class Settlement {
+public class Settlement extends BaseEntity {
     @Id
     @Column(name = "settlement_id", nullable = false, columnDefinition = "CHAR(36)")
     private String settlementId;
@@ -69,15 +68,7 @@ public class Settlement {
     @Column(name = "paid_approved_at")
     private LocalDateTime paidApprovedAt;
 
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
-
-    protected Settlement(){
+    protected Settlement() {
     }
 
     public static Settlement createReady(

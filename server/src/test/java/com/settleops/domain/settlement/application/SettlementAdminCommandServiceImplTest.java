@@ -2,6 +2,7 @@ package com.settleops.domain.settlement.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.entity.Settlement;
+import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
@@ -10,6 +11,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -34,6 +37,7 @@ class SettlementAdminCommandServiceImplTest {
     private SettlementBatchRepository settlementBatchRepository;
     private AuditLogger auditLogger;
     private RefundAdjustmentPolicy refundAdjustmentPolicy;
+    private SettlementBatchRunRecorder settlementBatchRunRecorder;
     private ObjectMapper objectMapper;
 
     private SettlementAdminCommandServiceImpl service;
@@ -44,6 +48,7 @@ class SettlementAdminCommandServiceImplTest {
         settlementBatchRepository = Mockito.mock(SettlementBatchRepository.class);
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
+        settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
 
         objectMapper = new ObjectMapper();
 
@@ -52,10 +57,12 @@ class SettlementAdminCommandServiceImplTest {
                 settlementBatchRepository,
                 auditLogger,
                 refundAdjustmentPolicy,
+                settlementBatchRunRecorder,
                 objectMapper
         );
 
-        MDC.put("requestId", "test-request-id");
+        // MDC 키 통일
+        MDC.put(RequestIdKeys.MDC_KEY, "test-request-id");
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
         );
@@ -70,9 +77,12 @@ class SettlementAdminCommandServiceImplTest {
     @Test
     void requestPaid_refundAdjustmentPending_true_then409_REFUND_ADJUSTMENT_PENDING() {
         Settlement settlement = Mockito.mock(Settlement.class);
+
+        LocalDate baseDate = LocalDate.of(2026, 3, 4);
+
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getBaseDate()).thenReturn(baseDate);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(false);
@@ -80,8 +90,11 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        Mockito.when(settlementBatchRepository.existsByBatchIdAndResult(1L, SettlementBatchResult.FAIL))
-                .thenReturn(false);
+        // 현재 서비스 isBatchFailed(baseDate) 정합: findByBatchKey(baseDate)로 스텁
+        SettlementBatch batch = Mockito.mock(SettlementBatch.class);
+        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now()); // 완료된 배치
+        Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.OK); // FAIL 아님
+        Mockito.when(settlementBatchRepository.findByBatchKey(baseDate)).thenReturn(Optional.of(batch));
 
         Mockito.when(refundAdjustmentPolicy.isRefundAdjustmentPending("S1")).thenReturn(true);
 
@@ -95,11 +108,8 @@ class SettlementAdminCommandServiceImplTest {
 
         verifyNoInteractions(auditLogger);
 
-        verify(settlementBatchRepository, times(1))
-                .existsByBatchIdAndResult(1L, SettlementBatchResult.FAIL);
-
-        verify(refundAdjustmentPolicy, times(1))
-                .isRefundAdjustmentPending("S1");
+        verify(settlementBatchRepository, times(1)).findByBatchKey(baseDate);
+        verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
         Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
     }
 
@@ -145,7 +155,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getBatchId()).thenReturn(1L);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(true);
@@ -160,6 +169,7 @@ class SettlementAdminCommandServiceImplTest {
                             .isEqualTo(ReasonCode.HOLD_ACTIVE.name());
                 });
 
+        // HOLD_ACTIVE에서 fail-fast라 아래 의존성들은 호출되면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
@@ -171,7 +181,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getBatchId()).thenReturn(1L);
 
         Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
 
@@ -189,6 +198,7 @@ class SettlementAdminCommandServiceImplTest {
                             .isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
                 });
 
+        // NOT_READY에서 fail-fast라 아래 의존성들은 호출되면 안 됨
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
