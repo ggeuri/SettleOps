@@ -47,7 +47,7 @@ public class RefundAdminService {
         requireComment(comment);
 
         Refund refund = refundRepository.findById(refundId)
-                .orElseThrow(() -> new IllegalArgumentException("Refund not found: " + refundId));
+                .orElseThrow(() -> new BadRequestException("refundId is invalid"));
 
         String requestId = currentRequestId(); // [필수] requestId null/blank면 즉시 실패
 

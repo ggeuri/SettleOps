@@ -3,6 +3,7 @@ import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.QAdminRefundListItemDTO;
 import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundStatus;
 import lombok.RequiredArgsConstructor;
@@ -67,13 +68,12 @@ public class RefundReadRepository {
         }
 
         return queryFactory
-                .select(Projections.constructor(
-                        AdminRefundListItemDTO.class,
+                .select(new QAdminRefundListItemDTO(
                         refund.refundId,
                         refund.paymentId,
                         refund.merchantId,
                         refund.amount,
-                        refund.status.stringValue(), // DTO status가 String이라 stringValue()
+                        refund.status,
                         refund.requestedAt,
                         refund.decidedAt
                 ))

@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * A6 운영 큐 조회(READ).
@@ -26,12 +27,12 @@ public class RefundAdminQueryService {
     public List<AdminRefundListItemDTO> list(String status, LocalDate from, LocalDate to) {
         RefundStatus parsedStatus = parseStatus(status);
 
-        // 옵션 처리: from/to 중 하나만 오면 단일 날짜 조회로 맞춘다(예측 가능)
-        if (from == null && to != null) from = to;
-        if (to == null && from != null) to = from;
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("from must be <= to");
+        }
 
         LocalDateTime fromDt = (from == null) ? null : from.atStartOfDay();
-        LocalDateTime toDt = (to == null) ? null : to.atTime(23, 59, 59, 999_999_999);
+        LocalDateTime toDt = (to == null) ? null : to.atTime(23, 59, 59, 999_999_000);
 
         return refundReadRepository.findAdminRefundQueue(parsedStatus, fromDt, toDt);
     }
@@ -40,7 +41,7 @@ public class RefundAdminQueryService {
         if (status == null || status.isBlank()) return null;
 
         try {
-            return RefundStatus.valueOf(status);
+            return RefundStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             // 파라미터/형식 오류는 400
             throw new BadRequestException("status is invalid");

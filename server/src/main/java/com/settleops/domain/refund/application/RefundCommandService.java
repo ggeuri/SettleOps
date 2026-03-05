@@ -119,8 +119,8 @@ public class RefundCommandService {
         RefundEvent event = RefundEventFactory.requested(
                 refundId,
                 requestId,
-                ActorType.MERCHANT,                 // ✅ merchant 요청이면 MERCHANT
-                payment.getMerchantId(),            // ✅ actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
+                ActorType.MERCHANT,                 // merchant 요청이면 MERCHANT
+                payment.getMerchantId(),            // actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
                 null                                // occurredAt은 @PrePersist가 채움
         );
         refundEventRepository.save(event);
