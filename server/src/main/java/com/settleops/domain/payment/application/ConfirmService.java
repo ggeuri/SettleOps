@@ -43,6 +43,11 @@ public class ConfirmService {
             throw new ConflictException(ReasonCode.PAYMENT_NOT_CAPTURED,"CAPTURED 상태에서만 CONFIRM 가능합니다.");
         }
 
+        // 인증 주체 없음 → 403 UNAUTHORIZED
+        if (currentBuyerId == null || currentBuyerId.isBlank()) {
+            throw new ForbiddenException("UNAUTHORIZED");
+        }
+
         String buyerId = payment.getBuyerId();
 
         // payment.buyer_id 누락은 내부 정합성 오류(500)로 처리(운영자만 보는 오류)

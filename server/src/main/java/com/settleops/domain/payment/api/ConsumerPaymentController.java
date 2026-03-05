@@ -65,7 +65,7 @@ public class ConsumerPaymentController {
             HttpSession session
     ) {
         String buyerId = (String) session.getAttribute(MeController.SessionKeys.BUYER_ID);
-        if (buyerId == null) {
+        if (buyerId == null||buyerId.isBlank()) {
             throw new ForbiddenException("UNAUTHORIZED");
         }
 

@@ -21,6 +21,4 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent,Long>
             @Param("eventType") PaymentEventType eventType
     );
 
-    boolean existsByPaymentIdAndEventType(String paymentId, PaymentEventType eventType);
-
 }
