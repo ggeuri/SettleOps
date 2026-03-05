@@ -1,7 +1,8 @@
 package com.settleops.domain.refund.api.dto;
 
-import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.*;
 
 @Getter
@@ -13,8 +14,9 @@ public class RefundCreateRequestDTO {
     @NotBlank
     private String paymentId;   // UUID 문자열
 
-    @Min(1)
-    private long amount;        // KRW 정수
+    @NotNull
+    @Positive
+    private Long amount;        // KRW 정수
 
     @NotBlank
     private String reasonText;

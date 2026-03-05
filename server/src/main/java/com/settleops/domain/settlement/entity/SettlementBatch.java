@@ -99,4 +99,16 @@ public class SettlementBatch {
         if (v.length() > FAIL_REASON_MAX_LEN) v = v.substring(0, FAIL_REASON_MAX_LEN);
         return v;
     }
+
+    public void markOk(LocalDateTime finishedAt){
+        this.result = SettlementBatchResult.OK;
+        this.failReason = null;
+        this.finishedAt = finishedAt;
+    }
+
+    public void markFail(String failReason, LocalDateTime finishedAt){
+        this.result = SettlementBatchResult.FAIL;
+        this.failReason = normalizeFailReason(SettlementBatchResult.FAIL, failReason);
+        this.finishedAt = finishedAt;
+    }
 }
