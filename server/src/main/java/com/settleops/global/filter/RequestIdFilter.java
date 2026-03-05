@@ -46,6 +46,9 @@ public class RequestIdFilter extends OncePerRequestFilter {
         // 2. MDC에 저장 (로그에 찍히도록 설정)
         MDC.put(REQUEST_ID,requestId);
 
+        // 2-1. Controller가 꺼내 쓸 수 있도록 request attribute에도 저장
+        request.setAttribute(REQUEST_ID, requestId);
+
         // 3. 응답 헤더에 추가 (클라이언트 확인용)
         // ✅ 모든 API 응답은 반드시 X-Request-Id 헤더를 포함해야 한다.
         response.setHeader(REQUEST_ID_HEADER, requestId);

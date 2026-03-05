@@ -5,6 +5,8 @@ import com.settleops.domain.refund.api.dto.RefundCreateRequestDTO;
 import com.settleops.domain.refund.api.dto.RefundResponseDTO;
 import com.settleops.domain.refund.application.RefundCommandService;
 import com.settleops.domain.refund.application.RefundQueryServiceImpl;
+import com.settleops.global.logging.RequestIdKeys;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,12 +24,11 @@ public class RefundController {
     //POST /api/refunds (merchant 환불 요청) (U6)
     @PostMapping("/refunds")
     public ResponseEntity<RefundResponseDTO> requestRefund(
-            @RequestBody @Valid RefundCreateRequestDTO req)
-    {
-        RefundResponseDTO response =
-                refundCommandService.requestRefund(req);
-
-        return ResponseEntity.ok(response);
+            @RequestBody @Valid RefundCreateRequestDTO req,
+            HttpServletRequest request
+    ) {
+        String requestId = (String) request.getAttribute(RequestIdKeys.MDC_KEY);
+        return ResponseEntity.ok(refundCommandService.requestRefund(req, requestId));
     }
     // 브라우저로 들어가서 JSON 보기용 (U6 조회)
     @GetMapping("/me/refunds")

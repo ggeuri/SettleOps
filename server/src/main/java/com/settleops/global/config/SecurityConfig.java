@@ -48,8 +48,6 @@ public class SecurityConfig {
                 .requestMatchers("/error", "/api/health").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/**", "/api/me").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/refunds").permitAll()
-                .requestMatchers("/api/admin/refunds/**").permitAll()
                 .anyRequest().authenticated()
         );
 

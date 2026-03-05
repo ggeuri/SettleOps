@@ -21,9 +21,8 @@ import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,10 +52,7 @@ public class RefundCommandService {
      *   GlobalExceptionHandler에서 409로 매핑해주면 됨
      */
     @Transactional
-    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req) {
-
-        // 0) requestId 필수 (없으면 즉시 실패)
-        String requestId = currentRequestId();
+    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)
         if (req.getReasonText() == null || req.getReasonText().isBlank()) {
@@ -113,7 +109,15 @@ public class RefundCommandService {
                 .decidedAt(null)
                 .build();
 
-        refundRepository.save(refund);
+        try {
+            refundRepository.save(refund);
+        } catch (DataIntegrityViolationException e) {
+            // DB UNIQUE(uk_refund_payment) 충돌로 refund가 이미 존재하는 상황
+            throw new ConflictException(
+                    ReasonCode.REFUND_ALREADY_EXISTS,
+                    "refund already exists for this payment"
+            );
+        }
 
         // 6) refund_event (insert-only) - request_id NOT NULL 강제
         RefundEvent event = RefundEventFactory.requested(
@@ -147,14 +151,6 @@ public class RefundCommandService {
                 .status(RefundStatus.REQUESTED.name())
                 .requestedAt(now)
                 .build();
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId in MDC");
-        }
-        return requestId;
     }
 
     private String buildMetaJsonForRequested(String reasonText) {
