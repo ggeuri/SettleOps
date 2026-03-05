@@ -18,10 +18,11 @@ import com.settleops.global.audit.AuditLogCommand;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
+import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,19 +43,18 @@ public class RefundCommandService {
 
     /**
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
+     *
      * LOCKED 핵심:
-     * - requestedAt SoT는 서비스에서 now로 세팅
-     * - refund_event.request_id NOT NULL 강제 (MDC 없으면 실패)
-     * - audit_log.meta_json은 최소 reason + status diff
-     * - payment CAPTURED 아니면 409(룰 위반)로 처리해야 하지만,
-     *   지금은 최소 코드라 일단 IllegalStateException/커스텀 예외로 던지고
-     *   GlobalExceptionHandler에서 409로 매핑해주면 됨
+     * - requestedAt SoT는 서비스에서 now로 세팅한다.
+     * - requestId는 RequestIdFilter에서 생성/주입되며 Controller를 통해 Service로 전달된다.
+     * - refund_event/audit_log는 requestId NOT NULL을 전제로 하며(누락 시 요청 단계에서 400으로 실패), insert-only로 적재한다.
+     * - payment.status != CAPTURED 이면 409(PAYMENT_NOT_CAPTURED)로 실패한다.
+     * - payment_id 당 refund는 1개만 허용한다. (중복 시 409(REFUND_ALREADY_EXISTS), 레이스는 UNIQUE 충돌을 409로 매핑)
+     * - refundableAmount 가드는 MVP에서는 amount <= capturedAmount로 단순 적용한다. (초과 시 409(INSUFFICIENT_REFUNDABLE))
+     * - audit_log.meta_json은 reasonText와 status diff(before/after)를 포함한다.
      */
     @Transactional
-    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req) {
-
-        // 0) requestId 필수 (없으면 즉시 실패)
-        String requestId = currentRequestId();
+    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)
         if (req.getReasonText() == null || req.getReasonText().isBlank()) {
@@ -62,18 +62,35 @@ public class RefundCommandService {
         }
 
         // 2) payment 존재 + CAPTURED 가드 (LOCKED: CAPTURED일 때만 환불 요청 허용)
+        // Payment 조회 예외를 400으로 변경
         Payment payment = paymentRepository.findById(req.getPaymentId())
-                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + req.getPaymentId()));
+                .orElseThrow(() -> new BadRequestException("paymentId is invalid"));
 
         if (payment.getStatus() != PaymentStatus.CAPTURED) {
-            // ✅ 여기서 409 PAYMENT_NOT_CAPTURED로 매핑되게 예외 타입을 맞추는 게 이상적
-            throw new IllegalStateException("PAYMENT_NOT_CAPTURED");
+            // CAPTURED 가드: IllegalStateException → ConflictException(409)
+            throw new ConflictException(
+                    ReasonCode.PAYMENT_NOT_CAPTURED,
+                    "payment is not captured"
+            );
         }
 
         // 3) payment_id 당 refund 1회 (LOCKED/MVP)
         if (refundRepository.existsByPaymentId(req.getPaymentId())) {
-            // ✅ 여기서 409 REFUND_ALREADY_EXISTS로 매핑
-            throw new IllegalStateException("REFUND_ALREADY_EXISTS");
+            // 409 REFUND_ALREADY_EXISTS로 매핑
+            throw new ConflictException(
+                    ReasonCode.REFUND_ALREADY_EXISTS,
+                    "refund already exists for this payment"
+            );
+        }
+
+        // 3-1) refundableAmount 가드 (MVP 단순 버전)
+        // MVP에서 payment_id 당 refund 1개 제한이므로 "승인합" 계산 대신,
+        // 요청 금액이 capturedAmount를 넘는지만 먼저 방어
+        if (req.getAmount() > payment.getCapturedAmount()) {
+            throw new ConflictException(
+                    ReasonCode.INSUFFICIENT_REFUNDABLE,
+                    "refund amount exceeds captured amount"
+            );
         }
 
         // 4) requestedAt SoT = "업무 요청 시각" (서비스에서 now)
@@ -94,7 +111,15 @@ public class RefundCommandService {
                 .decidedAt(null)
                 .build();
 
-        refundRepository.save(refund);
+        try {
+            refundRepository.save(refund);
+        } catch (DataIntegrityViolationException e) {
+            // DB UNIQUE(uk_refund_payment) 충돌로 refund가 이미 존재하는 상황
+            throw new ConflictException(
+                    ReasonCode.REFUND_ALREADY_EXISTS,
+                    "refund already exists for this payment"
+            );
+        }
 
         // 6) refund_event (insert-only) - request_id NOT NULL 강제
         RefundEvent event = RefundEventFactory.requested(
@@ -128,14 +153,6 @@ public class RefundCommandService {
                 .status(RefundStatus.REQUESTED.name())
                 .requestedAt(now)
                 .build();
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId in MDC");
-        }
-        return requestId;
     }
 
     private String buildMetaJsonForRequested(String reasonText) {
