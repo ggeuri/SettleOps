@@ -43,13 +43,15 @@ public class RefundCommandService {
 
     /**
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
+     *
      * LOCKED 핵심:
-     * - requestedAt SoT는 서비스에서 now로 세팅
-     * - refund_event.request_id NOT NULL 강제 (MDC 없으면 실패)
-     * - audit_log.meta_json은 최소 reason + status diff
-     * - payment CAPTURED 아니면 409(룰 위반)로 처리해야 하지만,
-     *   지금은 최소 코드라 일단 IllegalStateException/커스텀 예외로 던지고
-     *   GlobalExceptionHandler에서 409로 매핑해주면 됨
+     * - requestedAt SoT는 서비스에서 now로 세팅한다.
+     * - requestId는 RequestIdFilter에서 생성/주입되며 Controller를 통해 Service로 전달된다.
+     * - refund_event/audit_log는 requestId NOT NULL을 전제로 하며(누락 시 요청 단계에서 400으로 실패), insert-only로 적재한다.
+     * - payment.status != CAPTURED 이면 409(PAYMENT_NOT_CAPTURED)로 실패한다.
+     * - payment_id 당 refund는 1개만 허용한다. (중복 시 409(REFUND_ALREADY_EXISTS), 레이스는 UNIQUE 충돌을 409로 매핑)
+     * - refundableAmount 가드는 MVP에서는 amount <= capturedAmount로 단순 적용한다. (초과 시 409(INSUFFICIENT_REFUNDABLE))
+     * - audit_log.meta_json은 reasonText와 status diff(before/after)를 포함한다.
      */
     @Transactional
     public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
