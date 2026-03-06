@@ -44,47 +44,46 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
 
+    private static final int TRIGGERED_BY_MAX_LEN = 50;
+
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
+    private final SettlementLineRepository settlementLineRepository;
+    private final PaymentEventRepository paymentEventRepository;
+
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
     private final SettlementBatchRunRecorder settlementBatchRunRecorder;
     private final ObjectMapper objectMapper;
-    private final PaymentEventRepository paymentEventRepository;
-    private final SettlementLineRepository settlementLineRepository;
 
     @Override
     @Transactional
     public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
-        // Trace/Audit SoT: requestId(actor/action) 스냅샷을 시작 시점에 고정해서 끝까지 동일하게 사용
+        // Trace/Audit SoT: requestId/actorId 스냅샷을 시작 시점에 고정해서 끝까지 동일하게 사용
         String requestId = currentRequestId();
         String actorId = currentActorId();
-        String triggeredBy = "ADMIN:" + actorId;
 
-        // 입력 검증: 형식/필수값 문제는 400(BAD_REQUEST)로 처리(상태/가드레일 위반과 혼용 금지)
         if (baseDate == null) {
             throw new BadRequestException("baseDate must not be null");
         }
 
-        // 실행 식별자(runId): 배치 1회 실행을 대표하는 trace 키(응답/감사에서 anchor로 사용)
+        // triggeredBy (DB 길이 50 가드)
+        String triggeredBy = "ADMIN:" + actorId;
+        if (triggeredBy.length() > TRIGGERED_BY_MAX_LEN) {
+            triggeredBy = triggeredBy.substring(0, TRIGGERED_BY_MAX_LEN);
+        }
+
+        // 실행 식별자(runId): 배치 1회 실행을 대표하는 trace 키
         String runId = UUID.randomUUID().toString();
 
-        /*
-         * 배치 시작 레코드 생성(멱등 + 동시성 레이스 처리 포함)
-         * - batch_key(baseDate) UNIQUE 기반
-         * - 이미 존재하면 created=false로 반환(호출자는 SKIP 처리)
-         * - created=true면 saveAndFlush로 batchId까지 확정된 row를 반환
-         */
-        SettlementBatchRunRecorder.StartResult start =
-                settlementBatchRunRecorder.start(baseDate, runId, requestId, triggeredBy);
-
-        /*
-         * 멱등 재실행 정책(LOCKED):
-         * - 동일 baseDate 재실행은 SKIP
-         * - SKIP 이력은 settlement_batch가 아니라 audit_log(Action=BATCH_RUN_SKIPPED)로만 남김
-         */
-        if (!start.created()) {
-            SettlementBatch existing = start.batch();
+        // 1) 배치 시작 row 생성 (멱등은 여기서 catch → SKIP)
+        final SettlementBatch batch;
+        try {
+            batch = settlementBatchRunRecorder.startOrThrow(baseDate, runId, requestId, triggeredBy);
+        } catch (DataIntegrityViolationException e) {
+            // 멱등 재실행 정책(LOCKED): 동일 baseDate 재실행은 SKIP (audit_log로만 남김)
+            SettlementBatch existing = settlementBatchRepository.findByBatchKey(baseDate)
+                    .orElseThrow(() -> new IllegalStateException("batch exists but not found: baseDate=" + baseDate));
 
             auditBatchAction(
                     requestId,
@@ -106,10 +105,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             );
         }
 
-        // batchId가 확정된 상태(REQUIRES_NEW + saveAndFlush) → settlement 생성 시 batchId를 안전하게 참조 가능
-        SettlementBatch batch = start.batch();
-
-        // 운영 재현(선택/권장): 배치 시작 시점의 행위를 audit_log에 남겨 requestId 단위 타임라인을 완성
+        // 2) (선택/권장) 배치 시작 audit
         auditBatchAction(
                 requestId,
                 actorId,
@@ -120,28 +116,24 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
 
         try {
-            /*
-             * A2 핵심: CONFIRMED 대상 선정 규칙(LOCKED)
-             * - payment.status가 아니라 payment_event(PAYMENT_CONFIRMED)로만 판정
-             * - baseDate(KST) 경계: [00:00, next 00:00)로 고정
-             */
+            // 3) CONFIRMED 대상 선정 규칙(LOCKED): payment.status가 아니라 payment_event(PAYMENT_CONFIRMED)
             LocalDateTime from = baseDate.atStartOfDay();
             LocalDateTime to = baseDate.plusDays(1).atStartOfDay();
 
             List<PaymentEventRepository.ConfirmedPaymentRow> rows =
                     paymentEventRepository.findConfirmedPaymentsByOccurredAtRange(from, to);
 
-            // merchant별 집계(gross=ΣcapturedAmount). 금액은 KRW 정수(long) 고정
+            // 4) merchant별 집계 (gross=ΣcapturedAmount)
             Map<String, Long> grossByMerchant = rows.stream()
                     .collect(Collectors.groupingBy(
                             PaymentEventRepository.ConfirmedPaymentRow::getMerchantId,
                             Collectors.summingLong(PaymentEventRepository.ConfirmedPaymentRow::getCapturedAmount)
                     ));
 
-            /*
-             * settlement 생성(SoT): 배치 시점에 계산된 집계 결과를 settlement 헤더(gross/fee/vat/net)에 저장
-             * - fee/vat 룰이 확정되기 전 MVP에서는 0으로 두고, 추후 정책 확정 시 계산식을 반영
-             */
+            // 5) settlement 생성 (SoT)
+            // settlementNo 결정적 규칙(LOCKED): SET-{yyyyMMdd}-{merchantId}
+            String yyyyMMdd = baseDate.toString().replace("-", "");
+
             List<Settlement> settlements = grossByMerchant.entrySet().stream()
                     .map(e -> {
                         String merchantId = e.getKey();
@@ -151,9 +143,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                         long vat = 0L;
                         long net = gross - fee - vat;
 
+                        String settlementNo = "SET-" + yyyyMMdd + "-" + merchantId;
+
                         return Settlement.createReady(
                                 UUID.randomUUID().toString(),
-                                "SET-" + baseDate + "-" + merchantId + "-" + UUID.randomUUID().toString().substring(0, 8),
+                                settlementNo,
                                 batch.getBatchId(),
                                 merchantId,
                                 baseDate,
@@ -167,17 +161,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             settlementRepository.saveAll(settlements);
 
-            // settlement_line 생성 준비: merchantId → settlementId 매핑
+            // 6) settlement_line 생성
             Map<String, String> settlementIdByMerchant = settlements.stream()
-                    .collect(Collectors.toMap(
-                            Settlement::getMerchantId,
-                            Settlement::getSettlementId
-                    ));
+                    .collect(Collectors.toMap(Settlement::getMerchantId, Settlement::getSettlementId));
 
-            /*
-             * settlement_line(PAYMENT) 적재
-             * - amount는 항상 양수 저장, 부호는 lineType(PAYMENT:+ / REFUND:-)로만 해석
-             */
             List<SettlementLine> paymentLines = rows.stream()
                     .map(r -> SettlementLine.of(
                             settlementIdByMerchant.get(r.getMerchantId()),
@@ -189,10 +176,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             settlementLineRepository.saveAll(paymentLines);
 
-            /*
-             * 정합성 검증(LOCKED): settlement.net == Σ(line.amount × sign)
-             * - gross/fee/vat는 line 합으로 검증하지 않음(MVP 금지)
-             */
+            // 7) 정합성 검증(LOCKED): settlement.net == Σ(line.amount × sign)
             Map<String, Long> sumSignedBySettlementId = paymentLines.stream()
                     .collect(Collectors.groupingBy(
                             SettlementLine::getSettlementId,
@@ -211,8 +195,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                     })
                     .toList();
 
+            // 8) 완료 처리(OK/FAIL only)
             if (mismatches.isEmpty()) {
-                // 배치 완료 기록은 Recorder가 전담(REQUIRES_NEW). 본 트랜잭션 롤백과 분리해 운영 재현성을 보호
                 settlementBatchRunRecorder.completeOk(runId);
 
                 auditBatchAction(
@@ -224,7 +208,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                         "OK: settlements=" + settlements.size() + ", paymentLines=" + paymentLines.size()
                 );
 
-                // 응답은 완료 상태(finishedAt 포함)를 보장하기 위해 최신 배치 row를 재조회
                 SettlementBatch finished = settlementBatchRepository.findByRunId(runId)
                         .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
 
@@ -239,9 +222,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 );
             }
 
-            // FAIL: mismatch 내용을 failReason으로 저장(운영 점검/재현용)
             String failReason = String.join(" | ", mismatches);
-
             settlementBatchRunRecorder.completeFail(runId, failReason);
 
             auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL");
@@ -260,7 +241,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             );
 
         } catch (Exception e) {
-            // 예외 케이스도 배치 결과(FAIL)로 수렴시켜 운영 대응을 단순화(OK/FAIL only)
+            // 예외도 FAIL로 수렴
             String failReason = "UNEXPECTED_ERROR: " + e.getClass().getSimpleName();
 
             settlementBatchRunRecorder.completeFail(runId, failReason);
@@ -292,7 +273,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
-        // LOCKED fail-fast (request_id / actor_id SoT)
         String requestId = currentRequestId();
         String actorId = currentActorId();
 
@@ -309,32 +289,22 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = settlement.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    actorId,
-                    Action.SETTLEMENT_PAY_REQUESTED,
-                    settlement,
-                    before,
-                    after,
-                    comment
+                    requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
+                    settlement, before, after, comment
             );
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED)
-        //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
-
+        // 2) 409 reason 우선순위(LOCKED): HOLD_ACTIVE → NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
-
         if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
-
-        if (isBatchFailed(settlement.getBaseDate())) {
+        if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
-
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
@@ -344,15 +314,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         settlement.requestPaid(actorId, LocalDateTime.now());
         String after = settlement.getStatus().name();
 
-        // 4) audit (LOCKED)
         auditSettlementAction(
-                requestId,
-                actorId,
-                Action.SETTLEMENT_PAY_REQUESTED,
-                settlement,
-                before,
-                after,
-                comment
+                requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
+                settlement, before, after, comment
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -361,9 +325,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     @Override
     @Transactional
     public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
-        // LOCKED fail-fast (request_id / actor_id SoT)
         String requestId = currentRequestId();
-        String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일하게 사용)
+        String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일)
 
         if (settlementId == null || settlementId.isBlank()) {
             throw new BadRequestException("settlementId must not be null/blank");
@@ -378,13 +341,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = current.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    approverId,
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    current,
-                    before,
-                    after,
-                    comment
+                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                    current, before, after, comment
             );
             return toPayActionResponse(current, requestId);
         }
@@ -404,18 +362,13 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = settlement.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    approverId,
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    settlement,
-                    before,
-                    after,
-                    comment
+                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                    settlement, before, after, comment
             );
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 4-eyes 검사: requester != approver
+        // 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
             throw new ConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
@@ -428,22 +381,18 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         String after = settlement.getStatus().name();
 
         auditSettlementAction(
-                requestId,
-                approverId,
-                Action.SETTLEMENT_PAY_APPROVED,
-                settlement,
-                before,
-                after,
-                comment
+                requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                settlement, before, after, comment
         );
 
         return toPayActionResponse(settlement, requestId);
     }
 
-    private boolean isBatchFailed(LocalDate baseDate) {
-        if (baseDate == null) return false;
-        return settlementBatchRepository.findByBatchKey(baseDate)
-                .filter(b -> b.getFinishedAt() != null) // 실행 완료된 배치만 판정(선택)
+    private boolean isBatchFailed(Long batchId) {
+        if (batchId == null) return false;
+
+        return settlementBatchRepository.findById(batchId)
+                .filter(b -> b.getFinishedAt() != null) // 완료된 배치만 판정
                 .map(b -> b.getResult() == SettlementBatchResult.FAIL)
                 .orElse(false);
     }
@@ -452,7 +401,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
-
         if (s.isPaid() && s.getPaidApprovedAt() == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
@@ -471,7 +419,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private String currentRequestId() {
         String requestId = MDC.get(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId must not be null/blank (provided by RequestIdFilter)");
+            throw new BadRequestException("requestId must not be null/blank (RequestIdFilter contract violated)");
         }
         return requestId;
     }
@@ -479,15 +427,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new IllegalStateException("actorId must not be null/blank");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
         }
         return auth.getName();
     }
 
-    /**
-     * requestId/actorId를 호출자가 스냅샷으로 넘겨주도록 강제
-     * - 동시성/스레드 전환/컨텍스트 꼬임이 있어도 audit이 흔들리지 않게 한다.
-     */
     private void auditSettlementAction(
             String requestId,
             String actorId,
@@ -529,6 +473,15 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             meta.put("note", note);
         }
 
+        // --- 노션(운영 재현 표준) 정합: no-op 표준 키 강제 ---
+        // SKIP은 "동일 baseDate 재실행 정책"으로 인해 의도적으로 수행되지 않은(no-op) 케이스
+        if (action == Action.BATCH_RUN_SKIPPED) {
+            meta.put("noOp", true);
+            meta.put("noOpReason", "BATCH_KEY_EXISTS");
+        } else {
+            meta.put("noOp", false);
+        }
+
         String metaJson;
         try {
             metaJson = objectMapper.writeValueAsString(meta);
@@ -538,9 +491,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         AuditLogCommand cmd = AuditLogCommand.builder()
                 .requestId(requestId)
-                .merchantId(null) // 배치는 merchant 단위 행위가 아니라 baseDate 단위 행위
+                .merchantId(null)               // 배치는 baseDate 단위 행위
                 .entityType(EntityType.BATCH)
-                .entityId(runId) // 추적은 runId가 제일 명확
+                .entityId(runId)                // 추적 anchor = runId
                 .occurredAt(LocalDateTime.now())
                 .actorType(ActorType.ADMIN)
                 .actorId(actorId)
@@ -556,32 +509,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private String buildMetaJson(String comment) {
         try {
             Map<String, Object> meta = new HashMap<>();
-            if (comment != null && !comment.isBlank()) {
-                meta.put("comment", comment);
-            }
+            meta.put("comment", (comment == null || comment.isBlank()) ? null : comment);
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
         }
-    }
-
-    // 현재 runBatch는 TODO지만, 이미 클래스에 존재하므로 유지 (컴파일/리팩토링 안전)
-    @SuppressWarnings("unused")
-    private SettlementBatchRunResponse toBatchRunResponse(
-            String requestId,
-            SettlementBatch batch,
-            SettlementBatchRunResponse.RunResult result
-    ) {
-        String failReason = (result == SettlementBatchRunResponse.RunResult.FAIL) ? batch.getFailReason() : null;
-
-        return new SettlementBatchRunResponse(
-                requestId,
-                batch.getBatchKey(),
-                batch.getRunId(),
-                result,
-                failReason,
-                batch.getCreatedAt(),
-                batch.getFinishedAt()
-        );
     }
 }

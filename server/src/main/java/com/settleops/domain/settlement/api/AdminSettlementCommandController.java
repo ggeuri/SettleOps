@@ -13,10 +13,10 @@ import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/admin")
-public class AdminSettlementController {
+public class AdminSettlementCommandController {
     private final SettlementAdminCommandService commandService;
 
-    public AdminSettlementController(SettlementAdminCommandService commandService) {
+    public AdminSettlementCommandController(SettlementAdminCommandService commandService) {
         this.commandService = commandService;
     }
 

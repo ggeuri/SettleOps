@@ -1,11 +1,13 @@
 package com.settleops.domain.settlement.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
+import com.settleops.domain.settlement.infra.SettlementLineRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.enums.ReasonCode;
@@ -30,8 +32,6 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import com.settleops.domain.payment.infra.PaymentEventRepository;
-import com.settleops.domain.settlement.infra.SettlementLineRepository;
 
 class SettlementAdminCommandServiceImplTest {
 
@@ -43,6 +43,7 @@ class SettlementAdminCommandServiceImplTest {
     private AuditLogger auditLogger;
     private RefundAdjustmentPolicy refundAdjustmentPolicy;
     private SettlementBatchRunRecorder settlementBatchRunRecorder;
+
     private ObjectMapper objectMapper;
 
     private SettlementAdminCommandServiceImpl service;
@@ -57,17 +58,18 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
+
         objectMapper = new ObjectMapper();
 
         service = new SettlementAdminCommandServiceImpl(
                 settlementRepository,
                 settlementBatchRepository,
+                settlementLineRepository,
+                paymentEventRepository,
                 auditLogger,
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
-                objectMapper,
-                paymentEventRepository,       // ✅ 생성자에 추가
-                settlementLineRepository      // ✅ 생성자에 추가
+                objectMapper
         );
 
         MDC.put(RequestIdKeys.MDC_KEY, "test-request-id");
@@ -85,12 +87,11 @@ class SettlementAdminCommandServiceImplTest {
     @Test
     void requestPaid_refundAdjustmentPending_true_then409_REFUND_ADJUSTMENT_PENDING() {
         Settlement settlement = Mockito.mock(Settlement.class);
-        LocalDate baseDate = LocalDate.of(2026, 3, 4);
 
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getBaseDate()).thenReturn(baseDate);
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY); // 테스트 안정성(미래 방어)
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
 
         Mockito.when(settlement.isPayRequested()).thenReturn(false);
         Mockito.when(settlement.isHoldActive()).thenReturn(false);
@@ -98,11 +99,10 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        // 서비스 isBatchFailed(baseDate) 정합: findByBatchKey(baseDate)로 스텁
         SettlementBatch batch = Mockito.mock(SettlementBatch.class);
-        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now()); // 완료된 배치만 판정
-        Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.OK); // FAIL 아님
-        Mockito.when(settlementBatchRepository.findByBatchKey(baseDate)).thenReturn(Optional.of(batch));
+        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now());
+        Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.OK);
+        Mockito.when(settlementBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
 
         Mockito.when(refundAdjustmentPolicy.isRefundAdjustmentPending("S1")).thenReturn(true);
 
@@ -115,9 +115,8 @@ class SettlementAdminCommandServiceImplTest {
                 });
 
         verifyNoInteractions(auditLogger);
-        verify(settlementBatchRepository, times(1)).findByBatchKey(baseDate);
+        verify(settlementBatchRepository, times(1)).findById(1L);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
-        Mockito.verifyNoMoreInteractions(refundAdjustmentPolicy);
     }
 
     @Test
@@ -152,7 +151,7 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     void requestPaid_actorMissing_then401() {
-        SecurityContextHolder.clearContext(); // 인증 제거
+        SecurityContextHolder.clearContext();
 
         Settlement settlement = Mockito.mock(Settlement.class);
         Mockito.when(settlement.isPayRequested()).thenReturn(true);

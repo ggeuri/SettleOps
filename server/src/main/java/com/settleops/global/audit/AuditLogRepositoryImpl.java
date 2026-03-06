@@ -2,6 +2,7 @@ package com.settleops.global.audit;
 
 import com.querydsl.core.types.dsl.BooleanExpression;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.settleops.global.enums.Action;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -69,5 +70,54 @@ public class AuditLogRepositoryImpl implements  AuditLogQuery{
         // countQuery는 "필요할 때만" 실행되도록 lazy 처리
         return PageableExecutionUtils.getPage(content,pageable,() -> Optional.ofNullable(countQuery.fetchOne()).orElse(0L));
 
+    }
+
+    /**
+     * A2 (Batch SKIP) 전용: action + entityType(BATCH) + 기간
+     */
+    @Override
+    public Page<AuditLog> findByActionAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(
+            Action action,
+            EntityType entityType,
+            LocalDateTime from,
+            LocalDateTime to,
+            Pageable pageable
+    ) {
+        return pageWithAction(
+                null, // A2 SKIP 목록: requestId/merchantId 같은 keyCond 없음
+                auditLog.entityType.eq(entityType),
+                auditLog.action.eq(action),
+                auditLog.occurredAt.between(from, to),
+                pageable
+        );
+    }
+    // A2(SKIP) 전용: actionCond 포함
+    private Page<AuditLog> pageWithAction(
+            BooleanExpression keyCond,
+            BooleanExpression entityTypeCond,
+            BooleanExpression actionCond,
+            BooleanExpression rangeCond,
+            Pageable pageable
+    ) {
+        BooleanExpression whereCond = allOf(keyCond, entityTypeCond, actionCond, rangeCond);
+
+        List<AuditLog> content = jpaQueryFactory
+                .selectFrom(auditLog)
+                .where(whereCond)
+                .orderBy(auditLog.occurredAt.desc(), auditLog.auditId.desc())
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+
+        var countQuery = jpaQueryFactory
+                .select(auditLog.count())
+                .from(auditLog)
+                .where(whereCond);
+
+        return PageableExecutionUtils.getPage(
+                content,
+                pageable,
+                () -> Optional.ofNullable(countQuery.fetchOne()).orElse(0L)
+        );
     }
 }
