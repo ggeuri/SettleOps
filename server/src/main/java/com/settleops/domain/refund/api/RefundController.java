@@ -5,7 +5,6 @@ import com.settleops.domain.refund.api.dto.RefundCreateRequestDTO;
 import com.settleops.domain.refund.api.dto.RefundResponseDTO;
 import com.settleops.domain.refund.application.RefundCommandService;
 import com.settleops.domain.refund.application.RefundQueryServiceImpl;
-import com.settleops.global.error.BadRequestException;
 import com.settleops.global.logging.RequestIdKeys;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,7 +29,7 @@ public class RefundController {
     ) {
         String requestId = (String) request.getAttribute(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId is null/blank");
+            throw new IllegalStateException("Missing requestId");
         }
         return ResponseEntity.ok(refundCommandService.requestRefund(req, requestId));
     }

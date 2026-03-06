@@ -15,9 +15,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,32 +26,58 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class RefundAdminService {
-    //핵심 로직(approve 예시):
-    //refund 조회
-    //상태가 이미 APPROVED면 no-op 200: 기존 decidedAt 그대로 반환
-    //상태가 이미 REJECTED면 팀 정책에 따라
-    //피드백 문장 그대로 해석하면 no-op 200 수렴이므로 no-op으로 맞추는 게 안전합니다.
-    //상태가 REQUESTED일 때만 refund.approve(now) 호출
-    //응답은 반드시 status + decidedAt를 포함합니다.
+    // 핵심 로직(approve/reject 공통):
+    // - refund 조회
+    // - requestId는 Controller가 Filter 주입값을 전달하며, Service는 검증만 수행
+    // - 상태가 이미 APPROVED / REJECTED면 no-op 200으로 수렴
+    // - no-op이어도 audit_log는 반드시 기록하고, meta_json.noOp / noOpReason을 남긴다
+    // - 상태가 REQUESTED일 때만 approve(now) / reject(now) 전이 수행
+    // - 응답은 status + decidedAt + requestId를 반환한다
 
     private final RefundRepository refundRepository;
     private final RefundEventRepository refundEventRepository;
     private final AuditLogger auditLogger;
     private final ObjectMapper objectMapper;
 
+    /**
+     * A6 운영 환불 승인.
+     * - REQUESTED -> APPROVED 전이만 수행한다
+     * - 이미 APPROVED / REJECTED면 no-op 200으로 응답한다
+     * - no-op 여부와 사유는 audit_log.meta_json.noOp / noOpReason으로 기록한다
+     */
     @Transactional
-    public AdminRefundDecisionResponseDTO approve(String refundId, String adminId, String comment) {
+    public AdminRefundDecisionResponseDTO approve(String refundId, String adminId, String comment, String requestId) {
 
         requireComment(comment);
+        requireRequestId(requestId);
 
         Refund refund = refundRepository.findById(refundId)
                 .orElseThrow(() -> new BadRequestException("refundId is invalid"));
 
-        String requestId = currentRequestId(); // [필수] requestId null/blank면 즉시 실패
-
         // [필수] no-op 200 수렴(이미 결정됨)
         if (refund.getStatus() == RefundStatus.APPROVED || refund.getStatus() == RefundStatus.REJECTED) {
             requireDecidedAtIfDecided(refund);   // decidedAt 정합 깨졌으면 빨리 터뜨리기
+
+            String noOpReason = getRefundNoOpReason(refund.getStatus());
+
+            auditLogger.log(AuditLogCommand.builder()
+                    .requestId(requestId)
+                    .actorType(ActorType.ADMIN)
+                    .actorId(adminId)
+                    .action(Action.REFUND_APPROVED)
+                    .entityType(EntityType.REFUND)
+                    .entityId(refund.getRefundId())
+                    .statusBefore(refund.getStatus().name())
+                    .statusAfter(refund.getStatus().name())
+                    .merchantId(refund.getMerchantId())
+                    .metaJson(buildMetaJson(
+                            comment,
+                            refund.getStatus().name(),
+                            refund.getStatus().name(),
+                            true,
+                            noOpReason
+                    ))
+                    .build());
             return response(refund, requestId);  // 여기서 종료
         }
 
@@ -84,26 +108,59 @@ public class RefundAdminService {
                 .statusBefore(before.name())
                 .statusAfter(refund.getStatus().name())
                 .merchantId(refund.getMerchantId())
-                .metaJson(buildMetaJson(comment, before.name(), refund.getStatus().name()))
+                .metaJson(buildMetaJson(
+                        comment,
+                        before.name(),
+                        refund.getStatus().name(),
+                        false,
+                        null
+                ))
                 .build());
 
         requireDecidedAtIfDecided(refund);
         return response(refund, requestId);
     }
 
+    /**
+     * A6 운영 환불 거절.
+     * - REQUESTED -> REJECTED 전이만 수행한다
+     * - 이미 APPROVED / REJECTED면 no-op 200으로 응답한다
+     * - no-op 여부와 사유는 audit_log.meta_json.noOp / noOpReason으로 기록한다
+     */
     @Transactional
-    public AdminRefundDecisionResponseDTO reject(String refundId, String adminId, String comment) {
+    public AdminRefundDecisionResponseDTO reject(String refundId, String adminId, String comment, String requestId) {
 
         requireComment(comment);
+        requireRequestId(requestId);
 
         Refund refund = refundRepository.findById(refundId)
-                .orElseThrow(() -> new IllegalArgumentException("Refund not found: " + refundId));
-
-        String requestId = currentRequestId();
+                .orElseThrow(() -> new BadRequestException("refundId is invalid"));
 
         // [필수] no-op 200 수렴
         if (refund.getStatus() == RefundStatus.APPROVED || refund.getStatus() == RefundStatus.REJECTED) {
             requireDecidedAtIfDecided(refund);
+
+            String noOpReason = getRefundNoOpReason(refund.getStatus());
+
+            auditLogger.log(AuditLogCommand.builder()
+                    .requestId(requestId)
+                    .actorType(ActorType.ADMIN)
+                    .actorId(adminId)
+                    .action(Action.REFUND_REJECTED)
+                    .entityType(EntityType.REFUND)
+                    .entityId(refund.getRefundId())
+                    .statusBefore(refund.getStatus().name())
+                    .statusAfter(refund.getStatus().name())
+                    .merchantId(refund.getMerchantId())
+                    .metaJson(buildMetaJson(
+                            comment,
+                            refund.getStatus().name(),
+                            refund.getStatus().name(),
+                            true,
+                            noOpReason
+                    ))
+                    .build());
+
             return response(refund, requestId);
         }
 
@@ -131,8 +188,13 @@ public class RefundAdminService {
                 .statusBefore(before.name())
                 .statusAfter(refund.getStatus().name())
                 .merchantId(refund.getMerchantId())
-                .metaJson(buildMetaJson(comment, before.name(), refund.getStatus().name()))
-                .build());
+                .metaJson(buildMetaJson(
+                        comment,
+                        before.name(),
+                        refund.getStatus().name(),
+                        false,
+                        null
+                ))                .build());
 
         requireDecidedAtIfDecided(refund);
         return response(refund, requestId);
@@ -143,6 +205,13 @@ public class RefundAdminService {
         if (comment == null || comment.isBlank()) {
             throw new BadRequestException("comment is required");// 400 고정
             // 또는 커스텀 BadRequest 예외로 400 매핑
+        }
+    }
+
+    // 조회가 아니라 검증만
+    private void requireRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalStateException("Missing requestId");
         }
     }
 
@@ -163,20 +232,16 @@ public class RefundAdminService {
                 .build();
     }
 
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            // [필수] request_id 누락 insert 금지 → 저장 전에 실패
-            throw new IllegalStateException("Missing requestId in MDC");
-        }
-        return requestId;
-    }
-
-    private String buildMetaJson(String comment, String before, String after) {
+    private String buildMetaJson(String comment, String before, String after, boolean noOp, String noOpReason) {
         try {
             Map<String, Object> meta = new HashMap<>();
 
             meta.put("comment", comment);
+            meta.put("noOp", noOp);
+
+            if (noOp) {
+                meta.put("noOpReason", noOpReason);
+            }
 
             Map<String, Object> statusDiff = new HashMap<>();
             statusDiff.put("before", before);
@@ -194,4 +259,11 @@ public class RefundAdminService {
         }
     }
 
+    private String getRefundNoOpReason(RefundStatus status) {
+        return switch (status) {
+            case APPROVED -> "ALREADY_APPROVED";
+            case REJECTED -> "ALREADY_REJECTED";
+            default -> throw new IllegalArgumentException("No noOpReason for status: " + status);
+        };
+    }
 }

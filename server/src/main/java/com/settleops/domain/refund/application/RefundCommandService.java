@@ -21,9 +21,7 @@ import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,17 +44,18 @@ public class RefundCommandService {
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
      * LOCKED 핵심:
      * - requestedAt SoT는 서비스에서 now로 세팅
-     * - refund_event.request_id NOT NULL 강제 (MDC 없으면 실패)
-     * - audit_log.meta_json은 최소 reason + status diff
-     * - payment CAPTURED 아니면 409(룰 위반)로 처리해야 하지만,
-     *   지금은 최소 코드라 일단 IllegalStateException/커스텀 예외로 던지고
-     *   GlobalExceptionHandler에서 409로 매핑해주면 됨
+     * - requestId는 Controller가 Filter 주입값을 전달하며, null/blank면 즉시 실패
+     * - refund_event.request_id / audit_log.request_id는 NOT NULL 계약을 지켜야 한다
+     * - audit_log.meta_json은 최소 reasonText + status diff를 남긴다
+     * - payment.status가 CAPTURED가 아니면 409 RULE_VIOLATION으로 처리한다
      */
     @Transactional
-    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req) {
+    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
 
         // 0) requestId 필수 (없으면 즉시 실패)
-        String requestId = currentRequestId();
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalStateException("Missing requestId");
+        }
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)
         if (req.getReasonText() == null || req.getReasonText().isBlank()) {
@@ -147,14 +146,6 @@ public class RefundCommandService {
                 .status(RefundStatus.REQUESTED.name())
                 .requestedAt(now)
                 .build();
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId in MDC");
-        }
-        return requestId;
     }
 
     private String buildMetaJsonForRequested(String reasonText) {
