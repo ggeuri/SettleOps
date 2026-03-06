@@ -22,7 +22,6 @@ import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,18 +42,20 @@ public class RefundCommandService {
 
     /**
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
-     *
      * LOCKED 핵심:
-     * - requestedAt SoT는 서비스에서 now로 세팅한다.
-     * - requestId는 RequestIdFilter에서 생성/주입되며 Controller를 통해 Service로 전달된다.
-     * - refund_event/audit_log는 requestId NOT NULL을 전제로 하며(누락 시 요청 단계에서 400으로 실패), insert-only로 적재한다.
-     * - payment.status != CAPTURED 이면 409(PAYMENT_NOT_CAPTURED)로 실패한다.
-     * - payment_id 당 refund는 1개만 허용한다. (중복 시 409(REFUND_ALREADY_EXISTS), 레이스는 UNIQUE 충돌을 409로 매핑)
-     * - refundableAmount 가드는 MVP에서는 amount <= capturedAmount로 단순 적용한다. (초과 시 409(INSUFFICIENT_REFUNDABLE))
-     * - audit_log.meta_json은 reasonText와 status diff(before/after)를 포함한다.
+     * - requestedAt SoT는 서비스에서 now로 세팅
+     * - requestId는 Controller가 Filter 주입값을 전달하며, null/blank면 즉시 실패
+     * - refund_event.request_id / audit_log.request_id는 NOT NULL 계약을 지켜야 한다
+     * - audit_log.meta_json은 최소 reasonText + status diff를 남긴다
+     * - payment.status가 CAPTURED가 아니면 409 RULE_VIOLATION으로 처리한다
      */
     @Transactional
     public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
+
+        // 0) requestId 필수 (없으면 즉시 실패)
+        if (requestId == null || requestId.isBlank()) {
+            throw new BadRequestException("requestId is null/blank");
+        }
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)
         if (req.getReasonText() == null || req.getReasonText().isBlank()) {
@@ -111,22 +112,14 @@ public class RefundCommandService {
                 .decidedAt(null)
                 .build();
 
-        try {
-            refundRepository.save(refund);
-        } catch (DataIntegrityViolationException e) {
-            // DB UNIQUE(uk_refund_payment) 충돌로 refund가 이미 존재하는 상황
-            throw new ConflictException(
-                    ReasonCode.REFUND_ALREADY_EXISTS,
-                    "refund already exists for this payment"
-            );
-        }
+        refundRepository.save(refund);
 
         // 6) refund_event (insert-only) - request_id NOT NULL 강제
         RefundEvent event = RefundEventFactory.requested(
                 refundId,
                 requestId,
-                ActorType.MERCHANT,                 // ✅ merchant 요청이면 MERCHANT
-                payment.getMerchantId(),            // ✅ actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
+                ActorType.MERCHANT,                 // merchant 요청이면 MERCHANT
+                payment.getMerchantId(),            // actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
                 null                                // occurredAt은 @PrePersist가 채움
         );
         refundEventRepository.save(event);

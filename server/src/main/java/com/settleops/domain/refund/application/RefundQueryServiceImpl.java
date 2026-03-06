@@ -26,7 +26,7 @@ public class RefundQueryServiceImpl implements RefundQueryService {
                         r.getPaymentId(),
                         r.getMerchantId(),
                         r.getAmount(),
-                        r.getStatus().name(),   // enum이면 name()
+                        r.getStatus(),
                         r.getRequestedAt(),
                         r.getDecidedAt()
                 ))
