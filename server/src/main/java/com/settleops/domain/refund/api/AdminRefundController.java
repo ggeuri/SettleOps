@@ -5,6 +5,7 @@ import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.logging.RequestIdKeys;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -54,7 +55,7 @@ public class AdminRefundController {
         String adminId = userDetails.getUsername();
         String requestId = (String)request.getAttribute(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId");
+            throw new BadRequestException("requestId is null/blank");
         }
         return ResponseEntity.ok(refundAdminService.approve(refundId, adminId, req.getComment(), requestId));
     }
@@ -70,7 +71,7 @@ public class AdminRefundController {
         String adminId = userDetails.getUsername();
         String requestId = (String) request.getAttribute(RequestIdKeys.MDC_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId");
+            throw new BadRequestException("requestId is null/blank");
         }
         return ResponseEntity.ok(refundAdminService.reject(refundId, adminId, req.getComment(), requestId));
     }

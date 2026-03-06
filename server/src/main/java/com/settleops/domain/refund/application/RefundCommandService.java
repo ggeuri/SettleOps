@@ -54,7 +54,7 @@ public class RefundCommandService {
 
         // 0) requestId 필수 (없으면 즉시 실패)
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId");
+            throw new BadRequestException("requestId is null/blank");
         }
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)

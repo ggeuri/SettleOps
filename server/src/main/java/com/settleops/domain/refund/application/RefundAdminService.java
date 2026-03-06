@@ -211,7 +211,7 @@ public class RefundAdminService {
     // 조회가 아니라 검증만
     private void requireRequestId(String requestId) {
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId");
+            throw new BadRequestException("requestId is null/blank");
         }
     }
 
