@@ -22,11 +22,16 @@ public record ErrorResponse(
         String message        // 사용자 메시지
 ) {
 
+    private static final String UNAUTHORIZED = "UNAUTHORIZED";
     private static final String RULE_VIOLATION = "RULE_VIOLATION";
     private static final String FORBIDDEN = "FORBIDDEN";
     private static final String BAD_REQUEST = "BAD_REQUEST";
     private static final String INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR";
 
+    // 401 UnauthorizedException용
+    public static ErrorResponse ofUnauthorized(String message) {
+        return new ErrorResponse(UNAUTHORIZED, null, message);
+    }
     // 기획서 0-2 정책: 409 Conflict 전용 정적 팩토리 메서드
     public static ErrorResponse ofRuleViolation(ReasonCode reason, String message) {
         return new ErrorResponse(RULE_VIOLATION, reason.name(), message);

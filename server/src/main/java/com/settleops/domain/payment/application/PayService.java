@@ -18,7 +18,6 @@ import com.settleops.global.enums.IdempotencyTargetType;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -57,10 +56,15 @@ public class PayService {
      * </ol>
      */
     @Transactional
-    public PayResponseDTO pay(String orderId, String idempotencyKey) {
+    public PayResponseDTO pay(String orderId, String idempotencyKey, String requestId) {
 
         // 1. 필수 파라미터 검증
         validateInputs(orderId, idempotencyKey);
+
+        // requestId 필수(LOCKED: event/audit request_id NOT NULL)
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalStateException("requestId is null/blank");
+        }
 
         final IdempotencyTargetType targetType = IdempotencyTargetType.PAY_ORDER;
 
@@ -90,14 +94,14 @@ public class PayService {
                 throw new ConflictException(ReasonCode.IN_PROGRESS, "결제가 진행 중입니다.");
             }
             // CAPTURED가 확정된 경우에만 멱등 저장
-            saveIdempotencyIgnoreDuplicate(targetType, orderId, idempotencyKey, payment.getPaymentId());
+            saveIdempotencyIgnoreDuplicate(targetType, orderId, idempotencyKey, payment.getPaymentId(),requestId);
 
             LocalDateTime capturedAt = getCapturedAtOrThrow(payment);
             return PayResponseDTO.from(payment,capturedAt);
         }
 
         // 7. PAYMENT_EVENT :: CREATED (insert-only, duplicate ignore)
-        saveEventIgnoreDuplicate(PaymentEvent.created(payment.getPaymentId()));
+        saveEventIgnoreDuplicate(PaymentEvent.created(payment.getPaymentId(),requestId));
 
         PaymentStatus paymentStatusBefore = payment.getStatus();
 
@@ -108,11 +112,11 @@ public class PayService {
         payment = paymentRepository.saveAndFlush(payment);
 
         // 10. PAYMENT_EVENT :: CAPTURED (duplicate면 DB 상태로 수렴)
-        payment = saveCapturedEventOrConverge(payment);
+        payment = saveCapturedEventOrConverge(payment,requestId);
 
         // MVP: pay에서는 PAYMENT_CAPTURED만 audit (PAYMENT_CREATED는 payment_event로 대체)
         auditLogger.log(AuditLogCommand.builder()
-                .requestId(RequestIdProvider.current())            // MDC에서 전역 requestId 획득
+                .requestId(requestId)            // MDC에서 전역 requestId 획득
                 .action(Action.PAYMENT_CAPTURED)            // 기획서 명시 액션 코드
                 .actorType(ActorType.BUYER)                 // 또는 SYSTEM
                 .actorId(orders.getBuyerId())
@@ -132,7 +136,7 @@ public class PayService {
         orderService.markPaid(orderId);
 
         // 12. idempotency_record 저장 (duplicate면 기존 payment로 수렴)
-        Payment finalPayment = saveIdempotencyOrConverge(targetType, orderId, idempotencyKey, payment);
+        Payment finalPayment = saveIdempotencyOrConverge(targetType, orderId, idempotencyKey, payment,requestId);
 
         // capturedAt 체크
         LocalDateTime capturedAt = getCapturedAtOrThrow(finalPayment);
@@ -206,9 +210,9 @@ public class PayService {
      *
      * <p>이미 존재하는 경우 DB의 payment 상태를 재조회하여 수렴한다.</p>
      */
-    private Payment saveCapturedEventOrConverge(Payment payment) {
+    private Payment saveCapturedEventOrConverge(Payment payment,String requestId) {
         try {
-            paymentEventRepository.save(PaymentEvent.captured(payment.getPaymentId()));
+            paymentEventRepository.save(PaymentEvent.captured(payment.getPaymentId(),requestId));
             return payment;
         } catch (DataIntegrityViolationException e) {
             if (!isDuplicate(e)) throw e;
@@ -266,7 +270,8 @@ public class PayService {
     private Payment saveIdempotencyOrConverge(IdempotencyTargetType targetType,
                                               String orderId,
                                               String idempotencyKey,
-                                              Payment payment) {
+                                              Payment payment,
+                                              String requestId) {
         try {
             idempotencyRecordRepository.save(
                     IdempotencyRecord.create(
@@ -274,7 +279,8 @@ public class PayService {
                             orderId,
                             idempotencyKey,
                             payment.getPaymentId(),
-                            200
+                            200,
+                            requestId
                     )
             );
             return payment;
@@ -298,7 +304,8 @@ public class PayService {
     private void saveIdempotencyIgnoreDuplicate(IdempotencyTargetType targetType,
                                                 String orderId,
                                                 String idempotencyKey,
-                                                String paymentId) {
+                                                String paymentId,
+                                                String requestId) {
         try {
             idempotencyRecordRepository.save(
                     IdempotencyRecord.create(
@@ -306,7 +313,8 @@ public class PayService {
                             orderId,
                             idempotencyKey,
                             paymentId,
-                            200
+                            200,
+                            requestId
                     )
             );
         } catch (DataIntegrityViolationException e) {

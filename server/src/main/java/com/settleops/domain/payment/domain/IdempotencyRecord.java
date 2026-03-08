@@ -1,11 +1,9 @@
 package com.settleops.domain.payment.domain;
 
 import com.settleops.global.enums.IdempotencyTargetType;
-import com.settleops.global.logging.RequestIdProvider;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
 
@@ -27,8 +25,6 @@ import java.time.LocalDateTime;
         }
 )
 public class IdempotencyRecord {
-
-        private final static String MDC_KEY = "requestId";
 
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,7 +50,7 @@ public class IdempotencyRecord {
         @Column(name = "request_id", columnDefinition = "char(36)", nullable = false)
         private String requestId; // X-Request-Id (E2E 재현용)
 
-        @Column(name = "created_at", nullable = false, updatable = false,
+        @Column(name = "created_at", nullable = false, updatable = false, insertable = false,
                 columnDefinition = "datetime(3)")
         private LocalDateTime createdAt;
 
@@ -64,7 +60,8 @@ public class IdempotencyRecord {
                 String orderId,
                 String idempotencyKey,
                 String paymentId,
-                int responseStatus
+                int responseStatus,
+                String requestId
         ) {
                 if (targetType == null) {
                         throw new IllegalArgumentException("targetType은 필수입니다.");
@@ -78,8 +75,9 @@ public class IdempotencyRecord {
                 if (paymentId == null || paymentId.isBlank()) {
                         throw new IllegalArgumentException("paymentId는 필수입니다.");
                 }
-
-                String requestId = RequestIdProvider.current();
+                if (requestId == null || requestId.isBlank()) {
+                        throw new IllegalArgumentException("requestId는 필수입니다.");
+                }
 
                 IdempotencyRecord record = new IdempotencyRecord();
                 record.targetType = targetType;
@@ -88,7 +86,6 @@ public class IdempotencyRecord {
                 record.paymentId = paymentId;
                 record.responseStatus = responseStatus;
                 record.requestId = requestId;
-                record.createdAt = LocalDateTime.now();
 
                 return record;
         }

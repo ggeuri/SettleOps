@@ -1,9 +1,11 @@
 package com.settleops.domain.payment.api;
 
-import com.settleops.domain.payment.api.dto.PayResponseDTO;
+import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.application.ConfirmService;
 import com.settleops.global.auth.controller.MeController;
-import com.settleops.global.error.ForbiddenException;
+import com.settleops.global.error.UnauthorizedException;
+import com.settleops.global.logging.RequestIdKeys;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +41,7 @@ public class ConsumerPaymentController {
      * <p>권한 검증</p>
      * <ul>
      *   <li>요청 사용자의 buyerId와 payment.buyer_id가 일치해야 한다.</li>
+     *   <li>buyerId 누락 시 <b>401 UNAUTHORIZED</b>를 반환한다.</li>
      *   <li>불일치 시 <b>403 BUYER_MISMATCH</b>를 반환한다.</li>
      * </ul>
      *
@@ -60,16 +63,22 @@ public class ConsumerPaymentController {
      * </ul>
      */
     @PostMapping("/{paymentId}/confirm")
-    public PayResponseDTO confirm(
+    public ConfirmResponseDTO confirm(
             @PathVariable String paymentId,
-            HttpSession session
+            HttpSession session,
+            HttpServletRequest request
     ) {
         String buyerId = (String) session.getAttribute(MeController.SessionKeys.BUYER_ID);
         if (buyerId == null||buyerId.isBlank()) {
-            throw new ForbiddenException("UNAUTHORIZED");
+            throw new UnauthorizedException("인증이 필요합니다.");
         }
 
-        return confirmService.confirm(paymentId, buyerId);
+        String requestId = (String) request.getAttribute(RequestIdKeys.ATTR_KEY);
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalStateException("requestId is missing in request attribute");
+        }
+
+        return confirmService.confirm(paymentId, buyerId, requestId);
     }
 
 }
