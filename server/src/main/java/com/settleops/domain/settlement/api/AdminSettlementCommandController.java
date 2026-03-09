@@ -4,6 +4,8 @@ import com.settleops.domain.settlement.application.SettlementAdminCommandService
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionRequest;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
+import com.settleops.global.logging.RequestIdKeys;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -32,9 +34,11 @@ public class AdminSettlementCommandController {
     public ResponseEntity<SettlementBatchRunResponse> runBatch(
             @RequestParam("baseDate")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-            LocalDate baseDate
+            LocalDate baseDate,
+            HttpServletRequest request
     ) {
-        return ResponseEntity.ok(commandService.runBatch(baseDate));
+        String requestId = extractRequestId(request);
+        return ResponseEntity.ok(commandService.runBatch(baseDate, requestId));
     }
 
     /**
@@ -48,10 +52,12 @@ public class AdminSettlementCommandController {
     @PatchMapping("/settlements/{settlementId}/request-paid")
     public ResponseEntity<SettlementPayActionResponse> requestPaid(
             @PathVariable String settlementId,
-            @RequestBody(required = false) @Valid SettlementPayActionRequest body
+            @RequestBody(required = false) @Valid SettlementPayActionRequest body,
+            HttpServletRequest request
     ) {
         String comment = (body == null) ? null : body.comment();
-        return ResponseEntity.ok(commandService.requestPaid(settlementId, comment));
+        String requestId = extractRequestId(request);
+        return ResponseEntity.ok(commandService.requestPaid(settlementId, comment, requestId));
     }
 
     /**
@@ -67,9 +73,19 @@ public class AdminSettlementCommandController {
     @PatchMapping("/settlements/{settlementId}/approve-paid")
     public ResponseEntity<SettlementPayActionResponse> approvePaid(
             @PathVariable String settlementId,
-            @RequestBody(required = false) @Valid SettlementPayActionRequest body
+            @RequestBody(required = false) @Valid SettlementPayActionRequest body,
+            HttpServletRequest request
     ) {
         String comment = (body == null) ? null : body.comment();
-        return ResponseEntity.ok(commandService.approvePaid(settlementId, comment));
+        String requestId = extractRequestId(request);
+        return ResponseEntity.ok(commandService.approvePaid(settlementId, comment, requestId));
+    }
+
+    private String extractRequestId(HttpServletRequest request) {
+        Object value = request.getAttribute(RequestIdKeys.MDC_KEY);
+        if (!(value instanceof String requestId) || requestId.isBlank()) {
+            throw new IllegalStateException("requestId must be provided by RequestIdFilter");
+        }
+        return requestId;
     }
 }

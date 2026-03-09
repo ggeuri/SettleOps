@@ -13,17 +13,14 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -72,7 +69,6 @@ class SettlementAdminCommandServiceImplTest {
                 objectMapper
         );
 
-        MDC.put(RequestIdKeys.MDC_KEY, "test-request-id");
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
         );
@@ -80,7 +76,6 @@ class SettlementAdminCommandServiceImplTest {
 
     @AfterEach
     void tearDown() {
-        MDC.clear();
         SecurityContextHolder.clearContext();
     }
 
@@ -106,7 +101,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(refundAdjustmentPolicy.isRefundAdjustmentPending("S1")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -123,7 +118,7 @@ class SettlementAdminCommandServiceImplTest {
     void requestPaid_settlementNotFound_then404() {
         Mockito.when(settlementRepository.findById("S404")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.requestPaid("S404", null))
+        assertThatThrownBy(() -> service.requestPaid("S404", null, "req-test-001"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -133,18 +128,7 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     void requestPaid_requestIdMissing_then400_BadRequest() {
-        MDC.clear();
-
-        Settlement settlement = Mockito.mock(Settlement.class);
-        Mockito.when(settlement.isPayRequested()).thenReturn(true);
-
-        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
-        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
-
-        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
-
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", null))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("requestId");
     }
@@ -158,10 +142,11 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getSettlementId()).thenReturn("S1");
         Mockito.when(settlement.getMerchantId()).thenReturn("M1");
         Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> {
                     ResponseStatusException rse = (ResponseStatusException) ex;
@@ -171,7 +156,7 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     void requestPaid_settlementIdBlank_then400() {
-        assertThatThrownBy(() -> service.requestPaid("   ", null))
+        assertThatThrownBy(() -> service.requestPaid("   ", null, "req-test-001"))
                 .isInstanceOf(BadRequestException.class);
     }
 
@@ -187,7 +172,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -214,7 +199,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;

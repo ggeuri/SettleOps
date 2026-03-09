@@ -1,16 +1,16 @@
 package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.settlement.entity.Settlement;
+import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementStatus;
+import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,10 +37,10 @@ class SettlementAdminApprovePaidConcurrencyIT {
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired TransactionTemplate tx; // seed를 "커밋"시키기 위해 필요
+    @Autowired SettlementBatchRepository settlementBatchRepository;
 
     @AfterEach
     void tearDown() {
-        MDC.clear();
         SecurityContextHolder.clearContext();
     }
 
@@ -49,7 +49,9 @@ class SettlementAdminApprovePaidConcurrencyIT {
         String settlementId = UUID.randomUUID().toString(); // CHAR(36) 맞춤
         LocalDate baseDate = LocalDate.now();
 
-        seedPayRequestedCommitted(settlementId, "M1", 1L, baseDate); // 커밋된 상태 보장
+
+        Long batchId = createBatchAndReturnId(baseDate);
+        seedPayRequestedCommitted(settlementId, "M1", batchId, baseDate); // 커밋된 상태 보장
         assertThat(settlementRepository.findById(settlementId).orElseThrow().getStatus())
                 .isEqualTo(SettlementStatus.PAY_REQUESTED);
 
@@ -139,16 +141,21 @@ class SettlementAdminApprovePaidConcurrencyIT {
         String settlementId = UUID.randomUUID().toString();
         LocalDate baseDate = LocalDate.now().minusDays(1);
 
-        seedPayRequestedCommitted(settlementId, "M1", 1L, baseDate);
+        Long batchId = createBatchAndReturnId(baseDate);
+        seedPayRequestedCommitted(settlementId, "M1", batchId, baseDate);
 
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("bad actor", "N/A")
         );
 
-        assertThatThrownBy(() -> settlementAdminCommandService.approvePaid(settlementId, "ok"))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("actorId");
+        assertThatThrownBy(() ->
+                settlementAdminCommandService.approvePaid(
+                        settlementId,
+                        "ok",
+                        UUID.randomUUID().toString()
+                )
+        ).isInstanceOf(BadRequestException.class)
+                        .hasMessageContaining("actorId");
     }
 
     private SettlementStatus callApprovePaid(
@@ -158,7 +165,6 @@ class SettlementAdminApprovePaidConcurrencyIT {
             String approverId
     ) throws Exception {
         try {
-            MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
             SecurityContextHolder.getContext().setAuthentication(
                     new UsernamePasswordAuthenticationToken(approverId, "N/A")
             );
@@ -168,9 +174,9 @@ class SettlementAdminApprovePaidConcurrencyIT {
                 throw new AssertionError("START_LATCH_TIMEOUT");
             }
 
-            return settlementAdminCommandService.approvePaid(settlementId, "ok").status();
+            String requestId = UUID.randomUUID().toString();
+            return settlementAdminCommandService.approvePaid(settlementId, "ok", requestId).status();
         } finally {
-            MDC.clear();
             SecurityContextHolder.clearContext();
         }
     }
@@ -190,7 +196,7 @@ class SettlementAdminApprovePaidConcurrencyIT {
         tx.executeWithoutResult(status -> {
             Settlement s = Settlement.createReady(
                     settlementId,
-                    "NO-" + UUID.randomUUID(),
+                    "SET-" + merchantId + "-T1",
                     batchId,
                     merchantId,
                     baseDate,
@@ -207,6 +213,21 @@ class SettlementAdminApprovePaidConcurrencyIT {
 
             em.flush();
             em.clear();
+        });
+    }
+
+    private Long createBatchAndReturnId(LocalDate baseDate) {
+        return tx.execute(status -> {
+            SettlementBatch batch = SettlementBatch.started(
+                    baseDate,
+                    UUID.randomUUID().toString(), // runId
+                    "ADMIN:test",                 // triggeredBy
+                    UUID.randomUUID().toString()  // requestId
+            );
+            SettlementBatch saved = settlementBatchRepository.save(batch);
+            em.flush();
+            em.clear();
+            return saved.getBatchId();
         });
     }
 }

@@ -51,9 +51,14 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
      * A2 통합(OK/FAIL + SKIP) - 한 화면
      *
      * 구현 방침(운영 안전):
-     * - settlement_batch(OK/FAIL) vs audit_log(SKIP)는 서로 다른 SoT라 DB에서 "진짜 전역 페이징"이 어렵다.
-     * - 대신 (pageNumber+1)*pageSize 만큼만 양쪽에서 가져와 merge+sort 후, 마지막에 slice 해서 전역 페이징을 보장한다.
-     * - 기간 기본값은 최근 7일(오늘 포함 7일): [today-6, today]
+     * - OK/FAIL 은 settlement_batch.batch_key(baseDate) 기준으로 조회한다.
+     * - SKIP 은 audit_log(BATCH_RUN_SKIPPED)에서 조회하되,
+     *   최종 필터는 meta_json.baseDate 기준으로 적용한다.
+     * - SKIP meta_json 파싱 실패 또는 필수 필드 누락 row는 warn 로그를 남기고
+     *   조회 결과에서 제외한다. (기본값 보정 없음)
+     * - audit_log.occurredAt 기간 조건은 조회량 제한용 1차 조건일 뿐,
+     *   A2 history SoT 는 baseDate 이다.
+     * ...
      */
     @Override
     public SettlementBatchHistoryResponse getHistory(LocalDate from, LocalDate to, Pageable pageable) {
@@ -65,10 +70,10 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
 
         Pageable fetchPageable = PageRequest.of(0, fetchSize, Sort.unsorted());
 
-        // (1) OK/FAIL: settlement_batch 기반 (createdAt 기간)
+        // (1) OK/FAIL: settlement_batch.batch_key(baseDate) 기준
         Page<SettlementBatch> okFailPage = fetchOkFailBatches(r, fetchPageable);
 
-        // (2) SKIP: audit_log 기반 (occurredAt 기간)
+        // (2) SKIP: audit_log 조회 + meta_json.baseDate 최종 필터
         Page<AuditLog> skipPage = fetchSkipLogs(r, fetchPageable);
 
         // (3) merge
@@ -80,15 +85,14 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
             merged.add(SettlementBatchHistoryRowResponse.okFail(occurredAt, dto));
         }
         for (AuditLog logRow : skipPage.getContent()) {
-            try {
-                SettlementBatchSkipResponse dto = toSkipResponse(logRow);
-                merged.add(SettlementBatchHistoryRowResponse.skip(dto.occurredAt(), dto));
-            } catch (Exception e) {
-                // 운영 화면 안정: SKIP meta_json 파싱 실패는 해당 row만 제외하고 계속 진행
-                // (권장) 최소 로그 남겨서 발견 가능하게
-                log.warn("skip audit meta_json parse failed. auditId={}, requestId={}",
-                        logRow.getAuditId(), logRow.getRequestId(), e);
+            SettlementBatchSkipResponse dto = toSkipResponseOrNull(logRow);
+            if (dto == null){
+                continue;
             }
+            if (!isWithinBaseDateRange(dto.baseDate(), r)) {
+                continue;
+            }
+            merged.add(SettlementBatchHistoryRowResponse.skip(dto.occurredAt(), dto));
         }
 
         merged.sort(Comparator
@@ -100,7 +104,8 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
         int end = Math.min(start + pageSize, merged.size());
         List<SettlementBatchHistoryRowResponse> content = merged.subList(start, end);
 
-        // NOTE: 서로 다른 SoT(OK/FAIL vs SKIP) 병합이라 totalElements는 "근사치"일 수 있음(운영 화면용)
+        // NOTE: SKIP는 occurredAt 1차 조회 후 meta_json.baseDate로 재필터링하므로
+        // totalElements는 실제 노출 건수와 다를 수 있다. (운영 화면용 근사치)
         long total = okFailPage.getTotalElements() + skipPage.getTotalElements();
         Page<SettlementBatchHistoryRowResponse> page = new PageImpl<>(
                 content,
@@ -112,11 +117,11 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
     }
 
     private Page<SettlementBatch> fetchOkFailBatches(Range r, Pageable pageable) {
-        LocalDateTime fromDt = r.from().atStartOfDay();
-        LocalDateTime toExclusive = r.toExclusive().atStartOfDay();
-
-        return settlementBatchRepository
-                .findByCreatedAtBetweenOrderByCreatedAtDesc(fromDt, toExclusive, pageable);
+        return settlementBatchRepository.findByBatchKeyBetweenOrderByBatchKeyDesc(
+                r.from(),
+                r.toInclusive(),
+                pageable
+        );
     }
 
     private Page<AuditLog> fetchSkipLogs(Range r, Pageable pageable) {
@@ -146,28 +151,39 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
         );
     }
 
-    private SettlementBatchSkipResponse toSkipResponse(AuditLog log) {
+    /**
+     * A2 SKIP row 변환 정책(LOCKED):
+     * - audit_log.meta_json 에서 baseDate/runId 를 파싱한다.
+     * - meta_json 파싱 실패 또는 필수 필드(baseDate/runId) 누락 시 warn 로그를 남기고
+     *   해당 row는 조회 결과에서 제외한다.
+     * - 기본값 보정/대체값 주입은 하지 않는다.
+     */
+    private SettlementBatchSkipResponse toSkipResponseOrNull(AuditLog auditLog) {
         // meta_json: {"baseDate":"YYYY-MM-DD","runId":"...","note":"..."}
         try {
-            JsonNode node = objectMapper.readTree(log.getMetaJson());
+            JsonNode node = objectMapper.readTree(auditLog.getMetaJson());
 
             String baseDateStr = textOrNull(node, "baseDate");
             String runId = textOrNull(node, "runId");
 
             if (baseDateStr == null || runId == null) {
                 // SKIP 로그는 반드시 baseDate/runId를 가진다는 운영 계약(깨지면 즉시 발견)
-                throw new IllegalStateException("BATCH_RUN_SKIPPED meta_json must contain baseDate/runId");
+                log.warn("skip audit row ignored: baseDate/runId missing. auditId={}, requestId={}",
+                        auditLog.getAuditId(), auditLog.getRequestId());
+                return null;
             }
 
             return new SettlementBatchSkipResponse(
                     LocalDate.parse(baseDateStr),
                     runId,
-                    log.getRequestId(),
-                    log.getActorId(),
-                    log.getOccurredAt()
+                    auditLog.getRequestId(),
+                    auditLog.getActorId(),
+                    auditLog.getOccurredAt()
             );
         } catch (Exception e) {
-            throw new IllegalStateException("failed to parse audit_log.meta_json for BATCH_RUN_SKIPPED", e);
+            log.warn("skip audit row ignored: meta_json parse failed. auditId={}, requestId={}",
+                    auditLog.getAuditId(), auditLog.getRequestId(), e);
+            return null;
         }
     }
 
@@ -200,4 +216,10 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
     }
 
     private record Range(LocalDate from, LocalDate toInclusive, LocalDate toExclusive) {}
+
+    private boolean isWithinBaseDateRange(LocalDate baseDate, Range r){
+        return baseDate != null
+                && !baseDate.isBefore(r.from())
+                && !baseDate.isAfter(r.toInclusive());
+    }
 }

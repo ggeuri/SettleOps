@@ -5,7 +5,6 @@ import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -28,7 +27,6 @@ class SettlementBatchRunIT {
 
     @AfterEach
     void tearDown() {
-        MDC.clear();
         SecurityContextHolder.clearContext();
     }
 
@@ -37,18 +35,16 @@ class SettlementBatchRunIT {
         // 재현성 고정(자정/타임존 흔들림 제거)
         LocalDate baseDate = LocalDate.of(2026, 3, 2);
 
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
         );
-        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate);
+        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
         assertThat(r1.runId()).isNotBlank();
 
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
         );
-        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate);
+        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate, "req-test-002");
         assertThat(r2.runId()).isNotBlank();
 
         // 첫 실행은 처리 결과(OK/FAIL), 두 번째는 무조건 SKIP

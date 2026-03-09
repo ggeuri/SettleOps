@@ -11,19 +11,17 @@ import java.util.List;
 import java.util.Optional;
 
 public interface SettlementBatchRepository extends JpaRepository<SettlementBatch, Long> {
-    Page<SettlementBatch> findByCreatedAtBetweenOrderByCreatedAtDesc(
-            LocalDateTime from,
-            LocalDateTime toExclusive,
-            Pageable pageable
-    );
-
-    // NOTE: A2 history 통합 조회에서 사용. A2 화면 확장(필터/상세) 시 재사용 가능.
+    /**
+     * A2 history SoT:
+     * - OK/FAIL 은 settlement_batch.batch_key(baseDate) 기준으로 조회한다.
+     * - createdAt 기간 필터는 A2 history 기준으로 사용하지 않는다.
+     */
     Page<SettlementBatch> findByBatchKeyBetweenOrderByBatchKeyDesc(
             LocalDate fromInclusive,
             LocalDate toInclusive,
             Pageable pageable
     );
 
-    Optional<SettlementBatch> findByBatchKey(LocalDate batchKey);
     Optional<SettlementBatch> findByRunId(String runId);
+    Optional<SettlementBatch> findByBatchKey(LocalDate batchKey);
 }

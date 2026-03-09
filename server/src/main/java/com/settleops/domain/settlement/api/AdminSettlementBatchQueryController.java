@@ -32,6 +32,7 @@ public class AdminSettlementBatchQueryController {
      * LOCKED:
      * - SKIP 이력은 audit_log(BATCH_RUN_SKIPPED) 기반
      * - from/to 누락 시 최근 7일 기본값(운영 안전)
+     * - Admin 응답은 no-store 헤더를 실제 응답에 적용한다.
      */
     @GetMapping("/settlement-batches/history")
     public ResponseEntity<SettlementBatchHistoryResponse> getHistory(
@@ -46,7 +47,11 @@ public class AdminSettlementBatchQueryController {
             Pageable pageable
     ){
         Pageable guarded = guardPageable(pageable);
-        return ResponseEntity.ok(batchQueryService.getHistory(from, to, guarded));
+        SettlementBatchHistoryResponse response = batchQueryService.getHistory(from, to, guarded);
+
+        return ResponseEntity.ok()
+                .headers(adminNoCacheSecurityHeaders())
+                .body(response);
     }
 
     private Pageable guardPageable(Pageable pageable){
@@ -63,7 +68,7 @@ public class AdminSettlementBatchQueryController {
      * Admin 응답은 캐시되면 운영/보안 리스크가 커서 강제 no-store 권장.
      * (프론트/프록시/브라우저 캐시 모두 차단)
      */
-    private HttpHeaders adminNoCachSecurityHeaders(){
+    private HttpHeaders adminNoCacheSecurityHeaders(){
         HttpHeaders h = new HttpHeaders();
 
         // Cache 방지 (가장 중요)

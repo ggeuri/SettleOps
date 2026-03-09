@@ -21,9 +21,7 @@ import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -58,9 +56,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
+    public SettlementBatchRunResponse runBatch(LocalDate baseDate, String requestId) {
         // Trace/Audit SoT: requestId/actorId 스냅샷을 시작 시점에 고정해서 끝까지 동일하게 사용
-        String requestId = currentRequestId();
+        validateRequestId(requestId);
         String actorId = currentActorId();
 
         if (baseDate == null) {
@@ -225,7 +223,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String failReason = String.join(" | ", mismatches);
             settlementBatchRunRecorder.completeFail(runId, failReason);
 
-            auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL");
+            auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL: " + failReason);
 
             SettlementBatch failed = settlementBatchRepository.findByRunId(runId)
                     .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
@@ -272,8 +270,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
-        String requestId = currentRequestId();
+    public SettlementPayActionResponse requestPaid(String settlementId, String comment, String requestId) {
+        validateRequestId(requestId);
         String actorId = currentActorId();
 
         if (settlementId == null || settlementId.isBlank()) {
@@ -324,8 +322,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
-        String requestId = currentRequestId();
+    public SettlementPayActionResponse approvePaid(String settlementId, String comment, String requestId) {
+        validateRequestId(requestId);
         String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일)
 
         if (settlementId == null || settlementId.isBlank()) {
@@ -414,14 +412,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 s.getPaidRequestedAt(),
                 paidAt
         );
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId must not be null/blank (RequestIdFilter contract violated)");
-        }
-        return requestId;
     }
 
     private String currentActorId() {
@@ -513,6 +503,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
+        }
+    }
+
+    private void validateRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            throw new BadRequestException("requestId must not be null/blank");
         }
     }
 }

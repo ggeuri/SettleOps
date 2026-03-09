@@ -6,11 +6,9 @@ import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
-import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
@@ -41,7 +39,6 @@ public class SettlementBatchHistoryMetaJsonToleranceIT {
 
     @AfterEach
     void tearDown(){
-        MDC.clear();
         SecurityContextHolder.clearContext();
     }
 
@@ -52,12 +49,11 @@ public class SettlementBatchHistoryMetaJsonToleranceIT {
         LocalDate baseDate = LocalDate.now(clock).minusDays(10);
         String actorId = "adminA-" + UUID.randomUUID().toString().substring(0, 8);
 
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(actorId, "N/A")
         );
 
-        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate);
+        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
         assertThat(first.result()).isIn(SettlementBatchRunResponse.RunResult.OK, SettlementBatchRunResponse.RunResult.FAIL);
         assertThat(first.runId()).isNotBlank();
 

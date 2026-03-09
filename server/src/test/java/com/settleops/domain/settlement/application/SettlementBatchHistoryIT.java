@@ -4,8 +4,6 @@ import com.settleops.domain.settlement.dto.*;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
-import com.settleops.global.logging.RequestIdKeys;
-import org.slf4j.MDC;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,8 +13,15 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -30,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
+@AutoConfigureMockMvc
 public class SettlementBatchHistoryIT {
 
     @Autowired SettlementAdminCommandService settlementAdminCommandService;
@@ -37,10 +43,10 @@ public class SettlementBatchHistoryIT {
     @Autowired SettlementBatchRepository settlementBatchRepository;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired Clock clock;
+    @Autowired MockMvc mockMvc;
 
     @AfterEach
     void tearDown() {
-        MDC.clear();
         SecurityContextHolder.clearContext();
     }
 
@@ -52,14 +58,12 @@ public class SettlementBatchHistoryIT {
         String actorId = ("adminA-" + UUID.randomUUID().toString().substring(0, 8));
 
         // 1회차: OK/FAIL
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actorId, "N/A"));
-        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate);
+        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
 
         // 2회차: SKIP
-        MDC.put(RequestIdKeys.MDC_KEY, UUID.randomUUID().toString());
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(actorId, "N/A"));
-        SettlementBatchRunResponse second = settlementAdminCommandService.runBatch(baseDate);
+        SettlementBatchRunResponse second = settlementAdminCommandService.runBatch(baseDate, "req-test-002");
 
         // --- SoT 검증(정석) ---
         // OK/FAIL SoT: settlement_batch 존재
@@ -121,5 +125,20 @@ public class SettlementBatchHistoryIT {
         assertThat(second.result()).isEqualTo(SettlementBatchRunResponse.RunResult.SKIP);
         // 1번째는 OK/FAIL
         assertThat(first.result()).isIn(SettlementBatchRunResponse.RunResult.OK, SettlementBatchRunResponse.RunResult.FAIL);
+    }
+
+    @Test
+    @WithMockUser(username = "adminA", roles = "ADMIN")
+    @DisplayName("A2 history 응답에는 no-store 헤더가 적용된다")
+    void getHistory_appliesNoStoreHeaders() throws Exception {
+        mockMvc.perform(get("/api/admin/settlement-batches/history")
+                        .param("from", LocalDate.now(clock).minusDays(6).toString())
+                        .param("to", LocalDate.now(clock).toString())
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(header().string("Pragma", "no-cache"))
+                .andExpect(header().string("Expires", "0"));
     }
 }
