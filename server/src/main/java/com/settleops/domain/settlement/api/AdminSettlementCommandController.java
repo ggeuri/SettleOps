@@ -82,7 +82,7 @@ public class AdminSettlementCommandController {
     }
 
     private String extractRequestId(HttpServletRequest request) {
-        Object value = request.getAttribute(RequestIdKeys.MDC_KEY);
+        Object value = request.getAttribute(RequestIdKeys.ATTR_KEY);
         if (!(value instanceof String requestId) || requestId.isBlank()) {
             throw new IllegalStateException("requestId must be provided by RequestIdFilter");
         }

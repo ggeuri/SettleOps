@@ -35,6 +35,7 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
     private final AuditLogQuery auditLogQuery;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private static final long SKIP_OCCURRED_AT_BUFFER_DAYS = 30L;
 
     public SettlementBatchQueryServiceImpl(
             SettlementBatchRepository settlementBatchRepository,
@@ -58,6 +59,9 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
      *   조회 결과에서 제외한다. (기본값 보정 없음)
      * - audit_log.occurredAt 기간 조건은 조회량 제한용 1차 조건일 뿐,
      *   A2 history SoT 는 baseDate 이다.
+     * - SKIP 후보 row는 audit_log.occurredAt 기준으로 버퍼 조회한다.
+     *   (운영 재실행으로 과거 baseDate의 SKIP이 미래 시점에 기록될 수 있기 때문)
+     * - 최종 포함 여부는 meta_json.baseDate 기준으로 판정한다.
      * ...
      */
     @Override
@@ -104,8 +108,8 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
         int end = Math.min(start + pageSize, merged.size());
         List<SettlementBatchHistoryRowResponse> content = merged.subList(start, end);
 
-        // NOTE: SKIP는 occurredAt 1차 조회 후 meta_json.baseDate로 재필터링하므로
-        // totalElements는 실제 노출 건수와 다를 수 있다. (운영 화면용 근사치)
+        // SKIP는 occurredAt 버퍼 조회 후 meta_json.baseDate로 재필터링하므로
+        // totalElements는 실제 화면 노출 건수와 다를 수 있다. (운영 화면용 근사치)
         long total = okFailPage.getTotalElements() + skipPage.getTotalElements();
         Page<SettlementBatchHistoryRowResponse> page = new PageImpl<>(
                 content,
@@ -125,8 +129,13 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
     }
 
     private Page<AuditLog> fetchSkipLogs(Range r, Pageable pageable) {
-        LocalDateTime fromDt = r.from().atStartOfDay();
-        LocalDateTime toExclusive = r.toExclusive().atStartOfDay();
+        LocalDateTime fromDt = r.from()
+                .minusDays(SKIP_OCCURRED_AT_BUFFER_DAYS)
+                .atStartOfDay();
+
+        LocalDateTime toExclusive = r.toInclusive()
+                .plusDays(SKIP_OCCURRED_AT_BUFFER_DAYS + 1)
+                .atStartOfDay();
 
         return auditLogQuery.findByActionAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(
                 Action.BATCH_RUN_SKIPPED,
@@ -211,11 +220,12 @@ public class SettlementBatchQueryServiceImpl implements SettlementBatchQueryServ
             throw new BadRequestException("to must be >= from");
         }
 
-        // to는 inclusive로 받되, occurredAt 조회는 [from, to+1) 형태로 변환
-        return new Range(f, t, t.plusDays(1));
+        // to는 inclusive로 유지한다.
+        // occurredAt 기반 버퍼 조회의 exclusive upper bound는 fetchSkipLogs()에서 계산한다.
+        return new Range(f, t);
     }
 
-    private record Range(LocalDate from, LocalDate toInclusive, LocalDate toExclusive) {}
+    private record Range(LocalDate from, LocalDate toInclusive) {}
 
     private boolean isWithinBaseDateRange(LocalDate baseDate, Range r){
         return baseDate != null

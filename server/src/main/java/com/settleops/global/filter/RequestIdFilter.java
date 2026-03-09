@@ -16,8 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.UUID;
 
-import static com.settleops.global.logging.RequestIdKeys.HEADER;
-import static com.settleops.global.logging.RequestIdKeys.MDC_KEY;
+import static com.settleops.global.logging.RequestIdKeys.*;
 
 /**
  * 🚨 requestId는 시스템 전역에서 본 Filter에서만 생성/주입한다.
@@ -29,7 +28,9 @@ import static com.settleops.global.logging.RequestIdKeys.MDC_KEY;
 public class RequestIdFilter extends OncePerRequestFilter {
 
     private static final String REQUEST_ID_HEADER = HEADER;
-    private static final String REQUEST_ID = MDC_KEY;
+    private static final String REQUEST_ID_MDC = MDC_KEY;
+    private static final String REQUEST_ID_ATTR = ATTR_KEY;
+
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -44,10 +45,10 @@ public class RequestIdFilter extends OncePerRequestFilter {
         }
 
         // 2. MDC에 저장 (로그에 찍히도록 설정)
-        MDC.put(REQUEST_ID,requestId);
+        MDC.put(REQUEST_ID_MDC,requestId);
 
         // 2-1. Controller가 꺼내 쓸 수 있도록 request attribute에도 저장
-        request.setAttribute(REQUEST_ID, requestId);
+        request.setAttribute(REQUEST_ID_ATTR, requestId);
 
         // 3. 응답 헤더에 추가 (클라이언트 확인용)
         // ✅ 모든 API 응답은 반드시 X-Request-Id 헤더를 포함해야 한다.
@@ -68,7 +69,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
             log.info("<<< {}ms status={}", duration, response.getStatus());
 
             // 5. MDC 정리
-            MDC.remove(REQUEST_ID);
+            MDC.remove(REQUEST_ID_MDC);
         }
     }
 }
