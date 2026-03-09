@@ -18,10 +18,10 @@ import com.settleops.global.audit.AuditLogCommand;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
+import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,17 +44,18 @@ public class RefundCommandService {
      * U6: merchant 환불 요청 생성 (POST /api/refunds)
      * LOCKED 핵심:
      * - requestedAt SoT는 서비스에서 now로 세팅
-     * - refund_event.request_id NOT NULL 강제 (MDC 없으면 실패)
-     * - audit_log.meta_json은 최소 reason + status diff
-     * - payment CAPTURED 아니면 409(룰 위반)로 처리해야 하지만,
-     *   지금은 최소 코드라 일단 IllegalStateException/커스텀 예외로 던지고
-     *   GlobalExceptionHandler에서 409로 매핑해주면 됨
+     * - requestId는 Controller가 Filter 주입값을 전달하며, null/blank면 즉시 실패
+     * - refund_event.request_id / audit_log.request_id는 NOT NULL 계약을 지켜야 한다
+     * - audit_log.meta_json은 최소 reasonText + status diff를 남긴다
+     * - payment.status가 CAPTURED가 아니면 409 RULE_VIOLATION으로 처리한다
      */
     @Transactional
-    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req) {
+    public RefundResponseDTO requestRefund(RefundCreateRequestDTO req, String requestId) {
 
         // 0) requestId 필수 (없으면 즉시 실패)
-        String requestId = currentRequestId();
+        if (requestId == null || requestId.isBlank()) {
+            throw new BadRequestException("requestId is null/blank");
+        }
 
         // 1) reasonText 최소 필수 (문서상 MVP 필수)
         if (req.getReasonText() == null || req.getReasonText().isBlank()) {
@@ -62,18 +63,35 @@ public class RefundCommandService {
         }
 
         // 2) payment 존재 + CAPTURED 가드 (LOCKED: CAPTURED일 때만 환불 요청 허용)
+        // Payment 조회 예외를 400으로 변경
         Payment payment = paymentRepository.findById(req.getPaymentId())
-                .orElseThrow(() -> new IllegalArgumentException("Payment not found: " + req.getPaymentId()));
+                .orElseThrow(() -> new BadRequestException("paymentId is invalid"));
 
         if (payment.getStatus() != PaymentStatus.CAPTURED) {
-            // ✅ 여기서 409 PAYMENT_NOT_CAPTURED로 매핑되게 예외 타입을 맞추는 게 이상적
-            throw new IllegalStateException("PAYMENT_NOT_CAPTURED");
+            // CAPTURED 가드: IllegalStateException → ConflictException(409)
+            throw new ConflictException(
+                    ReasonCode.PAYMENT_NOT_CAPTURED,
+                    "payment is not captured"
+            );
         }
 
         // 3) payment_id 당 refund 1회 (LOCKED/MVP)
         if (refundRepository.existsByPaymentId(req.getPaymentId())) {
-            // ✅ 여기서 409 REFUND_ALREADY_EXISTS로 매핑
-            throw new IllegalStateException("REFUND_ALREADY_EXISTS");
+            // 409 REFUND_ALREADY_EXISTS로 매핑
+            throw new ConflictException(
+                    ReasonCode.REFUND_ALREADY_EXISTS,
+                    "refund already exists for this payment"
+            );
+        }
+
+        // 3-1) refundableAmount 가드 (MVP 단순 버전)
+        // MVP에서 payment_id 당 refund 1개 제한이므로 "승인합" 계산 대신,
+        // 요청 금액이 capturedAmount를 넘는지만 먼저 방어
+        if (req.getAmount() > payment.getCapturedAmount()) {
+            throw new ConflictException(
+                    ReasonCode.INSUFFICIENT_REFUNDABLE,
+                    "refund amount exceeds captured amount"
+            );
         }
 
         // 4) requestedAt SoT = "업무 요청 시각" (서비스에서 now)
@@ -100,8 +118,8 @@ public class RefundCommandService {
         RefundEvent event = RefundEventFactory.requested(
                 refundId,
                 requestId,
-                ActorType.MERCHANT,                 // ✅ merchant 요청이면 MERCHANT
-                payment.getMerchantId(),            // ✅ actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
+                ActorType.MERCHANT,                 // merchant 요청이면 MERCHANT
+                payment.getMerchantId(),            // actor_id는 규칙대로 "짧은 id" (여기서는 merchantId 사용)
                 null                                // occurredAt은 @PrePersist가 채움
         );
         refundEventRepository.save(event);
@@ -128,14 +146,6 @@ public class RefundCommandService {
                 .status(RefundStatus.REQUESTED.name())
                 .requestedAt(now)
                 .build();
-    }
-
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("Missing requestId in MDC");
-        }
-        return requestId;
     }
 
     private String buildMetaJsonForRequested(String reasonText) {
