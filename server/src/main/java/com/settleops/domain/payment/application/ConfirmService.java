@@ -93,11 +93,11 @@ public class ConfirmService {
 
     /**
      * requestId는 추적 / 감사 로그 기준값이므로 필수입니다.
-     * 누락 시 내부 오류가 아니라 잘못된 요청으로 처리합니다.
+     * 누락 시 내부 오류가 아니라 내부 계약 위반으로 잘못된 요청으로 처리합니다.
      */
     private void validateRequestId(String requestId) {
         if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("X-Request-Id는 필수입니다.");
+            throw new IllegalStateException("X-Request-Id는 필수입니다.");
         }
     }
 
