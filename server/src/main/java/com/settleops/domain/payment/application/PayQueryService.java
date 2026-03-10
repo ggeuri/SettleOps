@@ -53,51 +53,16 @@ public class PayQueryService {
             return Optional.empty();
         }
 
+        if (record.getResponseStatus() != 200) {
+            return Optional.empty();
+        }
+
         return Optional.of(
                 paymentRepository.findById(record.getPaymentId())
                         .orElseThrow(() -> new IllegalStateException(
                                 "idempotency_record는 성공 완료 상태지만 참조 payment가 없습니다. targetId=" + targetId
                         ))
         );
-    }
-
-    /**
-     * 멱등키 기준으로 선점된 row 자체를 조회한다.
-     *
-     * <p>PayService에서 owner 선점 후 성공 마킹 시 사용한다.</p>
-     */
-    public IdempotencyRecord getIdempotencyRecordOrThrow(
-            IdempotencyTargetType targetType,
-            String targetId,
-            String idempotencyKey
-    ) {
-        return idempotencyRecordRepository
-                .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, targetId, idempotencyKey)
-                .orElseThrow(() -> new IllegalStateException(
-                        "idempotency_record가 존재하지 않습니다. targetId=" + targetId
-                ));
-    }
-
-    /**
-     * orderId 기준 payment를 조회한다.
-     */
-    public Optional<Payment> findPaymentByOrderId(String orderId) {
-        return paymentRepository.findByOrderId(orderId);
-    }
-
-    /**
-     * PAYMENT_CAPTURED 이벤트의 occurred_at을 조회한다.
-     *
-     * <p>capturedAt의 SoT는 payment.updatedAt이 아니라
-     * PAYMENT_CAPTURED 이벤트의 occurred_at이다.</p>
-     */
-    public LocalDateTime getCapturedAtOrThrow(String paymentId) {
-        Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "payment가 존재하지 않습니다. paymentId=" + paymentId
-                ));
-
-        return getCapturedAtOrThrow(payment);
     }
 
     /**
