@@ -6,6 +6,7 @@ import com.settleops.global.auth.controller.MeController;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.UnauthorizedException;
 import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConsumerPaymentController {
 
     private final ConfirmService confirmService;
+    private final RequestIdResolver requestIdResolver;
 
     /**
      * 결제 확정(Confirm) API
@@ -74,10 +76,7 @@ public class ConsumerPaymentController {
             throw new UnauthorizedException("인증이 필요합니다.");
         }
 
-        String requestId = (String) request.getAttribute(RequestIdKeys.ATTR_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("X-Request-Id attribute is missing.");
-        }
+        String requestId = requestIdResolver.resolve(request);
 
         return confirmService.confirm(paymentId, buyerId, requestId);
     }

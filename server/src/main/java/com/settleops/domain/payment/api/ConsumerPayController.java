@@ -4,6 +4,7 @@ import com.settleops.domain.payment.api.dto.PayResponseDTO;
 import com.settleops.domain.payment.application.PayService;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 public class ConsumerPayController {
 
     private final PayService payService;
+    private final RequestIdResolver requestIdResolver;
 
     /** 주문 상세 조회 */
     @GetMapping("/{orderId}")
@@ -64,10 +66,8 @@ public class ConsumerPayController {
             @RequestHeader("X-Idempotency-Key") String idempotencyKey,
             HttpServletRequest request
     ) {
-        String requestId =  (String) request.getAttribute(RequestIdKeys.ATTR_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("X-Request-Id attribute is missing.");
-        }
+
+        String requestId = requestIdResolver.resolve(request);
 
         PayResponseDTO response =
                 payService.pay(orderId, idempotencyKey,requestId);
