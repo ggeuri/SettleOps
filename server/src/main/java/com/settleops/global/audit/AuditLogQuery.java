@@ -1,5 +1,6 @@
 package com.settleops.global.audit;
 
+import com.settleops.global.enums.Action;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -18,4 +19,8 @@ public interface AuditLogQuery {
 
     Page<AuditLog> findByMerchantIdAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(
             String merchantId, EntityType entityType, LocalDateTime from, LocalDateTime to, Pageable pageable);
+
+    // A2 (Batch SKIP) 전용: action + entityType(BATCH) + 기간
+    Page<AuditLog> findByActionAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(
+            Action action, EntityType entityType, LocalDateTime from, LocalDateTime to, Pageable pageable);
 }
