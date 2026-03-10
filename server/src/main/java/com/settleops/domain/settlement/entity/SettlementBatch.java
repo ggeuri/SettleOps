@@ -90,6 +90,28 @@ public class SettlementBatch {
         return b;
     }
 
+    public static SettlementBatch started(
+            LocalDate batchKey,
+            String runId,
+            String triggeredBy,
+            String requestId
+    ) {
+        if (batchKey == null) throw new IllegalArgumentException("batchKey must not be null");
+        if (runId == null || runId.isBlank()) throw new IllegalArgumentException("runId must not be blank");
+        if (triggeredBy == null || triggeredBy.isBlank()) throw new IllegalArgumentException("triggeredBy must not be blank");
+        if (requestId == null || requestId.isBlank()) throw new IllegalArgumentException("requestId must not be blank");
+
+        SettlementBatch b = new SettlementBatch();
+        b.batchKey = batchKey;
+        b.runId = runId;
+        b.triggeredBy = triggeredBy;
+        b.result = SettlementBatchResult.OK;   // 시작 시점 OK, 실패 시 markFail로 전환
+        b.requestId = requestId;
+        b.failReason = null;
+        b.finishedAt = null;
+        return b;
+    }
+
     private static String normalizeFailReason(SettlementBatchResult result, String failReason) {
         if (result == SettlementBatchResult.OK) return null;
 

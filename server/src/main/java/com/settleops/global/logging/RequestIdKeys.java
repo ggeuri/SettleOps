@@ -5,4 +5,5 @@ public final class RequestIdKeys {
 
     public static final String HEADER = "X-Request-Id";
     public static final String MDC_KEY = "requestId";
+    public static final String ATTR_KEY = "requestId";
 }

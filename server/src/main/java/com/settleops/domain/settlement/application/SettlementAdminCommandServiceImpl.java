@@ -2,12 +2,16 @@ package com.settleops.domain.settlement.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
+import com.settleops.domain.settlement.entity.SettlementLine;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
+import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
+import com.settleops.domain.settlement.infra.SettlementLineRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.AuditLogCommand;
@@ -17,9 +21,8 @@ import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
-import com.settleops.global.logging.RequestIdKeys;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.MDC;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,32 +33,245 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
 
+    private static final int TRIGGERED_BY_MAX_LEN = 50;
+
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
+    private final SettlementLineRepository settlementLineRepository;
+    private final PaymentEventRepository paymentEventRepository;
+
     private final AuditLogger auditLogger;
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
     private final SettlementBatchRunRecorder settlementBatchRunRecorder;
     private final ObjectMapper objectMapper;
 
     @Override
-    public SettlementBatchRunResponse runBatch(LocalDate baseDate) {
-        throw new ResponseStatusException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "batch run (A2) will be implemented in the next PR."
+    @Transactional
+    public SettlementBatchRunResponse runBatch(LocalDate baseDate, String requestId) {
+        // Trace/Audit SoT: requestId/actorId 스냅샷을 시작 시점에 고정해서 끝까지 동일하게 사용
+        validateRequestId(requestId);
+        String actorId = currentActorId();
+
+        if (baseDate == null) {
+            throw new BadRequestException("baseDate must not be null");
+        }
+
+        // triggeredBy (DB 길이 50 가드)
+        String triggeredBy = "ADMIN:" + actorId;
+        if (triggeredBy.length() > TRIGGERED_BY_MAX_LEN) {
+            triggeredBy = triggeredBy.substring(0, TRIGGERED_BY_MAX_LEN);
+        }
+
+        // 실행 식별자(runId): 배치 1회 실행을 대표하는 trace 키
+        String runId = UUID.randomUUID().toString();
+
+        // 1) 배치 시작 row 생성 (멱등은 여기서 catch → SKIP)
+        final SettlementBatch batch;
+        try {
+            batch = settlementBatchRunRecorder.startOrThrow(baseDate, runId, requestId, triggeredBy);
+        } catch (DataIntegrityViolationException e) {
+            // 멱등 재실행 정책(LOCKED): 동일 baseDate 재실행은 SKIP (audit_log로만 남김)
+            SettlementBatch existing = settlementBatchRepository.findByBatchKey(baseDate)
+                    .orElseThrow(() -> new IllegalStateException("batch exists but not found: baseDate=" + baseDate));
+
+            auditBatchAction(
+                    requestId,
+                    actorId,
+                    Action.BATCH_RUN_SKIPPED,
+                    baseDate,
+                    existing.getRunId(),
+                    "batch_key already exists"
+            );
+
+            return new SettlementBatchRunResponse(
+                    requestId,
+                    existing.getBatchKey(),
+                    existing.getRunId(),
+                    SettlementBatchRunResponse.RunResult.SKIP,
+                    null,
+                    existing.getCreatedAt(),
+                    existing.getFinishedAt()
+            );
+        }
+
+        // 2) (선택/권장) 배치 시작 audit
+        auditBatchAction(
+                requestId,
+                actorId,
+                Action.BATCH_RUN_TRIGGERED,
+                baseDate,
+                runId,
+                null
         );
+
+        try {
+            // 3) CONFIRMED 대상 선정 규칙(LOCKED): payment.status가 아니라 payment_event(PAYMENT_CONFIRMED)
+            LocalDateTime from = baseDate.atStartOfDay();
+            LocalDateTime to = baseDate.plusDays(1).atStartOfDay();
+
+            List<PaymentEventRepository.ConfirmedPaymentRow> rows =
+                    paymentEventRepository.findConfirmedPaymentsByOccurredAtRange(from, to);
+
+            // 4) merchant별 집계 (gross=ΣcapturedAmount)
+            Map<String, Long> grossByMerchant = rows.stream()
+                    .collect(Collectors.groupingBy(
+                            PaymentEventRepository.ConfirmedPaymentRow::getMerchantId,
+                            Collectors.summingLong(PaymentEventRepository.ConfirmedPaymentRow::getCapturedAmount)
+                    ));
+
+            // 5) settlement 생성 (SoT)
+            // settlementNo 결정적 규칙(LOCKED): SET-{yyyyMMdd}-{merchantId}
+            String yyyyMMdd = baseDate.toString().replace("-", "");
+
+            List<Settlement> settlements = grossByMerchant.entrySet().stream()
+                    .map(e -> {
+                        String merchantId = e.getKey();
+                        long gross = e.getValue();
+
+                        long fee = 0L;
+                        long vat = 0L;
+                        long net = gross - fee - vat;
+
+                        String settlementNo = "SET-" + yyyyMMdd + "-" + merchantId;
+
+                        return Settlement.createReady(
+                                UUID.randomUUID().toString(),
+                                settlementNo,
+                                batch.getBatchId(),
+                                merchantId,
+                                baseDate,
+                                gross,
+                                fee,
+                                vat,
+                                net
+                        );
+                    })
+                    .toList();
+
+            settlementRepository.saveAll(settlements);
+
+            // 6) settlement_line 생성
+            Map<String, String> settlementIdByMerchant = settlements.stream()
+                    .collect(Collectors.toMap(Settlement::getMerchantId, Settlement::getSettlementId));
+
+            List<SettlementLine> paymentLines = rows.stream()
+                    .map(r -> SettlementLine.of(
+                            settlementIdByMerchant.get(r.getMerchantId()),
+                            r.getPaymentId(),
+                            SettlementLineType.PAYMENT,
+                            r.getCapturedAmount()
+                    ))
+                    .toList();
+
+            settlementLineRepository.saveAll(paymentLines);
+
+            // 7) 정합성 검증(LOCKED): settlement.net == Σ(line.amount × sign)
+            Map<String, Long> sumSignedBySettlementId = paymentLines.stream()
+                    .collect(Collectors.groupingBy(
+                            SettlementLine::getSettlementId,
+                            Collectors.summingLong(SettlementLine::signedAmount)
+                    ));
+
+            List<String> mismatches = settlements.stream()
+                    .filter(s -> {
+                        long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
+                        return s.getNet() != sum;
+                    })
+                    .map(s -> {
+                        long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
+                        return "SETTLEMENT_MISMATCH settlementId=%s net=%d sumLines=%d"
+                                .formatted(s.getSettlementId(), s.getNet(), sum);
+                    })
+                    .toList();
+
+            // 8) 완료 처리(OK/FAIL only)
+            if (mismatches.isEmpty()) {
+                settlementBatchRunRecorder.completeOk(runId);
+
+                auditBatchAction(
+                        requestId,
+                        actorId,
+                        Action.BATCH_RUN_COMPLETED,
+                        baseDate,
+                        runId,
+                        "OK: settlements=" + settlements.size() + ", paymentLines=" + paymentLines.size()
+                );
+
+                SettlementBatch finished = settlementBatchRepository.findByRunId(runId)
+                        .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
+
+                return new SettlementBatchRunResponse(
+                        requestId,
+                        finished.getBatchKey(),
+                        finished.getRunId(),
+                        SettlementBatchRunResponse.RunResult.OK,
+                        null,
+                        finished.getCreatedAt(),
+                        finished.getFinishedAt()
+                );
+            }
+
+            String failReason = String.join(" | ", mismatches);
+            settlementBatchRunRecorder.completeFail(runId, failReason);
+
+            auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL: " + failReason);
+
+            SettlementBatch failed = settlementBatchRepository.findByRunId(runId)
+                    .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
+
+            return new SettlementBatchRunResponse(
+                    requestId,
+                    failed.getBatchKey(),
+                    failed.getRunId(),
+                    SettlementBatchRunResponse.RunResult.FAIL,
+                    failed.getFailReason(),
+                    failed.getCreatedAt(),
+                    failed.getFinishedAt()
+            );
+
+        } catch (Exception e) {
+            // 예외도 FAIL로 수렴
+            String failReason = "UNEXPECTED_ERROR: " + e.getClass().getSimpleName();
+
+            settlementBatchRunRecorder.completeFail(runId, failReason);
+
+            auditBatchAction(
+                    requestId,
+                    actorId,
+                    Action.BATCH_RUN_COMPLETED,
+                    baseDate,
+                    runId,
+                    "FAIL: " + failReason
+            );
+
+            SettlementBatch failed = settlementBatchRepository.findByRunId(runId)
+                    .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
+
+            return new SettlementBatchRunResponse(
+                    requestId,
+                    failed.getBatchKey(),
+                    failed.getRunId(),
+                    SettlementBatchRunResponse.RunResult.FAIL,
+                    failed.getFailReason(),
+                    failed.getCreatedAt(),
+                    failed.getFinishedAt()
+            );
+        }
     }
 
     @Override
     @Transactional
-    public SettlementPayActionResponse requestPaid(String settlementId, String comment) {
-        // LOCKED fail-fast (request_id / actor_id SoT)
-        String requestId = currentRequestId();
+    public SettlementPayActionResponse requestPaid(String settlementId, String comment, String requestId) {
+        validateRequestId(requestId);
         String actorId = currentActorId();
 
         if (settlementId == null || settlementId.isBlank()) {
@@ -71,32 +287,22 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = settlement.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    actorId,
-                    Action.SETTLEMENT_PAY_REQUESTED,
-                    settlement,
-                    before,
-                    after,
-                    comment
+                    requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
+                    settlement, before, after, comment
             );
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 2) 409 reason 우선순위 고정(LOCKED)
-        //    HOLD_ACTIVE → SETTLEMENT_NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
-
+        // 2) 409 reason 우선순위(LOCKED): HOLD_ACTIVE → NOT_READY → BATCH_FAILED → REFUND_ADJUSTMENT_PENDING
         if (settlement.isHoldActive()) {
             throw new ConflictException(ReasonCode.HOLD_ACTIVE, "hold is active");
         }
-
         if (!settlement.isReady()) {
             throw new ConflictException(ReasonCode.SETTLEMENT_NOT_READY, "settlement is not READY");
         }
-
-        if (isBatchFailed(settlement.getBaseDate())) {
+        if (isBatchFailed(settlement.getBatchId())) {
             throw new ConflictException(ReasonCode.BATCH_FAILED, "batch failed");
         }
-
         if (refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId)) {
             throw new ConflictException(ReasonCode.REFUND_ADJUSTMENT_PENDING, "refund adjustment pending");
         }
@@ -106,15 +312,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         settlement.requestPaid(actorId, LocalDateTime.now());
         String after = settlement.getStatus().name();
 
-        // 4) audit (LOCKED)
         auditSettlementAction(
-                requestId,
-                actorId,
-                Action.SETTLEMENT_PAY_REQUESTED,
-                settlement,
-                before,
-                after,
-                comment
+                requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
+                settlement, before, after, comment
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -122,10 +322,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementPayActionResponse approvePaid(String settlementId, String comment) {
-        // LOCKED fail-fast (request_id / actor_id SoT)
-        String requestId = currentRequestId();
-        String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일하게 사용)
+    public SettlementPayActionResponse approvePaid(String settlementId, String comment, String requestId) {
+        validateRequestId(requestId);
+        String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일)
 
         if (settlementId == null || settlementId.isBlank()) {
             throw new BadRequestException("settlementId must not be null/blank");
@@ -140,13 +339,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = current.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    approverId,
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    current,
-                    before,
-                    after,
-                    comment
+                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                    current, before, after, comment
             );
             return toPayActionResponse(current, requestId);
         }
@@ -166,18 +360,13 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             String after = settlement.getStatus().name();
 
             auditSettlementAction(
-                    requestId,
-                    approverId,
-                    Action.SETTLEMENT_PAY_APPROVED,
-                    settlement,
-                    before,
-                    after,
-                    comment
+                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                    settlement, before, after, comment
             );
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 4-eyes 검사: requester != approver
+        // 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
             throw new ConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
@@ -190,22 +379,18 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         String after = settlement.getStatus().name();
 
         auditSettlementAction(
-                requestId,
-                approverId,
-                Action.SETTLEMENT_PAY_APPROVED,
-                settlement,
-                before,
-                after,
-                comment
+                requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                settlement, before, after, comment
         );
 
         return toPayActionResponse(settlement, requestId);
     }
 
-    private boolean isBatchFailed(LocalDate baseDate) {
-        if (baseDate == null) return false;
-        return settlementBatchRepository.findByBatchKey(baseDate)
-                .filter(b -> b.getFinishedAt() != null) // 실행 완료된 배치만 판정(선택)
+    private boolean isBatchFailed(Long batchId) {
+        if (batchId == null) return false;
+
+        return settlementBatchRepository.findById(batchId)
+                .filter(b -> b.getFinishedAt() != null) // 완료된 배치만 판정
                 .map(b -> b.getResult() == SettlementBatchResult.FAIL)
                 .orElse(false);
     }
@@ -214,7 +399,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         if (s.isPayRequested() && s.getPaidRequestedAt() == null) {
             throw new IllegalStateException("paidRequestedAt must not be null when status is PAY_REQUESTED");
         }
-
         if (s.isPaid() && s.getPaidApprovedAt() == null) {
             throw new IllegalStateException("paidAt must not be null when status is PAID");
         }
@@ -230,33 +414,14 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
     }
 
-    private String currentRequestId() {
-        String requestId = MDC.get(RequestIdKeys.MDC_KEY);
-
-        // request_id 생성/주입은 Filter 단일 책임(Freeze).
-        // 여기서 null/blank가 나오면 "클라이언트 입력" 문제가 아니라
-        // 테스트/필터 설정/호출 경로가 계약을 위반한 것으로 보고 400으로 표준화한다(500 금지).
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId must not be null/blank (RequestIdFilter contract violated)");
-        }
-        return requestId;
-    }
-
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-
-        // 인증 누락은 401로 귀결(500 금지).
-        // 보통 Security FilterChain에서 차단되지만, 테스트/내부호출/설정 실수 대비로 서비스에서도 방어한다.
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized (authentication required)");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
         }
         return auth.getName();
     }
 
-    /**
-     * requestId/actorId를 호출자가 스냅샷으로 넘겨주도록 강제
-     * - 동시성/스레드 전환/컨텍스트 꼬임이 있어도 audit이 흔들리지 않게 한다.
-     */
     private void auditSettlementAction(
             String requestId,
             String actorId,
@@ -283,35 +448,67 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         auditLogger.log(cmd);
     }
 
+    private void auditBatchAction(
+            String requestId,
+            String actorId,
+            Action action,
+            LocalDate baseDate,
+            String runId,
+            String note
+    ) {
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("baseDate", baseDate.toString());
+        meta.put("runId", runId);
+        if (note != null && !note.isBlank()) {
+            meta.put("note", note);
+        }
+
+        // --- 노션(운영 재현 표준) 정합: no-op 표준 키 강제 ---
+        // SKIP은 "동일 baseDate 재실행 정책"으로 인해 의도적으로 수행되지 않은(no-op) 케이스
+        if (action == Action.BATCH_RUN_SKIPPED) {
+            meta.put("noOp", true);
+            meta.put("noOpReason", "BATCH_KEY_EXISTS");
+        } else {
+            meta.put("noOp", false);
+        }
+
+        String metaJson;
+        try {
+            metaJson = objectMapper.writeValueAsString(meta);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("failed to serialize batch audit metaJson", e);
+        }
+
+        AuditLogCommand cmd = AuditLogCommand.builder()
+                .requestId(requestId)
+                .merchantId(null)               // 배치는 baseDate 단위 행위
+                .entityType(EntityType.BATCH)
+                .entityId(runId)                // 추적 anchor = runId
+                .occurredAt(LocalDateTime.now())
+                .actorType(ActorType.ADMIN)
+                .actorId(actorId)
+                .action(action)
+                .statusBefore(null)
+                .statusAfter(null)
+                .metaJson(metaJson)
+                .build();
+
+        auditLogger.log(cmd);
+    }
+
     private String buildMetaJson(String comment) {
         try {
             Map<String, Object> meta = new HashMap<>();
-            if (comment != null && !comment.isBlank()) {
-                meta.put("comment", comment);
-            }
+            meta.put("comment", (comment == null || comment.isBlank()) ? null : comment);
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
         }
     }
 
-    // 현재 runBatch는 TODO지만, 이미 클래스에 존재하므로 유지 (컴파일/리팩토링 안전)
-    @SuppressWarnings("unused")
-    private SettlementBatchRunResponse toBatchRunResponse(
-            String requestId,
-            SettlementBatch batch,
-            SettlementBatchRunResponse.RunResult result
-    ) {
-        String failReason = (result == SettlementBatchRunResponse.RunResult.FAIL) ? batch.getFailReason() : null;
-
-        return new SettlementBatchRunResponse(
-                requestId,
-                batch.getBatchKey(),
-                batch.getRunId(),
-                result,
-                failReason,
-                batch.getCreatedAt(),
-                batch.getFinishedAt()
-        );
+    private void validateRequestId(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            throw new BadRequestException("requestId must not be null/blank");
+        }
     }
 }
