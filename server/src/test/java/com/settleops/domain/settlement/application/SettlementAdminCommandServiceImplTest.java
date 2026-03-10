@@ -1,5 +1,11 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.settleops.global.audit.AuditLogCommand;
+import com.settleops.global.enums.Action;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
@@ -217,7 +223,7 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     @DisplayName("runBatch 중 예외가 발생하면 FAIL과 UNEXPECTED_ERROR를 반환한다")
-    void runBatch_unexpectedException_thenFailWithUnexpectedError() {
+    void runBatch_unexpectedException_thenFailWithUnexpectedError() throws Exception{
         LocalDate baseDate = LocalDate.of(2026, 3, 2);
 
         SettlementBatch startedBatch = Mockito.mock(SettlementBatch.class);
@@ -255,5 +261,20 @@ class SettlementAdminCommandServiceImplTest {
                 .completeFail(Mockito.anyString(), Mockito.eq("UNEXPECTED_ERROR"));
         Mockito.verify(settlementBatchRunRecorder, Mockito.never()).completeOk(Mockito.anyString());
 
+        ArgumentCaptor<AuditLogCommand> auditCaptor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger, Mockito.atLeastOnce()).log(auditCaptor.capture());
+
+        List<AuditLogCommand> auditCommands = auditCaptor.getAllValues();
+
+        AuditLogCommand completedAudit = auditCommands.stream()
+                .filter(cmd -> cmd.getAction() == Action.BATCH_RUN_COMPLETED)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("BATCH_RUN_COMPLETED audit not found"));
+
+        JsonNode meta = objectMapper.readTree(completedAudit.getMetaJson());
+
+        assertThat(meta.get("result").asText()).isEqualTo("FAIL");
+        assertThat(meta.get("failReason").asText()).isEqualTo("UNEXPECTED_ERROR");
+        assertThat(meta.get("errorType").asText()).isEqualTo("RuntimeException");
     }
 }
