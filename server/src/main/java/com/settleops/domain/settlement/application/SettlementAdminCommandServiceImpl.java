@@ -43,6 +43,8 @@ import java.util.stream.Collectors;
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
 
     private static final int TRIGGERED_BY_MAX_LEN = 50;
+    private static final String FAIL_REASON_NET_MISMATCH = "NET_MISMATCH";
+    private static final String FAIL_REASON_UNEXPECTED_ERROR = "UNEXPECTED_ERROR";
 
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
@@ -181,20 +183,14 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                             Collectors.summingLong(SettlementLine::signedAmount)
                     ));
 
-            List<String> mismatches = settlements.stream()
-                    .filter(s -> {
+            boolean hasNetMismatch = settlements.stream()
+                    .anyMatch(s -> {
                         long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
                         return s.getNet() != sum;
-                    })
-                    .map(s -> {
-                        long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
-                        return "SETTLEMENT_MISMATCH settlementId=%s net=%d sumLines=%d"
-                                .formatted(s.getSettlementId(), s.getNet(), sum);
-                    })
-                    .toList();
+                    });
 
             // 8) 완료 처리(OK/FAIL only)
-            if (mismatches.isEmpty()) {
+            if (!hasNetMismatch) {
                 settlementBatchRunRecorder.completeOk(runId);
 
                 auditBatchAction(
@@ -220,7 +216,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 );
             }
 
-            String failReason = String.join(" | ", mismatches);
+            String failReason = FAIL_REASON_NET_MISMATCH;
             settlementBatchRunRecorder.completeFail(runId, failReason);
 
             auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL: " + failReason);
@@ -240,7 +236,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         } catch (Exception e) {
             // 예외도 FAIL로 수렴
-            String failReason = "UNEXPECTED_ERROR: " + e.getClass().getSimpleName();
+            String failReason = FAIL_REASON_UNEXPECTED_ERROR;
 
             settlementBatchRunRecorder.completeFail(runId, failReason);
 

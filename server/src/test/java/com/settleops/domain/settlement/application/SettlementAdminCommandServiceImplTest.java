@@ -2,6 +2,7 @@ package com.settleops.domain.settlement.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementBatchResult;
@@ -15,12 +16,14 @@ import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -210,5 +213,47 @@ class SettlementAdminCommandServiceImplTest {
         verifyNoInteractions(refundAdjustmentPolicy);
         verifyNoInteractions(settlementBatchRepository);
         verifyNoInteractions(auditLogger);
+    }
+
+    @Test
+    @DisplayName("runBatch 중 예외가 발생하면 FAIL과 UNEXPECTED_ERROR를 반환한다")
+    void runBatch_unexpectedException_thenFailWithUnexpectedError() {
+        LocalDate baseDate = LocalDate.of(2026, 3, 2);
+
+        SettlementBatch startedBatch = Mockito.mock(SettlementBatch.class);
+        Mockito.when(startedBatch.getBatchId()).thenReturn(1L);
+
+        Mockito.when(settlementBatchRunRecorder.startOrThrow(
+                Mockito.eq(baseDate),
+                Mockito.anyString(),
+                Mockito.eq("req-test-001"),
+                Mockito.anyString()
+        )).thenReturn(startedBatch);
+
+        Mockito.when(paymentEventRepository.findConfirmedPaymentsByOccurredAtRange(
+                Mockito.any(LocalDateTime.class),
+                Mockito.any(LocalDateTime.class)
+        )).thenThrow(new RuntimeException("boom"));
+
+        SettlementBatch failedBatch = Mockito.mock(SettlementBatch.class);
+        Mockito.when(failedBatch.getBatchKey()).thenReturn(baseDate);
+        Mockito.when(failedBatch.getRunId()).thenReturn("run-001");
+        Mockito.when(failedBatch.getFailReason()).thenReturn("UNEXPECTED_ERROR");
+        Mockito.when(failedBatch.getCreatedAt()).thenReturn(LocalDateTime.now().minusMinutes(1));
+        Mockito.when(failedBatch.getFinishedAt()).thenReturn(LocalDateTime.now());
+
+        Mockito.when(settlementBatchRepository.findByRunId(Mockito.anyString()))
+                .thenReturn(Optional.of(failedBatch));
+
+        SettlementBatchRunResponse response = service.runBatch(baseDate, "req-test-001");
+
+        assertThat(response.result()).isEqualTo(SettlementBatchRunResponse.RunResult.FAIL);
+        assertThat(response.failReason()).isEqualTo("UNEXPECTED_ERROR");
+        assertThat(response.finishedAt()).isNotNull();
+
+        verify(settlementBatchRunRecorder, times(1))
+                .completeFail(Mockito.anyString(), Mockito.eq("UNEXPECTED_ERROR"));
+        Mockito.verify(settlementBatchRunRecorder, Mockito.never()).completeOk(Mockito.anyString());
+
     }
 }
