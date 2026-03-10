@@ -4,7 +4,7 @@ import com.settleops.domain.settlement.application.SettlementAdminCommandService
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionRequest;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
-import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -17,15 +17,20 @@ import java.time.LocalDate;
 @RequestMapping("/api/admin")
 public class AdminSettlementCommandController {
     private final SettlementAdminCommandService commandService;
+    private final RequestIdResolver requestIdResolver;
 
-    public AdminSettlementCommandController(SettlementAdminCommandService commandService) {
+    public AdminSettlementCommandController(
+            SettlementAdminCommandService commandService,
+            RequestIdResolver requestIdResolver
+    ) {
         this.commandService = commandService;
+        this.requestIdResolver = requestIdResolver;
     }
 
     /**
      * A2 배치 실행·이력(운영 콘솔)
      * POST /api/admin/settlement-batches/run?baseDate=YYYY-MM-DD
-     *
+
      * LOCKED:
      * - baseDate 동일 재실행은 SKIP + 기존 run_id/result 반환
      * - requestId는 운영 응답이므로 body 포함 OK
@@ -44,7 +49,7 @@ public class AdminSettlementCommandController {
     /**
      * A4: 지급 요청(4-eyes 1단계)
      * PATCH /api/admin/settlements/{settlementId}/request-paid
-     *
+
      * LOCKED:
      * - READY 아니면 409 (SETTLEMENT_NOT_READY/HOLD_ACTIVE/BATCH_FAILED/REFUND_ADJUSTMENT_PENDING)
      * - 이미 PAY_REQUESTED면 no-op 200 + 현재 상태 반환
@@ -63,7 +68,7 @@ public class AdminSettlementCommandController {
     /**
      * A4: 지급 승인(4-eyes 2단계)
      * PATCH /api/admin/settlements/{settlementId}/approve-paid
-     *
+     
      * LOCKED:
      * - 이미 PAID면 no-op 200 + (status=PAID + paidAt) 필수
      * - PAY_REQUESTED가 아니면 409 PAY_REQUESTED_REQUIRED
@@ -82,10 +87,6 @@ public class AdminSettlementCommandController {
     }
 
     private String extractRequestId(HttpServletRequest request) {
-        Object value = request.getAttribute(RequestIdKeys.ATTR_KEY);
-        if (!(value instanceof String requestId) || requestId.isBlank()) {
-            throw new IllegalStateException("requestId must be provided by RequestIdFilter");
-        }
-        return requestId;
+        return requestIdResolver.resolve(request);
     }
 }

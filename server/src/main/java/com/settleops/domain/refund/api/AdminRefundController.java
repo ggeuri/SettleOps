@@ -5,8 +5,7 @@ import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
-import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +28,7 @@ public class AdminRefundController {
 
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
+    private final RequestIdResolver requestIdResolver;
 
     /**
      * A6 운영 큐 조회(READ).
@@ -53,10 +53,7 @@ public class AdminRefundController {
     ) {
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
         String adminId = userDetails.getUsername();
-        String requestId = (String)request.getAttribute(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId is null/blank");
-        }
+        String requestId = requestIdResolver.resolve(request);
         return ResponseEntity.ok(refundAdminService.approve(refundId, adminId, req.getComment(), requestId));
     }
 
@@ -69,10 +66,7 @@ public class AdminRefundController {
     ) {
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
         String adminId = userDetails.getUsername();
-        String requestId = (String) request.getAttribute(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId is null/blank");
-        }
+        String requestId = requestIdResolver.resolve(request);
         return ResponseEntity.ok(refundAdminService.reject(refundId, adminId, req.getComment(), requestId));
     }
 
