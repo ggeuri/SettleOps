@@ -1,10 +1,7 @@
 package com.settleops.domain.payment.domain;
 
-import com.settleops.global.enums.Action;
-import com.settleops.global.logging.RequestIdProvider;
 import jakarta.persistence.*;
 import lombok.Getter;
-import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
 
@@ -39,8 +36,6 @@ import java.time.LocalDateTime;
 )
 public class PaymentEvent {
 
-    private final static String MDC_KEY = "requestId";
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "payment_event_id", nullable = false)
@@ -72,7 +67,8 @@ public class PaymentEvent {
             String paymentId,
             PaymentEventType eventType,
             PaymentStatus before,
-            PaymentStatus after
+            PaymentStatus after,
+            String requestId
     ) {
         if (paymentId == null || paymentId.isBlank()) {
             throw new IllegalArgumentException("paymentId는 필수입니다.");
@@ -80,8 +76,9 @@ public class PaymentEvent {
         if (eventType == null) {
             throw new IllegalArgumentException("eventType은 필수입니다.");
         }
-
-        String requestId = RequestIdProvider.current();
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalArgumentException("requestId는 필수입니다.");
+        }
 
         PaymentEvent e = new PaymentEvent();
         e.paymentId = paymentId;
@@ -92,21 +89,34 @@ public class PaymentEvent {
         return e;
     }
 
-    public static PaymentEvent created(String paymentId) {
+    public static PaymentEvent created(String paymentId,String requestId) {
         return of(
                 paymentId,
                 PaymentEventType.PAYMENT_CREATED,
                 null,
-                PaymentStatus.CREATED
+                PaymentStatus.CREATED,
+                requestId
         );
     }
 
-    public static PaymentEvent captured(String paymentId) {
+    public static PaymentEvent captured(String paymentId, String requestId) {
         return of(
                 paymentId,
                 PaymentEventType.PAYMENT_CAPTURED,
                 PaymentStatus.CREATED,
-                PaymentStatus.CAPTURED
+                PaymentStatus.CAPTURED,
+                requestId
+        );
+    }
+
+    // CONFIRMED는 이벤트 SoT(PAYMENT_CONFIRMED)로 고정
+    public static PaymentEvent confirmed(String paymentId, String requestId) {
+        return of(
+                paymentId,
+                PaymentEventType.PAYMENT_CONFIRMED,
+                PaymentStatus.CAPTURED,
+                PaymentStatus.CAPTURED,
+                requestId
         );
     }
 
