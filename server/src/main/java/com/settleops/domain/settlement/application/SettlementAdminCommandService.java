@@ -12,7 +12,7 @@ public interface SettlementAdminCommandService {
      * - baseDate 동일이면 SKIP + 기존 run_id/result 반환
      * - FAIL 기록은 반드시 남아야 함(실패로 롤백되면 안 됨)
      */
-    SettlementBatchRunResponse runBatch(LocalDate baseDate);
+    SettlementBatchRunResponse runBatch(LocalDate baseDate, String requestId);
 
     /**
      * A4 4-eyes 1단계: request-paid
@@ -22,7 +22,7 @@ public interface SettlementAdminCommandService {
      * - BATCH_FAILED
      * - REFUND_ADJUSTMENT_PENDING
      */
-    SettlementPayActionResponse requestPaid(String settlementId, String comment);
+    SettlementPayActionResponse requestPaid(String settlementId, String comment, String requestId);
 
     /**
      * A4 4-eyes 2단계: approve-paid
@@ -32,5 +32,5 @@ public interface SettlementAdminCommandService {
      * - SAME_APPROVER_NOT_ALLOWED
      * - (옵션) IN_PROGRESS
      */
-    SettlementPayActionResponse approvePaid(String settlementId, String comment);
+    SettlementPayActionResponse approvePaid(String settlementId, String comment, String requestId);
 }

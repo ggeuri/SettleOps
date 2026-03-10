@@ -24,6 +24,7 @@ import java.time.LocalDateTime;
         }
 )
 public class Settlement extends BaseEntity {
+
     @Id
     @Column(name = "settlement_id", nullable = false, columnDefinition = "CHAR(36)")
     private String settlementId;
@@ -92,7 +93,6 @@ public class Settlement extends BaseEntity {
         s.fee = fee;
         s.vat = vat;
         s.net = net;
-
         s.status = SettlementStatus.READY;
         return s;
     }
@@ -139,6 +139,7 @@ public class Settlement extends BaseEntity {
         if (!canRequestPaid()) {
             throw new IllegalStateException("cannot request paid in the current state");
         }
+
         this.status = SettlementStatus.PAY_REQUESTED;
         this.paidRequestedBy = requesterId;
         this.paidRequestedAt = (at != null ? at : LocalDateTime.now());
@@ -154,6 +155,7 @@ public class Settlement extends BaseEntity {
         if (violatesFourEyes(approverId)) {
             throw new IllegalStateException("four-eyes violation: requester and approver must be different");
         }
+
         this.status = SettlementStatus.PAID;
         this.paidApprovedBy = approverId;
         this.paidApprovedAt = (at != null ? at : LocalDateTime.now());

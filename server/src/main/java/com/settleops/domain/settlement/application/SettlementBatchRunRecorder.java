@@ -1,48 +1,34 @@
 package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.settlement.entity.SettlementBatch;
-import com.settleops.domain.settlement.enums.SettlementBatchResult;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
-@Service
+@Component
 @RequiredArgsConstructor
-public class SettlementBatchRunRecorder { // settlement_batch 기록만 전담
+public class SettlementBatchRunRecorder {
+
     private final SettlementBatchRepository settlementBatchRepository;
 
     /**
-     * @return start 성공 시 created row, 이미 존재하면 existing row (호출자가 SKIP 처리)
+     * 배치 "시작" 레코드 생성 (멱등은 호출자(Service)가 catch로 처리)
+     * - REQUIRES_NEW: UNIQUE 충돌이 상위 트랜잭션(runBatch)을 rollback-only로 만들지 않도록 격리
+     * - saveAndFlush: 여기서 batch_id 확정 + UNIQUE 충돌 즉시 발생
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public StartResult start(LocalDate baseDate, String runId, String requestId, String actorId){
-        try{
-            SettlementBatch batch = SettlementBatch.completed(
-              baseDate,
-              runId,
-              actorId,
-                    SettlementBatchResult.OK,
-                    requestId,
-                    null,
-                    null // finishedAt=null => 진행중
-            );
-            settlementBatchRepository.saveAndFlush(batch);
-            return StartResult.created(batch);
-        } catch (DataIntegrityViolationException e){
-            SettlementBatch existing = settlementBatchRepository.findByBatchKey(baseDate)
-                    .orElseThrow(()-> e);
-            return StartResult.existing(existing);
-        }
+    public SettlementBatch startOrThrow(LocalDate baseDate, String runId, String requestId, String triggeredBy) {
+        SettlementBatch batch = SettlementBatch.started(baseDate, runId, triggeredBy, requestId);
+        return settlementBatchRepository.saveAndFlush(batch);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void completeOk (String runId){
+    public void completeOk(String runId) {
         SettlementBatch batch = settlementBatchRepository.findByRunId(runId)
                 .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
 
@@ -57,10 +43,5 @@ public class SettlementBatchRunRecorder { // settlement_batch 기록만 전담
 
         batch.markFail(failReason, LocalDateTime.now());
         settlementBatchRepository.save(batch);
-    }
-
-    public record StartResult(boolean created, SettlementBatch batch) {
-        public static StartResult created(SettlementBatch b) {return new StartResult(true, b);}
-        public static StartResult existing(SettlementBatch b) {return new StartResult(false, b);}
     }
 }
