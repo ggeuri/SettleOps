@@ -5,8 +5,7 @@ import com.settleops.domain.refund.api.dto.RefundCreateRequestDTO;
 import com.settleops.domain.refund.api.dto.RefundResponseDTO;
 import com.settleops.domain.refund.application.RefundCommandService;
 import com.settleops.domain.refund.application.RefundQueryServiceImpl;
-import com.settleops.global.error.BadRequestException;
-import com.settleops.global.logging.RequestIdKeys;
+import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +20,7 @@ import java.util.List;
 public class RefundController {
     private final RefundCommandService refundCommandService;
     private final RefundQueryServiceImpl refundQueryServiceImpl;
+    private final RequestIdResolver requestIdResolver;
 
     //POST /api/refunds (merchant 환불 요청) (U6)
     @PostMapping("/refunds")
@@ -28,12 +28,10 @@ public class RefundController {
             @RequestBody @Valid RefundCreateRequestDTO req,
             HttpServletRequest request
     ) {
-        String requestId = (String) request.getAttribute(RequestIdKeys.MDC_KEY);
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId is null/blank");
-        }
+        String requestId = requestIdResolver.resolve(request);
         return ResponseEntity.ok(refundCommandService.requestRefund(req, requestId));
     }
+
     // 브라우저로 들어가서 JSON 보기용 (U6 조회)
     @GetMapping("/me/refunds")
     public ResponseEntity<List<AdminRefundListItemDTO>> myRefunds() {
