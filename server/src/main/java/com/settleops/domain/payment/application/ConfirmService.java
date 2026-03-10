@@ -59,7 +59,14 @@ public class ConfirmService {
         // 3) 이미 CONFIRMED면 즉시 no-op 수렴
         LocalDateTime existingConfirmedAt = confirmQueryService.findConfirmedAt(paymentId).orElse(null);
         if (existingConfirmedAt != null) {
-            logConfirm(payment, currentBuyerId, requestId, existingConfirmedAt, true);
+            logConfirm(
+                    payment,
+                    currentBuyerId,
+                    requestId,
+                    existingConfirmedAt,
+                    true,
+                    "ALREADY_CONFIRMED"
+            );
             return ConfirmResponseDTO.from(payment, existingConfirmedAt);
         }
 
@@ -72,17 +79,25 @@ public class ConfirmService {
         LocalDateTime confirmedAt = confirmQueryService.getConfirmedAtOrThrow(paymentId);
 
         // 6) 감사 로그
-        logConfirm(payment, currentBuyerId, requestId, confirmedAt, !inserted);
+        logConfirm(
+                payment,
+                currentBuyerId,
+                requestId,
+                confirmedAt,
+                !inserted,
+                inserted ? null : "ALREADY_CONFIRMED"
+        );
 
         return ConfirmResponseDTO.from(payment, confirmedAt);
     }
 
     /**
      * requestId는 추적 / 감사 로그 기준값이므로 필수입니다.
+     * 누락 시 내부 오류가 아니라 잘못된 요청으로 처리합니다.
      */
     private void validateRequestId(String requestId) {
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId is null/blank");
+            throw new BadRequestException("X-Request-Id는 필수입니다.");
         }
     }
 
@@ -120,11 +135,12 @@ public class ConfirmService {
     /**
      * confirm 감사 로그
      *
-     * <p>- idempotent=false : 최초 confirm
-     * <br>- idempotent=true  : 재시도 / no-op
+     * <p> @param idempotentReplay 멱등 재시도/no-op 여부
+     * <br> @param noOpReason       no-op 사유. 최초 성공이면 null
      * </p>
      *
      * <p>주의
+     * <br>- confirm의 SoT는 PAYMENT_CONFIRMED 이벤트이며,
      * <br>- payment.status는 변경되지 않으므로 before/after 모두 CAPTURED입니다.
      * </p>
      */
@@ -133,7 +149,8 @@ public class ConfirmService {
             String currentBuyerId,
             String requestId,
             LocalDateTime confirmedAt,
-            boolean idempotent
+            boolean idempotentReplay,
+            String noOpReason
     ) {
         auditLogger.log(
                 AuditLogCommand.builder()
@@ -147,8 +164,18 @@ public class ConfirmService {
                         .statusAfter(PaymentStatus.CAPTURED.name())
                         .merchantId(payment.getMerchantId())
                         .occurredAt(confirmedAt)
-                        .metaJson("{\"idempotent\":" + idempotent + "}")
+                        .metaJson(buildConfirmMetaJson(idempotentReplay, noOpReason))
                         .build()
         );
+    }
+
+    private String buildConfirmMetaJson(boolean idempotentReplay, String noOpReason) {
+        boolean noOp = noOpReason != null && !noOpReason.isBlank();
+
+        if (!noOp) {
+            return "{\"noOp\":false,\"idempotent\":" + idempotentReplay + "}";
+        }
+
+        return "{\"noOp\":true,\"noOpReason\":\"" + noOpReason + "\",\"idempotent\":" + idempotentReplay + "}";
     }
 }

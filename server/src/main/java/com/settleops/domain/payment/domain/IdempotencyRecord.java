@@ -44,7 +44,7 @@ public class IdempotencyRecord {
         @Column(name = "payment_id", columnDefinition = "char(36)")
         private String paymentId; // 성공 시 생성된 paymentId
 
-        @Column(name = "response_status", nullable = false)
+        @Column(name = "response_status")
         private Integer responseStatus; // 최초 처리 HTTP 상태코드 (예: 200)
 
         @Column(name = "request_id", columnDefinition = "char(36)", nullable = false)
@@ -55,38 +55,36 @@ public class IdempotencyRecord {
         private LocalDateTime createdAt;
 
 
-        public static IdempotencyRecord create(
+        /**
+         * 멱등키 선점용 row를 생성한다.
+         *
+         * <p>동일 (targetType, targetId, idempotencyKey) 요청 중
+         * 최초 요청만 insert에 성공하며, 이 시점에는 아직 성공 결과가 없으므로
+         * paymentId / responseStatus 는 null 상태로 둔다.</p>
+         */
+        public static IdempotencyRecord claim(
                 IdempotencyTargetType targetType,
-                String orderId,
+                String targetId,
                 String idempotencyKey,
-                String paymentId,
-                int responseStatus,
                 String requestId
         ) {
-                if (targetType == null) {
-                        throw new IllegalArgumentException("targetType은 필수입니다.");
-                }
-                if (orderId == null || orderId.isBlank()) {
-                        throw new IllegalArgumentException("orderId는 필수입니다.");
-                }
-                if (idempotencyKey == null || idempotencyKey.isBlank()) {
-                        throw new IllegalArgumentException("idempotencyKey는 필수입니다.");
-                }
-                if (paymentId == null || paymentId.isBlank()) {
-                        throw new IllegalArgumentException("paymentId는 필수입니다.");
-                }
-                if (requestId == null || requestId.isBlank()) {
-                        throw new IllegalArgumentException("requestId는 필수입니다.");
-                }
-
                 IdempotencyRecord record = new IdempotencyRecord();
                 record.targetType = targetType;
-                record.targetId = orderId;
+                record.targetId = targetId;
                 record.idempotencyKey = idempotencyKey;
-                record.paymentId = paymentId;
-                record.responseStatus = responseStatus;
                 record.requestId = requestId;
-
                 return record;
+        }
+
+        /**
+         * 선점된 멱등 row에 성공 결과를 기록한다.
+         *
+         * <p>pay 성공 이후 같은 트랜잭션 안에서 호출하며,
+         * 최종 응답 기준 paymentId / responseStatus / requestId 를 반영한다.</p>
+         */
+        public void markSucceeded(String paymentId, int responseStatus, String requestId) {
+                this.paymentId = paymentId;
+                this.responseStatus = responseStatus;
+                this.requestId = requestId;
         }
 }
