@@ -2,6 +2,7 @@ package com.settleops.domain.payment.api;
 
 import com.settleops.domain.payment.api.dto.PayResponseDTO;
 import com.settleops.domain.payment.application.PayService;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.logging.RequestIdKeys;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -65,7 +66,7 @@ public class ConsumerPayController {
     ) {
         String requestId =  (String) request.getAttribute(RequestIdKeys.ATTR_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId attribute missing. Check RequestIdFilter.");
+            throw new BadRequestException("X-Request-Id attribute is missing.");
         }
 
         PayResponseDTO response =

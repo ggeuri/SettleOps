@@ -3,6 +3,7 @@ package com.settleops.domain.payment.api;
 import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.application.ConfirmService;
 import com.settleops.global.auth.controller.MeController;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.UnauthorizedException;
 import com.settleops.global.logging.RequestIdKeys;
 import jakarta.servlet.http.HttpServletRequest;
@@ -75,7 +76,7 @@ public class ConsumerPaymentController {
 
         String requestId = (String) request.getAttribute(RequestIdKeys.ATTR_KEY);
         if (requestId == null || requestId.isBlank()) {
-            throw new IllegalStateException("requestId is missing in request attribute");
+            throw new BadRequestException("X-Request-Id attribute is missing.");
         }
 
         return confirmService.confirm(paymentId, buyerId, requestId);
