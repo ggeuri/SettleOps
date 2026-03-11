@@ -235,25 +235,23 @@ public class RefundAdminService {
     private String buildMetaJson(String comment, String before, String after, boolean noOp, String noOpReason) {
         try {
             Map<String, Object> meta = new HashMap<>();
-
-            meta.put("comment", comment);
             meta.put("noOp", noOp);
+            meta.put("comment", comment);
 
-            if (noOp) {
+            if (noOp && noOpReason != null && !noOpReason.isBlank()) {
                 meta.put("noOpReason", noOpReason);
             }
 
-            Map<String, Object> statusDiff = new HashMap<>();
-            statusDiff.put("before", before);
-            statusDiff.put("after", after);
+            Map<String, Object> beforeNode = new HashMap<>();
+            beforeNode.put("status", before);
 
-            Map<String, Object> diff = new HashMap<>();
-            diff.put("status", statusDiff);
+            Map<String, Object> afterNode = new HashMap<>();
+            afterNode.put("status", after);
 
-            meta.put("diff", diff);
+            meta.put("before", beforeNode);
+            meta.put("after", afterNode);
 
             return objectMapper.writeValueAsString(meta);
-
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize metaJson", e);
         }

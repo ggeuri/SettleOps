@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -268,5 +269,48 @@ class RefundAdminServiceTest {
         assertThat(cmd.getRequestId()).isEqualTo("req-999");
         assertThat(cmd.getStatusBefore()).isEqualTo("REQUESTED");
         assertThat(cmd.getStatusAfter()).isEqualTo("REJECTED");
+    }
+    @Test
+    void approve_should_write_comment_and_before_after_diff_into_audit_meta_json() throws Exception {
+
+        //승인 시 운영 재현용 audit meta가 문서대로 남는지 테스트
+
+        String refundId = "refund-1";
+        String adminId = "admin01";
+        String requestId = "req-123";
+        String comment = "증빙 확인 후 승인";
+
+        Refund refund = Refund.builder()
+                .refundId("refund-1")
+                .merchantId("merchant-1")
+                .status(RefundStatus.REQUESTED)
+                .requestedAt(LocalDateTime.now().minusMinutes(5))
+                .build();
+
+        when(refundRepository.findById(refundId)).thenReturn(Optional.of(refund));
+
+        AdminRefundDecisionResponseDTO response =
+                service.approve(refundId, adminId, comment, requestId);
+
+        assertThat(response.getRequestId()).isEqualTo(requestId);
+        assertThat(response.getStatus()).isEqualTo(RefundStatus.APPROVED);
+
+        ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger).log(captor.capture());
+
+        AuditLogCommand command = captor.getValue();
+
+        Map<String, Object> meta = objectMapper.readValue(command.getMetaJson(), Map.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> before = (Map<String, Object>) meta.get("before");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> after = (Map<String, Object>) meta.get("after");
+
+        assertThat(meta.get("comment")).isEqualTo(comment);
+        assertThat(meta.get("noOp")).isEqualTo(false);
+        assertThat(before.get("status")).isEqualTo("REQUESTED");
+        assertThat(after.get("status")).isEqualTo("APPROVED");
     }
 }
