@@ -2,8 +2,6 @@ package com.settleops.global.filter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -27,10 +25,6 @@ import static com.settleops.global.logging.RequestIdKeys.*;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class RequestIdFilter extends OncePerRequestFilter {
 
-    private static final String REQUEST_ID_HEADER = HEADER;
-    private static final String REQUEST_ID_MDC = MDC_KEY;
-    private static final String REQUEST_ID_ATTR = ATTR_KEY;
-
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -39,20 +33,20 @@ public class RequestIdFilter extends OncePerRequestFilter {
         long startTime = System.currentTimeMillis();
 
         // 1. 헤더에서 기존 ID가 있는지 확인, 없으면 새로 생성
-        String requestId = request.getHeader(REQUEST_ID_HEADER);
+        String requestId = request.getHeader(HEADER);
         if (requestId == null || requestId.isBlank()) {
             requestId = UUID.randomUUID().toString();
         }
 
         // 2. MDC에 저장 (로그에 찍히도록 설정)
-        MDC.put(REQUEST_ID_MDC,requestId);
+        MDC.put(MDC_KEY, requestId);
 
         // 2-1. Controller가 꺼내 쓸 수 있도록 request attribute에도 저장
-        request.setAttribute(REQUEST_ID_ATTR, requestId);
+        request.setAttribute(ATTR_KEY, requestId);
 
         // 3. 응답 헤더에 추가 (클라이언트 확인용)
         // ✅ 모든 API 응답은 반드시 X-Request-Id 헤더를 포함해야 한다.
-        response.setHeader(REQUEST_ID_HEADER, requestId);
+        response.setHeader(HEADER, requestId);
 
         // 4. QueryString 포함 full URI 구성
         String fullUri = request.getRequestURI() +
@@ -69,7 +63,7 @@ public class RequestIdFilter extends OncePerRequestFilter {
             log.info("<<< {}ms status={}", duration, response.getStatus());
 
             // 5. MDC 정리
-            MDC.remove(REQUEST_ID_MDC);
+            MDC.remove(MDC_KEY);
         }
     }
 }
