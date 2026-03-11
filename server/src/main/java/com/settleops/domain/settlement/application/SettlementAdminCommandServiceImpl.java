@@ -32,10 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -43,6 +40,8 @@ import java.util.stream.Collectors;
 public class SettlementAdminCommandServiceImpl implements SettlementAdminCommandService {
 
     private static final int TRIGGERED_BY_MAX_LEN = 50;
+    private static final String FAIL_REASON_NET_MISMATCH = "NET_MISMATCH";
+    private static final String FAIL_REASON_UNEXPECTED_ERROR = "UNEXPECTED_ERROR";
 
     private final SettlementRepository settlementRepository;
     private final SettlementBatchRepository settlementBatchRepository;
@@ -89,7 +88,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                     Action.BATCH_RUN_SKIPPED,
                     baseDate,
                     existing.getRunId(),
-                    "batch_key already exists"
+                    Map.of("note", "batch_key already exists")
             );
 
             return new SettlementBatchRunResponse(
@@ -181,21 +180,21 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                             Collectors.summingLong(SettlementLine::signedAmount)
                     ));
 
-            List<String> mismatches = settlements.stream()
-                    .filter(s -> {
+            boolean hasNetMismatch = settlements.stream()
+                    .anyMatch(s -> {
                         long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
                         return s.getNet() != sum;
-                    })
-                    .map(s -> {
-                        long sum = sumSignedBySettlementId.getOrDefault(s.getSettlementId(), 0L);
-                        return "SETTLEMENT_MISMATCH settlementId=%s net=%d sumLines=%d"
-                                .formatted(s.getSettlementId(), s.getNet(), sum);
-                    })
-                    .toList();
+                    });
 
             // 8) 완료 처리(OK/FAIL only)
-            if (mismatches.isEmpty()) {
+            if (!hasNetMismatch) {
                 settlementBatchRunRecorder.completeOk(runId);
+
+                Map<String, Object> completedMeta = new LinkedHashMap<>(
+                        buildBatchCompletedMeta(SettlementBatchResult.OK.name(), null, null)
+                );
+                completedMeta.put("settlementCount", settlements.size());
+                completedMeta.put("paymentLineCount", paymentLines.size());
 
                 auditBatchAction(
                         requestId,
@@ -203,7 +202,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                         Action.BATCH_RUN_COMPLETED,
                         baseDate,
                         runId,
-                        "OK: settlements=" + settlements.size() + ", paymentLines=" + paymentLines.size()
+                        completedMeta
                 );
 
                 SettlementBatch finished = settlementBatchRepository.findByRunId(runId)
@@ -220,10 +219,17 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 );
             }
 
-            String failReason = String.join(" | ", mismatches);
+            String failReason = FAIL_REASON_NET_MISMATCH;
             settlementBatchRunRecorder.completeFail(runId, failReason);
 
-            auditBatchAction(requestId, actorId, Action.BATCH_RUN_COMPLETED, baseDate, runId, "FAIL: " + failReason);
+            auditBatchAction(
+                    requestId,
+                    actorId,
+                    Action.BATCH_RUN_COMPLETED,
+                    baseDate,
+                    runId,
+                    buildBatchCompletedMeta(SettlementBatchResult.FAIL.name(), failReason, null)
+            );
 
             SettlementBatch failed = settlementBatchRepository.findByRunId(runId)
                     .orElseThrow(() -> new IllegalStateException("batch not found by runId=" + runId));
@@ -240,7 +246,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         } catch (Exception e) {
             // 예외도 FAIL로 수렴
-            String failReason = "UNEXPECTED_ERROR: " + e.getClass().getSimpleName();
+            String failReason = FAIL_REASON_UNEXPECTED_ERROR;
 
             settlementBatchRunRecorder.completeFail(runId, failReason);
 
@@ -250,7 +256,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                     Action.BATCH_RUN_COMPLETED,
                     baseDate,
                     runId,
-                    "FAIL: " + failReason
+                    buildBatchCompletedMeta(
+                            SettlementBatchResult.FAIL.name(),
+                            failReason,
+                            e.getClass().getSimpleName()
+                    )
             );
 
             SettlementBatch failed = settlementBatchRepository.findByRunId(runId)
@@ -454,13 +464,14 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             Action action,
             LocalDate baseDate,
             String runId,
-            String note
+           Map<String, Object> extraMeta
     ) {
-        Map<String, Object> meta = new HashMap<>();
+        Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("baseDate", baseDate.toString());
         meta.put("runId", runId);
-        if (note != null && !note.isBlank()) {
-            meta.put("note", note);
+
+        if (extraMeta != null && !extraMeta.isEmpty()) {
+            meta.putAll(extraMeta);
         }
 
         // --- 노션(운영 재현 표준) 정합: no-op 표준 키 강제 ---
@@ -498,7 +509,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     private String buildMetaJson(String comment) {
         try {
-            Map<String, Object> meta = new HashMap<>();
+            Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("comment", (comment == null || comment.isBlank()) ? null : comment);
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
@@ -510,5 +521,24 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         if (requestId == null || requestId.isBlank()) {
             throw new BadRequestException("requestId must not be null/blank");
         }
+    }
+
+    private Map<String, Object> buildBatchCompletedMeta(
+            String result,
+            String failReason,
+            String errorType
+    ) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("result", result);
+
+        if (failReason != null && !failReason.isBlank()) {
+            meta.put("failReason", failReason);
+        }
+
+        if (errorType != null && !errorType.isBlank()) {
+            meta.put("errorType", errorType);
+        }
+
+        return meta;
     }
 }
