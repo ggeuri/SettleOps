@@ -72,11 +72,28 @@ public class AuditLog {
         this.metaJson = metaJson;
     }
 
+    /** AuditLogCommand → AuditLog 엔티티 변환 */
+    public static AuditLog of(AuditLogCommand cmd) {
+        return AuditLog.builder()
+                .requestId(cmd.getRequestId())
+                .action(cmd.getAction())
+                .actorType(cmd.getActorType())
+                .actorId(cmd.getActorId())
+                .occurredAt(cmd.getOccurredAt())
+                .entityType(cmd.getEntityType())
+                .entityId(cmd.getEntityId())
+                .statusBefore(cmd.getStatusBefore())
+                .statusAfter(cmd.getStatusAfter())
+                .merchantId(cmd.getMerchantId())
+                .metaJson(cmd.getMetaJson())
+                .build();
+    }
+
     //occurredAt null방지
     @PrePersist
     void prePersist() {
         if (occurredAt == null) occurredAt = LocalDateTime.now();
-        if (metaJson == null || metaJson.isBlank()) metaJson = "{}";
+        if (metaJson == null || metaJson.isBlank()) metaJson = "{\"noOp\":false}";
     }
 
 }
