@@ -1,5 +1,12 @@
 package com.settleops.global.error;
 
+import com.settleops.global.audit.AuditLogCommand;
+import com.settleops.global.audit.AuditLogger;
+import com.settleops.global.audit.AuditMetaFactory;
+import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.logging.RequestIdKeys;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,13 +18,17 @@ import java.util.Comparator;
 
 @Slf4j
 @RestControllerAdvice
+@RequiredArgsConstructor
 public class GlobalExceptionHandler {
+
+    private final AuditLogger auditLogger;
 
     /**
      * [LOCKED] 비즈니스 예외 처리 (403, 409 등)
      */
     @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
+    public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e, HttpServletRequest request) {
+        tryLog409Failure(e, request);
         return ResponseEntity.status(e.getStatus()).body(e.toErrorResponse());
     }
 
@@ -106,5 +117,51 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception occurred", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.ofInternalError("시스템 오류가 발생했습니다. 관리자에게 문의하세요."));
+    }
+
+    private void tryLog409Failure(BusinessException e, HttpServletRequest request) {
+        if (e.getStatus() != HttpStatus.CONFLICT) {
+            return;
+        }
+
+        if (!(e instanceof AuditableConflictException ace)) {
+            return;
+        }
+
+        ReasonCode reasonCode = ace.getReasonCode();
+        if (reasonCode != ReasonCode.SAME_APPROVER_NOT_ALLOWED
+                && reasonCode != ReasonCode.PAID_ALREADY) {
+            return;
+        }
+
+        try {
+            AuditLogCommand cmd = AuditLogCommand.builder()
+                    .requestId(resolveRequestId(request))
+                    .actorType(ace.getActorType())
+                    .actorId(ace.getActorId())
+                    .action(ace.getAction())
+                    .entityType(ace.getEntityType())
+                    .entityId(ace.getEntityId())
+                    .statusBefore(ace.getStatusBefore())
+                    .statusAfter(ace.getStatusAfter())
+                    .merchantId(ace.getMerchantId())
+                    .metaJson(AuditMetaFactory.requiredCommentSuccessWithReason(
+                            reasonCode.name(),
+                            ace.getComment()
+                    ).toString())
+                    .build();
+
+            auditLogger.logFailureRequiresNew(cmd, reasonCode);
+        } catch (Exception ex) {
+            log.error("409 failure audit logging failed", ex);
+        }
+    }
+
+    private String resolveRequestId(HttpServletRequest request) {
+        Object requestId = request.getAttribute(RequestIdKeys.ATTR_KEY);
+        if (requestId instanceof String s && !s.isBlank()) {
+            return s;
+        }
+        return request.getHeader(RequestIdKeys.HEADER);
     }
 }
