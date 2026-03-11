@@ -45,8 +45,7 @@ class RefundAdminServiceTest {
     }
 
     @Test
-    void approve_noop_when_already_approved_should_return_status_decidedAt_requestId() {
-        // given
+    void approve_noop_when_already_approved_should_return_status_decidedAt_requestId(){
         LocalDateTime decidedAt = LocalDateTime.of(2026, 3, 6, 10, 0, 0);
 
         Refund refund = Refund.builder()
@@ -64,32 +63,34 @@ class RefundAdminServiceTest {
 
         when(refundRepository.findById("refund-1")).thenReturn(Optional.of(refund));
 
-        // when
         AdminRefundDecisionResponseDTO response =
                 service.approve("refund-1", "admin-1", "approved", "req-123");
 
-        // then
+        // LOCKED: no-op 200 응답은 status + decidedAt + requestId를 유지해야 한다.
         assertThat(response.getStatus()).isEqualTo(RefundStatus.APPROVED);
         assertThat(response.getDecidedAt()).isEqualTo(decidedAt);
         assertThat(response.getRequestId()).isEqualTo("req-123");
 
         verify(refundRepository).findById("refund-1");
         verify(refundEventRepository, never()).save(any());
+        verify(refundRepository, never()).save(any());
 
         ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogger).log(captor.capture());
 
         AuditLogCommand cmd = captor.getValue();
+
+        // LOCKED: no-op도 audit_log에 반드시 기록되어야 한다.
         assertThat(cmd.getRequestId()).isEqualTo("req-123");
         assertThat(cmd.getStatusBefore()).isEqualTo("APPROVED");
         assertThat(cmd.getStatusAfter()).isEqualTo("APPROVED");
         assertThat(cmd.getMetaJson()).contains("\"noOp\":true");
         assertThat(cmd.getMetaJson()).contains("ALREADY_APPROVED");
+
     }
 
     @Test
-    void reject_noop_when_already_rejected_should_return_status_decidedAt_requestId() {
-        // given
+    void reject_noop_when_already_rejected_should_return_status_decidedAt_requestId(){
         LocalDateTime decidedAt = LocalDateTime.of(2026, 3, 6, 11, 0, 0);
 
         Refund refund = Refund.builder()
@@ -107,22 +108,24 @@ class RefundAdminServiceTest {
 
         when(refundRepository.findById("refund-2")).thenReturn(Optional.of(refund));
 
-        // when
         AdminRefundDecisionResponseDTO response =
                 service.reject("refund-2", "admin-1", "rejected", "req-456");
 
-        // then
+        // LOCKED: no-op 200 응답은 status + decidedAt + requestId를 유지해야 한다.
         assertThat(response.getStatus()).isEqualTo(RefundStatus.REJECTED);
         assertThat(response.getDecidedAt()).isEqualTo(decidedAt);
         assertThat(response.getRequestId()).isEqualTo("req-456");
 
         verify(refundRepository).findById("refund-2");
-        verify(refundEventRepository, never()).save(any());
+        verify(refundRepository, never()).save(any());
+        verifyNoInteractions(refundEventRepository);
 
         ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogger).log(captor.capture());
 
         AuditLogCommand cmd = captor.getValue();
+
+        // LOCKED: no-op도 audit_log에 반드시 기록되어야 한다.
         assertThat(cmd.getRequestId()).isEqualTo("req-456");
         assertThat(cmd.getStatusBefore()).isEqualTo("REJECTED");
         assertThat(cmd.getStatusAfter()).isEqualTo("REJECTED");
@@ -131,8 +134,7 @@ class RefundAdminServiceTest {
     }
 
     @Test
-    void approve_requested_should_transition_to_approved_and_return_min_fields() {
-        // given
+    void approve_requested_should_transition_to_approved_and_return_min_fields(){
         Refund refund = Refund.builder()
                 .refundId("refund-3")
                 .paymentId("payment-3")
@@ -148,21 +150,51 @@ class RefundAdminServiceTest {
 
         when(refundRepository.findById("refund-3")).thenReturn(Optional.of(refund));
 
-        // when
-        AdminRefundDecisionResponseDTO response =
-                service.approve("refund-3", "admin-1", "approve ok", "req-789");
+        String comment = "approve ok";
 
-        // then
+        AdminRefundDecisionResponseDTO response =
+                service.approve("refund-3", "admin-1", comment, "req-789");
+
         assertThat(response.getStatus()).isEqualTo(RefundStatus.APPROVED);
         assertThat(response.getDecidedAt()).isNotNull();
         assertThat(response.getRequestId()).isEqualTo("req-789");
 
+        // LOCKED: approve 응답 최소필드 검증
         assertThat(refund.getStatus()).isEqualTo(RefundStatus.APPROVED);
         assertThat(refund.getDecidedAt()).isNotNull();
 
-        verify(refundEventRepository).save(any());
-        verify(auditLogger).log(any(AuditLogCommand.class));
-    }
+        ArgumentCaptor<com.settleops.domain.refund.domain.RefundEvent> eventCaptor =
+                ArgumentCaptor.forClass(com.settleops.domain.refund.domain.RefundEvent.class);
+        verify(refundEventRepository, times(1)).save(eventCaptor.capture());
+        verifyNoMoreInteractions(refundEventRepository);
+
+        com.settleops.domain.refund.domain.RefundEvent savedEvent = eventCaptor.getValue();
+
+        // LOCKED: REFUND_APPROVED 이벤트는 request_id / actor / status 전이를 정확히 남겨야 한다.
+        assertThat(savedEvent.getEventType())
+                .isEqualTo(com.settleops.domain.refund.domain.RefundEventType.REFUND_APPROVED);
+        assertThat(savedEvent.getStatusBefore())
+                .isEqualTo(RefundStatus.REQUESTED);
+        assertThat(savedEvent.getStatusAfter())
+                .isEqualTo(RefundStatus.APPROVED);
+        assertThat(savedEvent.getRequestId())
+                .isEqualTo("req-789");
+        assertThat(savedEvent.getActorType())
+                .isEqualTo(com.settleops.global.audit.ActorType.ADMIN);
+        assertThat(savedEvent.getActorId())
+                .isEqualTo("admin-1");
+
+        ArgumentCaptor<AuditLogCommand> auditCaptor =
+                ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger).log(auditCaptor.capture());
+
+        AuditLogCommand cmd = auditCaptor.getValue();
+
+        // LOCKED: audit_log는 request_id 기준으로 상태 전이를 재현할 수 있어야 한다.
+        assertThat(cmd.getRequestId()).isEqualTo("req-789");
+        assertThat(cmd.getStatusBefore()).isEqualTo("REQUESTED");
+        assertThat(cmd.getStatusAfter()).isEqualTo("APPROVED");
+        }
 
     @Test
     void approve_blank_comment_should_throw_bad_request() {
@@ -182,5 +214,59 @@ class RefundAdminServiceTest {
                 .hasMessageContaining("requestId is null/blank");
 
         verifyNoInteractions(refundRepository, refundEventRepository, auditLogger);
+    }
+    @Test
+    void reject_requested_should_transition_to_rejected_and_save_event(){
+
+        Refund refund = Refund.builder()
+                .refundId("refund-6")
+                .paymentId("payment-6")
+                .merchantId("merchant-6")
+                .buyerId("buyer-6")
+                .amount(5000L)
+                .currency("KRW")
+                .status(RefundStatus.REQUESTED) // 아직 결정 전
+                .reasonText("duplicate")
+                .requestedAt(LocalDateTime.of(2026, 3, 5, 12, 0, 0))
+                .decidedAt(null)
+                .build();
+
+        when(refundRepository.findById("refund-6")).thenReturn(Optional.of(refund));
+
+        String comment = "reject ok";
+
+        AdminRefundDecisionResponseDTO response =
+                service.reject("refund-6", "admin-1", comment, "req-999");
+
+        // LOCKED: reject 응답 최소필드 검증
+        assertThat(response.getStatus()).isEqualTo(RefundStatus.REJECTED);
+        assertThat(response.getDecidedAt()).isNotNull();
+        assertThat(response.getRequestId()).isEqualTo("req-999");
+
+        ArgumentCaptor<com.settleops.domain.refund.domain.RefundEvent> eventCaptor =
+                ArgumentCaptor.forClass(com.settleops.domain.refund.domain.RefundEvent.class);
+        verify(refundEventRepository, times(1)).save(eventCaptor.capture());
+        verifyNoMoreInteractions(refundEventRepository);
+
+        com.settleops.domain.refund.domain.RefundEvent savedEvent = eventCaptor.getValue();
+
+        // LOCKED: REFUND_REJECTED 이벤트는 request_id / actor / status 전이를 정확히 남겨야 한다.
+        assertThat(savedEvent.getEventType())
+                .isEqualTo(com.settleops.domain.refund.domain.RefundEventType.REFUND_REJECTED);
+        assertThat(savedEvent.getStatusBefore()).isEqualTo(RefundStatus.REQUESTED);
+        assertThat(savedEvent.getStatusAfter()).isEqualTo(RefundStatus.REJECTED);
+        assertThat(savedEvent.getRequestId()).isEqualTo("req-999");
+        assertThat(savedEvent.getActorId()).isEqualTo("admin-1");
+
+        ArgumentCaptor<AuditLogCommand> auditCaptor =
+                ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger).log(auditCaptor.capture());
+
+        AuditLogCommand cmd = auditCaptor.getValue();
+
+        // LOCKED: audit_log는 request_id 기준으로 상태 전이를 재현할 수 있어야 한다.
+        assertThat(cmd.getRequestId()).isEqualTo("req-999");
+        assertThat(cmd.getStatusBefore()).isEqualTo("REQUESTED");
+        assertThat(cmd.getStatusAfter()).isEqualTo("REJECTED");
     }
 }
