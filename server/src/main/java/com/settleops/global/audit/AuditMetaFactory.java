@@ -43,6 +43,31 @@ public final class AuditMetaFactory {
     }
 
     /**
+     * 필수 comment 성공 메타 생성
+     * 예: {"noOp": false, "comment": "..."}
+     */
+    public static ObjectNode requiredCommentSuccess(String comment) {
+        requireComment(comment);
+
+        ObjectNode meta = success();
+        meta.put("comment", comment);
+        return meta;
+    }
+
+    /**
+     * 필수 comment + reasonCode 성공 메타 생성
+     * 예: {"noOp": false, "reasonCode": "MANUAL_REVIEW", "comment": "..."}
+     */
+    public static ObjectNode requiredCommentSuccessWithReason(String reasonCode, String comment) {
+        requireComment(comment);
+
+        ObjectNode meta = success();
+        putIfHasText(meta, "reasonCode", reasonCode);
+        meta.put("comment", comment);
+        return meta;
+    }
+
+    /**
      * no-op 기본 메타
      * 예: {"noOp": true, "noOpReason": "ALREADY_CONFIRMED"}
      */

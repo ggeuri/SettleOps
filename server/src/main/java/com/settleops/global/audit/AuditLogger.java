@@ -1,5 +1,6 @@
 package com.settleops.global.audit;
 
+import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -21,7 +22,8 @@ public class AuditLogger {
 
     /** 409 실패 Audit 전용(GlobalExceptionHandler 사용) */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void logFailureRequiresNew(AuditLogCommand cmd) {
+    public void logFailureRequiresNew(AuditLogCommand cmd, ReasonCode reasonCode) {
+        validateFailureReason(reasonCode);
         saveInternal(cmd);
     }
 
@@ -55,6 +57,16 @@ public class AuditLogger {
         }
         if (actorId.chars().anyMatch(ch -> ch <= 0x20 || ch >= 0x7F)) {
             throw new BadRequestException("actorId must be ASCII without whitespace");
+        }
+    }
+
+    private void validateFailureReason(ReasonCode reasonCode) {
+        if (reasonCode == null) {
+            throw new BadRequestException("reasonCode is null");
+        }
+        if (reasonCode != ReasonCode.SAME_APPROVER_NOT_ALLOWED
+                && reasonCode != ReasonCode.PAID_ALREADY) {
+            throw new BadRequestException("unsupported failure audit reason");
         }
     }
 }
