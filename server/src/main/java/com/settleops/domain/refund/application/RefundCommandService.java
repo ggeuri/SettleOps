@@ -46,7 +46,7 @@ public class RefundCommandService {
      * - requestedAt SoT는 서비스에서 now로 세팅
      * - requestId는 RequestIdFilter/Resolver가 보장한 값을 전달받아 event/audit에 사용한다
      * - refund_event.request_id / audit_log.request_id는 NOT NULL 계약을 지켜야 한다
-     * - audit_log.meta_json은 최소 reasonText + status diff를 남긴다
+     * - audit_log.meta_json은 refund 도메인 공통 규격(before.status / after.status)으로 status diff를 남긴다
      * - payment.status가 CAPTURED가 아니면 409 RULE_VIOLATION으로 처리한다
      */
     @Transactional
@@ -148,14 +148,14 @@ public class RefundCommandService {
             Map<String, Object> meta = new HashMap<>();
             meta.put("reasonText", reasonText);
 
-            Map<String, Object> statusDiff = new HashMap<>();
-            statusDiff.put("before", null);
-            statusDiff.put("after", "REQUESTED");
+            Map<String, Object> beforeNode = new HashMap<>();
+            beforeNode.put("status", null);
 
-            Map<String, Object> diff = new HashMap<>();
-            diff.put("status", statusDiff);
+            Map<String, Object> afterNode = new HashMap<>();
+            afterNode.put("status", "REQUESTED");
 
-            meta.put("diff", diff);
+            meta.put("before", beforeNode);
+            meta.put("after", afterNode);
 
             return objectMapper.writeValueAsString(meta);
 
