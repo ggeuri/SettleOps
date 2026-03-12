@@ -28,7 +28,7 @@ import java.util.Map;
 public class RefundAdminService {
     // 핵심 로직(approve/reject 공통):
     // - refund 조회
-    // - requestId는 Controller가 Filter 주입값을 전달하며, Service는 검증만 수행
+    // - requestId는 RequestIdFilter/Resolver가 보장한 값을 전달받아 사용만 한다
     // - 상태가 이미 APPROVED / REJECTED면 no-op 200으로 수렴
     // - no-op이어도 audit_log는 반드시 기록하고, meta_json.noOp / noOpReason을 남긴다
     // - 상태가 REQUESTED일 때만 approve(now) / reject(now) 전이 수행
@@ -49,14 +49,12 @@ public class RefundAdminService {
     public AdminRefundDecisionResponseDTO approve(String refundId, String adminId, String comment, String requestId) {
 
         requireComment(comment);
-        requireRequestId(requestId);
 
         Refund refund = refundRepository.findById(refundId)
                 .orElseThrow(() -> new BadRequestException("refundId is invalid"));
 
         // [필수] no-op 200 수렴(이미 결정됨)
         if (refund.getStatus() == RefundStatus.APPROVED || refund.getStatus() == RefundStatus.REJECTED) {
-            requireDecidedAtIfDecided(refund);   // decidedAt 정합 깨졌으면 빨리 터뜨리기
 
             String noOpReason = getRefundNoOpReason(refund.getStatus());
 
@@ -117,7 +115,6 @@ public class RefundAdminService {
                 ))
                 .build());
 
-        requireDecidedAtIfDecided(refund);
         return response(refund, requestId);
     }
 
@@ -131,14 +128,12 @@ public class RefundAdminService {
     public AdminRefundDecisionResponseDTO reject(String refundId, String adminId, String comment, String requestId) {
 
         requireComment(comment);
-        requireRequestId(requestId);
 
         Refund refund = refundRepository.findById(refundId)
                 .orElseThrow(() -> new BadRequestException("refundId is invalid"));
 
         // [필수] no-op 200 수렴
         if (refund.getStatus() == RefundStatus.APPROVED || refund.getStatus() == RefundStatus.REJECTED) {
-            requireDecidedAtIfDecided(refund);
 
             String noOpReason = getRefundNoOpReason(refund.getStatus());
 
@@ -196,7 +191,6 @@ public class RefundAdminService {
                         null
                 ))                .build());
 
-        requireDecidedAtIfDecided(refund);
         return response(refund, requestId);
     }
 
@@ -205,21 +199,6 @@ public class RefundAdminService {
         if (comment == null || comment.isBlank()) {
             throw new BadRequestException("comment is required");// 400 고정
             // 또는 커스텀 BadRequest 예외로 400 매핑
-        }
-    }
-
-    // 조회가 아니라 검증만
-    private void requireRequestId(String requestId) {
-        if (requestId == null || requestId.isBlank()) {
-            throw new BadRequestException("requestId is null/blank");
-        }
-    }
-
-    // decidedAt null 점검
-    private void requireDecidedAtIfDecided(Refund refund) {
-        if ((refund.getStatus() == RefundStatus.APPROVED || refund.getStatus() == RefundStatus.REJECTED)
-                && refund.getDecidedAt() == null) {
-            throw new IllegalStateException("decidedAt must exist when refund is decided");
         }
     }
 
