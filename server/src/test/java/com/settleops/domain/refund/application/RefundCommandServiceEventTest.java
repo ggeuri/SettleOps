@@ -11,6 +11,7 @@ import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.refund.infra.RefundEventRepository;
 import com.settleops.domain.refund.infra.RefundRepository;
 import com.settleops.global.audit.ActorType;
+import com.settleops.global.audit.AuditLogCommand;
 import com.settleops.global.audit.AuditLogger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -81,6 +83,42 @@ class RefundCommandServiceEventTest {
         assertThat(saved.getRequestId()).isEqualTo(requestId); // requestId NOT NULL
         assertThat(saved.getActorType()).isEqualTo(ActorType.MERCHANT);
         assertThat(saved.getActorId()).isEqualTo("merchant-001");
+    }
+    @Test
+    @DisplayName("환불 요청 audit meta_json은 reasonText + before/after status diff 구조를 남긴다")
+    void requestRefund_should_write_reasonText_and_before_after_diff_into_audit_meta_json() throws Exception {
+        String requestId = "req-" + UUID.randomUUID();
+        Payment payment = buildCapturedPaymentWithMerchant("merchant-001");
+        when(payment.getBuyerId()).thenReturn("buyer-001");
+        when(payment.getCurrency()).thenReturn("KRW");
+
+        when(paymentRepository.findById("pay-001")).thenReturn(Optional.of(payment));
+        when(refundRepository.existsByPaymentId("pay-001")).thenReturn(false);
+
+        RefundCreateRequestDTO req = RefundCreateRequestDTO.builder()
+                .paymentId("pay-001")
+                .amount(10_000L)
+                .reasonText("단순변심")
+                .build();
+
+        refundCommandService.requestRefund(req, requestId);
+
+        ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger).log(captor.capture());
+
+        AuditLogCommand command = captor.getValue();
+
+        Map<String, Object> meta = objectMapper.readValue(command.getMetaJson(), Map.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> before = (Map<String, Object>) meta.get("before");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> after = (Map<String, Object>) meta.get("after");
+
+        assertThat(meta.get("reasonText")).isEqualTo("단순변심");
+        assertThat(before.get("status")).isNull();
+        assertThat(after.get("status")).isEqualTo("REQUESTED");
     }
 
     @Test
