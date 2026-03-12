@@ -18,6 +18,10 @@ public class ConflictException extends BusinessException {
         this.reasonCode = reasonCode;
     }
 
+    public ReasonCode getReasonCode() {
+        return reasonCode;
+    }
+
     @Override
     public ErrorResponse toErrorResponse() {
         // 기획서 409 포맷: code는 RULE_VIOLATION, reason은 필수
