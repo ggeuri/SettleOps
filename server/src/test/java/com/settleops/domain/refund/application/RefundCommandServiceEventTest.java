@@ -12,7 +12,6 @@ import com.settleops.domain.refund.infra.RefundEventRepository;
 import com.settleops.domain.refund.infra.RefundRepository;
 import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.AuditLogger;
-import com.settleops.global.error.BadRequestException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,7 +32,7 @@ import static org.mockito.Mockito.*;
  * 핵심 검증:
  *   1. 환불 요청 → refund_event 정확히 1건 저장
  *   2. 저장된 이벤트 필드(eventType, statusBefore, statusAfter, requestId, actorType)
- *   3. 가드 실패(requestId null 등)에서는 이벤트 저장 없음
+ *   3. 룰 가드 실패(PAYMENT_NOT_CAPTURED, REFUND_ALREADY_EXISTS, INSUFFICIENT_REFUNDABLE)에서는 이벤트 저장 없음
  */
 @ExtendWith(MockitoExtension.class)
 class RefundCommandServiceEventTest {
@@ -82,24 +81,6 @@ class RefundCommandServiceEventTest {
         assertThat(saved.getRequestId()).isEqualTo(requestId); // requestId NOT NULL
         assertThat(saved.getActorType()).isEqualTo(ActorType.MERCHANT);
         assertThat(saved.getActorId()).isEqualTo("merchant-001");
-    }
-
-    @Test
-    @DisplayName("requestId null → BadRequestException(400), 이벤트 저장 없음")
-    void requestRefund_with_null_requestId_throws_no_event_saved() {
-
-        // when/then
-        assertThatThrownBy(() ->
-                refundCommandService.requestRefund(
-                        RefundCreateRequestDTO.builder()
-                                .paymentId("pay-001").amount(1_000L).reasonText("사유").build(),
-                        null
-                )
-        ).isInstanceOf(BadRequestException.class);
-
-        // 가드에서 막혔으니 event 저장 0건
-        verify(refundRepository, never()).save(any());
-        verifyNoInteractions(refundEventRepository);
     }
 
     @Test

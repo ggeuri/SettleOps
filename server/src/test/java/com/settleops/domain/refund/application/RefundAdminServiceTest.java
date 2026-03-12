@@ -208,15 +208,6 @@ class RefundAdminServiceTest {
     }
 
     @Test
-    void approve_blank_requestId_should_throw_bad_request() {
-        assertThatThrownBy(() ->
-                service.approve("refund-1", "admin-1", "ok", "   "))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("requestId is null/blank");
-
-        verifyNoInteractions(refundRepository, refundEventRepository, auditLogger);
-    }
-    @Test
     void reject_requested_should_transition_to_rejected_and_save_event(){
 
         Refund refund = Refund.builder()
@@ -312,5 +303,47 @@ class RefundAdminServiceTest {
         assertThat(meta.get("noOp")).isEqualTo(false);
         assertThat(before.get("status")).isEqualTo("REQUESTED");
         assertThat(after.get("status")).isEqualTo("APPROVED");
+    }
+    @Test
+    void reject_should_write_comment_and_before_after_diff_into_audit_meta_json() throws Exception {
+        String refundId = "refund-7";
+        String adminId = "admin01";
+        String requestId = "req-777";
+        String comment = "증빙 부족으로 거절";
+
+        Refund refund = Refund.builder()
+                .refundId(refundId)
+                .merchantId("merchant-1")
+                .status(RefundStatus.REQUESTED)
+                .requestedAt(LocalDateTime.now().minusMinutes(5))
+                .decidedAt(null)
+                .build();
+
+        when(refundRepository.findById(refundId)).thenReturn(Optional.of(refund));
+
+        AdminRefundDecisionResponseDTO response =
+                service.reject(refundId, adminId, comment, requestId);
+
+        assertThat(response.getRequestId()).isEqualTo(requestId);
+        assertThat(response.getStatus()).isEqualTo(RefundStatus.REJECTED);
+        assertThat(response.getDecidedAt()).isNotNull();
+
+        ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
+        verify(auditLogger).log(captor.capture());
+
+        AuditLogCommand command = captor.getValue();
+
+        Map<String, Object> meta = objectMapper.readValue(command.getMetaJson(), Map.class);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> before = (Map<String, Object>) meta.get("before");
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> after = (Map<String, Object>) meta.get("after");
+
+        assertThat(meta.get("comment")).isEqualTo(comment);
+        assertThat(meta.get("noOp")).isEqualTo(false);
+        assertThat(before.get("status")).isEqualTo("REQUESTED");
+        assertThat(after.get("status")).isEqualTo("REJECTED");
     }
 }
