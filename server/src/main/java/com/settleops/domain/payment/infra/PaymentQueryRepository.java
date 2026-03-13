@@ -168,8 +168,8 @@ public class PaymentQueryRepository {
                 .select(Projections.constructor(
                         PaymentDetailResponse.PaymentEventItem.class,
                         paymentEvent.eventType.stringValue(),
-                        paymentEvent.statusBefore,
-                        paymentEvent.statusAfter,
+                        paymentEvent.statusBefore.stringValue(),
+                        paymentEvent.statusAfter.stringValue(),
                         paymentEvent.occurredAt
                 ))
                 .from(paymentEvent)

@@ -1,11 +1,13 @@
 package com.settleops.domain.payment.api.dto;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDate;
 
 @Getter
+@Setter
 public class MerchantPaymentSearchCondition {
 
     private String status;

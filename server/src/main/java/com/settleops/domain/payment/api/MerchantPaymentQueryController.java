@@ -18,7 +18,7 @@ public class MerchantPaymentQueryController {
     @GetMapping
     public List<MerchantPaymentListItemResponse> getMerchantPayments(
             @PathVariable String merchantId,
-            MerchantPaymentSearchCondition condition
+            @ModelAttribute MerchantPaymentSearchCondition condition
             // @AuthenticationPrincipal CustomUser user
     ) {
         // TODO: 로그인 주체 merchantId == path merchantId 검증
