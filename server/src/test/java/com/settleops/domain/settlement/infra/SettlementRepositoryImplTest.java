@@ -14,7 +14,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.Timestamp;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -84,7 +86,7 @@ public class SettlementRepositoryImplTest {
     }
 
     @Test
-    @DisplayName("관리자 정산 리스트 조회는 baseDate desc 순으로 정렬된다")
+    @DisplayName("관리자 정산 리스트 조회는 baseDate desc를 우선 적용한다")
     void searchAdminSettlements_ordersByBaseDateDesc() {
         // given
         Settlement newest = createSettlement(
@@ -147,6 +149,65 @@ public class SettlementRepositoryImplTest {
         jdbcTemplate.update(
                 "UPDATE settlement SET status = ? WHERE settlement_id = ?",
                 status.name(),
+                settlementId
+        );
+    }
+
+    @Test
+    @DisplayName("관리자 정산 리스트 조회 시 같은 baseDate에서는 createdAt desc 순으로 정렬된다")
+    void searchAdminSettlements_ordersByCreatedAtDescWithinSameBaseDate() {
+        // given
+        Settlement olderCreatedAt = createSettlement(
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        Settlement newerCreatedAt = createSettlement(
+                "merchant-2",
+                LocalDate.of(2026, 3, 10),
+                11000L
+        );
+        Settlement olderBaseDate = createSettlement(
+                "merchant-3",
+                LocalDate.of(2026, 3, 9),
+                9000L
+        );
+
+        settlementRepository.saveAll(List.of(olderCreatedAt, newerCreatedAt, olderBaseDate));
+        entityManager.flush();
+
+        updateCreatedAt(olderCreatedAt.getSettlementId(), LocalDateTime.of(2026, 3, 11, 9, 0));
+        updateCreatedAt(newerCreatedAt.getSettlementId(), LocalDateTime.of(2026, 3, 11, 10, 0));
+        updateCreatedAt(olderBaseDate.getSettlementId(), LocalDateTime.of(2026, 3, 11, 11, 0));
+
+        entityManager.clear();
+
+        // when
+        Page<AdminSettlementListItemResponse> result = settlementRepository.searchAdminSettlements(
+                null,
+                null,
+                PageRequest.of(0, 20)
+        );
+
+        // then
+        List<AdminSettlementListItemResponse> content = result.getContent();
+
+        assertThat(content).hasSize(3);
+
+        // 1순위: baseDate desc
+        assertThat(content.get(0).baseDate()).isEqualTo(LocalDate.of(2026, 3, 10));
+        assertThat(content.get(1).baseDate()).isEqualTo(LocalDate.of(2026, 3, 10));
+        assertThat(content.get(2).baseDate()).isEqualTo(LocalDate.of(2026, 3, 9));
+
+        // 2순위: 같은 baseDate면 createdAt desc
+        assertThat(content.get(0).merchantId()).isEqualTo("merchant-2");
+        assertThat(content.get(1).merchantId()).isEqualTo("merchant-1");
+    }
+
+    private void updateCreatedAt(String settlementId, LocalDateTime createdAt) {
+        jdbcTemplate.update(
+                "UPDATE settlement SET created_at = ? WHERE settlement_id = ?",
+                Timestamp.valueOf(createdAt),
                 settlementId
         );
     }
