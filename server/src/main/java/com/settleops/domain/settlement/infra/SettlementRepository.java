@@ -11,7 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
-public interface SettlementRepository extends JpaRepository<Settlement, String> {
+public interface SettlementRepository extends JpaRepository<Settlement, String>, SettlementRepositoryCustom {
 
     /**
      * [FREEZE] approve-paid 동시성 정책용 DB 락

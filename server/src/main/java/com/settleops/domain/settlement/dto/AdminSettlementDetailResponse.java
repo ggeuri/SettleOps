@@ -3,9 +3,9 @@ package com.settleops.domain.settlement.dto;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.util.List;
 
-public record AdminSettlementListItemResponse(
+public record AdminSettlementDetailResponse(
         String settlementId,
         String merchantId,
         LocalDate baseDate,
@@ -14,5 +14,8 @@ public record AdminSettlementListItemResponse(
         long fee,
         long vat,
         long net,
-        LocalDateTime createdAt
-){ }
+        List<AdminSettlementLineItemResponse> lines,
+        AdminSettlementHoldSummaryResponse hold,
+        AdminSettlementRefundSummaryResponse refund
+) {
+}
