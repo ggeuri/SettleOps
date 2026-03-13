@@ -15,6 +15,8 @@ import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.AuditLogCommand;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
+import com.settleops.global.audit.AuditMetaFactory;
+import com.settleops.global.audit.NoOpReason;
 import com.settleops.global.db.DbConstraintUtils;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.IdempotencyTargetType;
@@ -76,7 +78,7 @@ public class PayService {
                     PaymentStatus.CAPTURED,
                     PaymentStatus.CAPTURED,
                     true,
-                    "IDEMPOTENT_REPLAY"
+                    NoOpReason.IDEMPOTENT_REPLAY
             );
             return PayResponseDTO.from(idempotent, capturedAt);
         }
@@ -132,7 +134,7 @@ public class PayService {
                 captureResult.converged() ? PaymentStatus.CAPTURED : paymentStatusBefore,
                 payment.getStatus(),
                 captureResult.converged(),
-                captureResult.converged() ? "CAPTURED_EVENT_DUPLICATE_CONVERGED" : null
+                captureResult.converged() ? NoOpReason.CAPTURED_EVENT_DUPLICATE_CONVERGED : null
         );
 
         // 13. 주문 상태 PAID 전이
@@ -282,7 +284,7 @@ public class PayService {
             PaymentStatus statusBefore,
             PaymentStatus statusAfter,
             boolean noOp,
-            String noOpReason
+            NoOpReason noOpReason
     ) {
         auditLogger.log(
                 AuditLogCommand.builder()
@@ -301,11 +303,16 @@ public class PayService {
         );
     }
 
-    private String buildPayMetaJson(boolean noOp, String noOpReason) {
+    private String buildPayMetaJson(boolean noOp, NoOpReason noOpReason) {
         if (!noOp) {
-            return "{\"noOp\":false}";
+            return AuditMetaFactory.success().toString();
         }
-        return "{\"noOp\":true,\"noOpReason\":\"" + noOpReason + "\"}";
+
+        if (noOpReason == null) {
+            throw new IllegalArgumentException("noOpReason must not be null when noOp is true");
+        }
+
+        return AuditMetaFactory.noOp(noOpReason, true).toString();
     }
 
     /**
