@@ -3,8 +3,12 @@ package com.settleops.domain.payment.api;
 import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
 import com.settleops.domain.payment.api.dto.RefundContextResponse;
 import com.settleops.domain.payment.application.PaymentQueryService;
+import com.settleops.global.auth.annotation.LoginMerchant;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RequiredArgsConstructor
 @RestController
@@ -18,11 +22,10 @@ public class PaymentQueryController {
      */
     @GetMapping("/{paymentId}")
     public PaymentDetailResponse getPaymentDetail(
-            @PathVariable String paymentId
-            // @AuthenticationPrincipal CustomUser user
+            @PathVariable String paymentId,
+            @LoginMerchant String loginMerchantId
     ) {
-        // TODO: role별 소유 검증 적용
-        return paymentQueryService.getPaymentDetail(paymentId);
+        return paymentQueryService.getPaymentDetail(paymentId, loginMerchantId);
     }
 
     /**
@@ -30,10 +33,9 @@ public class PaymentQueryController {
      */
     @GetMapping("/{paymentId}/refund-context")
     public RefundContextResponse getRefundContext(
-            @PathVariable String paymentId
-            // @AuthenticationPrincipal CustomUser user
+            @PathVariable String paymentId,
+            @LoginMerchant String loginMerchantId
     ) {
-        // TODO: role별 소유 검증 적용
-        return paymentQueryService.getRefundContext(paymentId);
+        return paymentQueryService.getRefundContext(paymentId, loginMerchantId);
     }
 }

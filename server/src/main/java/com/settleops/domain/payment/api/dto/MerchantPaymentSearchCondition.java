@@ -1,5 +1,6 @@
 package com.settleops.domain.payment.api.dto;
 
+import com.settleops.domain.payment.domain.PaymentStatus;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -10,8 +11,8 @@ import java.time.LocalDate;
 @Setter
 public class MerchantPaymentSearchCondition {
 
-    private String status;
-    private String confirmed; // ALL / CONFIRMED
+    private PaymentStatus status;
+    private ConfirmedFilter confirmed; // ALL / CONFIRMED
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate from;

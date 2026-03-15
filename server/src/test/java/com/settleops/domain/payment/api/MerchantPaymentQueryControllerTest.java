@@ -1,9 +1,14 @@
 package com.settleops.domain.payment.api;
 
+import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.application.PaymentQueryService;
+import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.global.audit.AuditLogger;
+import com.settleops.global.auth.SessionAuthProvider;
+import com.settleops.global.auth.controller.MeController;
+import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
 import com.settleops.global.error.GlobalExceptionHandler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -30,25 +35,9 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/**
- * MerchantPaymentQueryController 웹 계층 테스트
- *
- * <p>검증 범위</p>
- * <ul>
- *   <li>GET /api/merchants/{merchantId}/payments 매핑</li>
- *   <li>query param -> MerchantPaymentSearchCondition 바인딩</li>
- *   <li>서비스 위임 결과의 JSON 응답 변환</li>
- * </ul>
- *
- * <p>주의</p>
- * <ul>
- *   <li>보안/공통 필터 영향 없이 컨트롤러 계약만 검증하기 위해 addFilters=false 적용</li>
- *   <li>GlobalExceptionHandler 생성자 의존성 충족을 위해 AuditLogger를 mock bean으로 등록</li>
- * </ul>
- */
 @WebMvcTest(MerchantPaymentQueryController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, LoginMerchantArgumentResolver.class})
 @ActiveProfiles("test")
 class MerchantPaymentQueryControllerTest {
 
@@ -63,9 +52,8 @@ class MerchantPaymentQueryControllerTest {
     @MockitoBean
     private AuditLogger auditLogger;
 
-    // =========================================================
-    // U2. Merchant 결제 목록 조회
-    // =========================================================
+    @MockitoBean
+    private SessionAuthProvider sessionAuthProvider;
 
     @Nested
     class GetMerchantPaymentsTest {
@@ -101,11 +89,17 @@ class MerchantPaymentQueryControllerTest {
                     )
             );
 
-            when(paymentQueryService.getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class)))
-                    .thenReturn(response);
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getMerchantPayments(
+                    eq(MERCHANT_ID),
+                    eq(MERCHANT_ID),
+                    any(MerchantPaymentSearchCondition.class))
+            ).thenReturn(response);
 
             // when & then
             mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .param("status", "CAPTURED")
                             .param("confirmed", "CONFIRMED")
                             .param("from", "2026-03-10")
@@ -128,11 +122,15 @@ class MerchantPaymentQueryControllerTest {
             ArgumentCaptor<MerchantPaymentSearchCondition> captor =
                     ArgumentCaptor.forClass(MerchantPaymentSearchCondition.class);
 
-            verify(paymentQueryService).getMerchantPayments(eq(MERCHANT_ID), captor.capture());
+            verify(paymentQueryService).getMerchantPayments(
+                    eq(MERCHANT_ID),
+                    eq(MERCHANT_ID),
+                    captor.capture()
+            );
 
             MerchantPaymentSearchCondition condition = captor.getValue();
-            assertThat(readField(condition, "status")).isEqualTo("CAPTURED");
-            assertThat(readField(condition, "confirmed")).isEqualTo("CONFIRMED");
+            assertThat(readField(condition, "status")).isEqualTo(PaymentStatus.CAPTURED);
+            assertThat(readField(condition, "confirmed")).isEqualTo(ConfirmedFilter.CONFIRMED);
             assertThat(readField(condition, "keyword")).isEqualTo("아이폰");
             assertThat(readField(condition, "from")).isEqualTo(LocalDate.of(2026, 3, 10));
             assertThat(readField(condition, "to")).isEqualTo(LocalDate.of(2026, 3, 13));
@@ -142,16 +140,54 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - 결과 없으면 빈 배열 반환")
         void getMerchantPayments_returns_empty_list() throws Exception {
             // given
-            when(paymentQueryService.getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class)))
-                    .thenReturn(List.of());
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getMerchantPayments(
+                    eq(MERCHANT_ID),
+                    eq(MERCHANT_ID),
+                    any(MerchantPaymentSearchCondition.class))
+            ).thenReturn(List.of());
 
             // when & then
-            mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID))
+            mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID))
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith("application/json"))
                     .andExpect(jsonPath("$.length()").value(0));
 
-            verify(paymentQueryService).getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class));
+            verify(paymentQueryService).getMerchantPayments(
+                    eq(MERCHANT_ID),
+                    eq(MERCHANT_ID),
+                    any(MerchantPaymentSearchCondition.class)
+            );
+        }
+
+        @Test
+        @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 status면 400")
+        void getMerchantPayments_returns_bad_request_when_status_invalid() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+
+            // when & then
+            mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
+                            .param("status", "INVALID_STATUS"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 confirmed면 400")
+        void getMerchantPayments_returns_bad_request_when_confirmed_invalid() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+
+            // when & then
+            mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
+                            .param("confirmed", "INVALID_CONFIRMED"))
+                    .andExpect(status().isBadRequest());
         }
     }
 
@@ -159,11 +195,17 @@ class MerchantPaymentQueryControllerTest {
     @DisplayName("GET /api/merchants/{merchantId}/payments - query param 없이 호출 가능")
     void getMerchantPayments_without_query_params_returns_ok() throws Exception {
         // given
-        when(paymentQueryService.getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class)))
-                .thenReturn(List.of());
+        when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+        when(paymentQueryService.getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                any(MerchantPaymentSearchCondition.class))
+        ).thenReturn(List.of());
 
         // when & then
-        mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID))
+        mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                        .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                        .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
                 .andExpect(jsonPath("$.length()").value(0));
@@ -171,7 +213,11 @@ class MerchantPaymentQueryControllerTest {
         ArgumentCaptor<MerchantPaymentSearchCondition> captor =
                 ArgumentCaptor.forClass(MerchantPaymentSearchCondition.class);
 
-        verify(paymentQueryService).getMerchantPayments(eq(MERCHANT_ID), captor.capture());
+        verify(paymentQueryService).getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                captor.capture()
+        );
 
         MerchantPaymentSearchCondition condition = captor.getValue();
         assertThat(readField(condition, "status")).isNull();
@@ -185,11 +231,17 @@ class MerchantPaymentQueryControllerTest {
     @DisplayName("GET /api/merchants/{merchantId}/payments - status 단독 바인딩")
     void getMerchantPayments_binds_status_only() throws Exception {
         // given
-        when(paymentQueryService.getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class)))
-                .thenReturn(List.of());
+        when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+        when(paymentQueryService.getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                any(MerchantPaymentSearchCondition.class))
+        ).thenReturn(List.of());
 
         // when & then
         mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                        .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                        .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                         .param("status", "CAPTURED"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith("application/json"))
@@ -198,10 +250,14 @@ class MerchantPaymentQueryControllerTest {
         ArgumentCaptor<MerchantPaymentSearchCondition> captor =
                 ArgumentCaptor.forClass(MerchantPaymentSearchCondition.class);
 
-        verify(paymentQueryService).getMerchantPayments(eq(MERCHANT_ID), captor.capture());
+        verify(paymentQueryService).getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                captor.capture()
+        );
 
         MerchantPaymentSearchCondition condition = captor.getValue();
-        assertThat(readField(condition, "status")).isEqualTo("CAPTURED");
+        assertThat(readField(condition, "status")).isEqualTo(PaymentStatus.CAPTURED);
         assertThat(readField(condition, "confirmed")).isNull();
         assertThat(readField(condition, "from")).isNull();
         assertThat(readField(condition, "to")).isNull();
@@ -212,11 +268,17 @@ class MerchantPaymentQueryControllerTest {
     @DisplayName("GET /api/merchants/{merchantId}/payments - from/to 날짜 바인딩")
     void getMerchantPayments_binds_from_and_to_as_local_date() throws Exception {
         // given
-        when(paymentQueryService.getMerchantPayments(eq(MERCHANT_ID), any(MerchantPaymentSearchCondition.class)))
-                .thenReturn(List.of());
+        when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+        when(paymentQueryService.getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                any(MerchantPaymentSearchCondition.class))
+        ).thenReturn(List.of());
 
         // when & then
         mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
+                        .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                        .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                         .param("from", "2026-03-10")
                         .param("to", "2026-03-13"))
                 .andExpect(status().isOk())
@@ -226,16 +288,17 @@ class MerchantPaymentQueryControllerTest {
         ArgumentCaptor<MerchantPaymentSearchCondition> captor =
                 ArgumentCaptor.forClass(MerchantPaymentSearchCondition.class);
 
-        verify(paymentQueryService).getMerchantPayments(eq(MERCHANT_ID), captor.capture());
+        verify(paymentQueryService).getMerchantPayments(
+                eq(MERCHANT_ID),
+                eq(MERCHANT_ID),
+                captor.capture()
+        );
 
         MerchantPaymentSearchCondition condition = captor.getValue();
         assertThat(readField(condition, "from")).isEqualTo(LocalDate.of(2026, 3, 10));
         assertThat(readField(condition, "to")).isEqualTo(LocalDate.of(2026, 3, 13));
     }
 
-    /**
-     * 현재 DTO를 변경하지 않고 query param 바인딩 결과를 확인하기 위해 reflection으로 필드값을 읽는다.
-     */
     private Object readField(Object target, String fieldName) {
         return ReflectionTestUtils.getField(target, fieldName);
     }

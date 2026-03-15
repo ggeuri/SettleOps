@@ -4,6 +4,9 @@ import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
 import com.settleops.domain.payment.api.dto.RefundContextResponse;
 import com.settleops.domain.payment.application.PaymentQueryService;
 import com.settleops.global.audit.AuditLogger;
+import com.settleops.global.auth.SessionAuthProvider;
+import com.settleops.global.auth.controller.MeController;
+import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
 import com.settleops.global.error.GlobalExceptionHandler;
 import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,12 +49,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(PaymentQueryController.class)
 @AutoConfigureMockMvc(addFilters = false)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, LoginMerchantArgumentResolver.class})
 @ActiveProfiles("test")
 class PaymentQueryControllerTest {
 
     private static final String PAYMENT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     private static final String PAYMENT_ID_MISSING = "99999999-9999-9999-9999-999999999999";
+    private static final String MERCHANT_ID = "MERCHANT_1";
 
     @Autowired
     private MockMvc mockMvc;
@@ -62,6 +67,10 @@ class PaymentQueryControllerTest {
     /** GlobalExceptionHandler 생성자 주입용 mock */
     @MockitoBean
     private AuditLogger auditLogger;
+
+    /** @LoginMerchant resolver 내부 의존 mock */
+    @MockitoBean
+    private SessionAuthProvider sessionAuthProvider;
 
     // =========================================================
     // U3. 결제 상세 조회
@@ -77,7 +86,7 @@ class PaymentQueryControllerTest {
             PaymentDetailResponse response = new PaymentDetailResponse(
                     PAYMENT_ID,
                     "11111111-1111-1111-1111-111111111111",
-                    "MERCHANT_1",
+                    MERCHANT_ID,
                     "BUYER_1",
                     "CAPTURED",
                     350_000L,
@@ -110,17 +119,20 @@ class PaymentQueryControllerTest {
                     )
             ));
 
-            when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID)))
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenReturn(response);
 
             // when & then
             mockMvc.perform(get("/api/payments/{paymentId}", PAYMENT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.paymentId").value(PAYMENT_ID))
                     .andExpect(jsonPath("$.orderId").value("11111111-1111-1111-1111-111111111111"))
-                    .andExpect(jsonPath("$.merchantId").value("MERCHANT_1"))
+                    .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID))
                     .andExpect(jsonPath("$.buyerId").value("BUYER_1"))
                     .andExpect(jsonPath("$.status").value("CAPTURED"))
                     .andExpect(jsonPath("$.requestedAmount").value(350000))
@@ -132,18 +144,21 @@ class PaymentQueryControllerTest {
                     .andExpect(jsonPath("$.events[1].eventType").value("PAYMENT_CAPTURED"))
                     .andExpect(jsonPath("$.events[2].eventType").value("PAYMENT_CONFIRMED"));
 
-            verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID));
+            verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID));
         }
 
         @Test
         @DisplayName("GET /api/payments/{paymentId} - 미존재 paymentId 조회 시 404")
         void getPaymentDetail_returns_not_found() throws Exception {
             // given
-            when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID_MISSING)))
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID)))
                     .thenThrow(new NotFoundException("payment not found"));
 
             // when & then
             mockMvc.perform(get("/api/payments/{paymentId}", PAYMENT_ID_MISSING)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isNotFound())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -151,7 +166,7 @@ class PaymentQueryControllerTest {
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("payment not found"));
 
-            verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID_MISSING));
+            verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID));
         }
     }
 
@@ -172,15 +187,18 @@ class PaymentQueryControllerTest {
                     500_000L,
                     400_000L,
                     "KRW",
-                    "MERCHANT_1",
+                    MERCHANT_ID,
                     LocalDateTime.of(2026, 3, 13, 11, 3, 0)
             );
 
-            when(paymentQueryService.getRefundContext(eq(PAYMENT_ID)))
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenReturn(response);
 
             // when & then
             mockMvc.perform(get("/api/payments/{paymentId}/refund-context", PAYMENT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -189,20 +207,23 @@ class PaymentQueryControllerTest {
                     .andExpect(jsonPath("$.capturedAmount").value(500000))
                     .andExpect(jsonPath("$.refundableAmount").value(400000))
                     .andExpect(jsonPath("$.currency").value("KRW"))
-                    .andExpect(jsonPath("$.merchantId").value("MERCHANT_1"));
+                    .andExpect(jsonPath("$.merchantId").value(MERCHANT_ID));
 
-            verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID));
+            verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID));
         }
 
         @Test
         @DisplayName("GET /api/payments/{paymentId}/refund-context - 미존재 paymentId 조회 시 404")
         void getRefundContext_returns_not_found() throws Exception {
             // given
-            when(paymentQueryService.getRefundContext(eq(PAYMENT_ID_MISSING)))
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getRefundContext(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID)))
                     .thenThrow(new NotFoundException("payment not found"));
 
             // when & then
             mockMvc.perform(get("/api/payments/{paymentId}/refund-context", PAYMENT_ID_MISSING)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isNotFound())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -210,7 +231,7 @@ class PaymentQueryControllerTest {
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("payment not found"));
 
-            verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID_MISSING));
+            verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID));
         }
     }
 }

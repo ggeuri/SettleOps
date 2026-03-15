@@ -3,6 +3,7 @@ package com.settleops.domain.payment.api;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.application.PaymentQueryService;
+import com.settleops.global.auth.annotation.LoginMerchant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,10 +19,9 @@ public class MerchantPaymentQueryController {
     @GetMapping
     public List<MerchantPaymentListItemResponse> getMerchantPayments(
             @PathVariable String merchantId,
-            @ModelAttribute MerchantPaymentSearchCondition condition
-            // @AuthenticationPrincipal CustomUser user
+            @ModelAttribute MerchantPaymentSearchCondition condition,
+            @LoginMerchant String loginMerchantId
     ) {
-        // TODO: 로그인 주체 merchantId == path merchantId 검증
-        return paymentQueryService.getMerchantPayments(merchantId, condition);
+        return paymentQueryService.getMerchantPayments(merchantId, loginMerchantId, condition);
     }
 }

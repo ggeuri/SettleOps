@@ -1,9 +1,7 @@
 package com.settleops.domain.payment.infra;
 
-import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
-import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
-import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
-import com.settleops.domain.payment.api.dto.RefundContextResponse;
+import com.settleops.domain.payment.api.dto.*;
+import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.support.QuerydslTestConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -111,8 +109,8 @@ class PaymentQueryRepositoryTest {
         insertPaymentEvent(PAYMENT_ID_3, "PAYMENT_CONFIRMED", "CAPTURED", "CAPTURED", REQUEST_ID_8, base.minusDays(3).plusHours(2));
 
         MerchantPaymentSearchCondition condition = createSearchCondition(
-                "CAPTURED",
-                "CONFIRMED",
+                PaymentStatus.CAPTURED,
+                ConfirmedFilter.CONFIRMED,
                 LocalDate.of(2026, 3, 10),
                 LocalDate.of(2026, 3, 13),
                 "아이폰"
@@ -362,8 +360,8 @@ class PaymentQueryRepositoryTest {
      * - QueryDSL 조건 테스트에서 반복 생성 코드 제거 목적
      */
     private MerchantPaymentSearchCondition createSearchCondition(
-            String status,
-            String confirmed,
+            PaymentStatus status,
+            ConfirmedFilter confirmed,
             LocalDate from,
             LocalDate to,
             String keyword

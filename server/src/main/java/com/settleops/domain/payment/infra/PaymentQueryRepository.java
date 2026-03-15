@@ -5,11 +5,13 @@ import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.order.domain.QOrders;
+import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
 import com.settleops.domain.payment.api.dto.RefundContextResponse;
 import com.settleops.domain.payment.domain.PaymentEventType;
+import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.domain.QPayment;
 import com.settleops.domain.payment.domain.QPaymentEvent;
 import com.settleops.domain.refund.domain.QRefund;
@@ -22,12 +24,6 @@ import java.util.List;
 @Repository
 @RequiredArgsConstructor
 public class PaymentQueryRepository {
-
-    /** U2 확정여부 필터 기본값 */
-    private static final String CONFIRMED_ALL = "ALL";
-
-    /** U2 확정여부 필터 - 확정 건만 조회 */
-    private static final String CONFIRMED_ONLY = "CONFIRMED";
 
     private final JPAQueryFactory queryFactory;
 
@@ -180,36 +176,37 @@ public class PaymentQueryRepository {
 
     /**
      * 상태 필터 조건 생성
-     * - null / blank / ALL 입력 시 조건 미적용
+     * - null 입력 시 조건 미적용
      */
-    private BooleanBuilder statusEq(String status, QPayment payment) {
+    private BooleanBuilder statusEq(PaymentStatus status, QPayment payment) {
         BooleanBuilder builder = new BooleanBuilder();
 
-        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
+        if (status == null) {
             return builder;
         }
 
-        builder.and(payment.status.stringValue().eq(status));
+        builder.and(payment.status.eq(status));
         return builder;
     }
 
     /**
      * 확정여부 필터 조건 생성
-     * - ALL: 조건 미적용
+     * - null: 조건 미적용
      * - CONFIRMED: PAYMENT_CONFIRMED 이벤트 존재 건만 조회
+     * - UNCONFIRMED: PAYMENT_CONFIRMED 이벤트 미존재 건만 조회
      */
     private BooleanBuilder confirmedFilter(
-            String confirmed,
+            ConfirmedFilter confirmed,
             QPayment payment,
             QPaymentEvent confirmedEvent
     ) {
         BooleanBuilder builder = new BooleanBuilder();
 
-        if (confirmed == null || confirmed.isBlank() || CONFIRMED_ALL.equalsIgnoreCase(confirmed)) {
+        if (confirmed == null) {
             return builder;
         }
 
-        if (CONFIRMED_ONLY.equalsIgnoreCase(confirmed)) {
+        if (confirmed == ConfirmedFilter.CONFIRMED) {
             builder.and(
                     JPAExpressions
                             .selectOne()
@@ -219,6 +216,19 @@ public class PaymentQueryRepository {
                                     confirmedEvent.eventType.eq(PaymentEventType.PAYMENT_CONFIRMED)
                             )
                             .exists()
+            );
+        }
+
+        if (confirmed == ConfirmedFilter.UNCONFIRMED) {
+            builder.and(
+                    JPAExpressions
+                            .selectOne()
+                            .from(confirmedEvent)
+                            .where(
+                                    confirmedEvent.paymentId.eq(payment.paymentId),
+                                    confirmedEvent.eventType.eq(PaymentEventType.PAYMENT_CONFIRMED)
+                            )
+                            .notExists()
             );
         }
 
