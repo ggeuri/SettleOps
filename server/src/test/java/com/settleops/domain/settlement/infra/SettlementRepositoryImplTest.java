@@ -13,6 +13,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementLineItemResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
+import com.settleops.domain.settlement.entity.SettlementLine;
+import com.settleops.domain.settlement.enums.SettlementLineType;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -204,11 +209,135 @@ public class SettlementRepositoryImplTest {
         assertThat(content.get(1).merchantId()).isEqualTo("merchant-1");
     }
 
+    @Test
+    @DisplayName("Merchant 정산 리스트 조회 시 해당 merchant의 데이터만 반환한다")
+    void searchMerchantSettlements_filtersByMerchantId() {
+        // given
+        Settlement target1 = createSettlement(
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        Settlement target2 = createSettlement(
+                "merchant-1",
+                LocalDate.of(2026, 3, 9),
+                9000L
+        );
+        Settlement otherMerchant = createSettlement(
+                "merchant-2",
+                LocalDate.of(2026, 3, 11),
+                11000L
+        );
+
+        settlementRepository.saveAll(List.of(target1, target2, otherMerchant));
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        Page<MerchantSettlementListItemResponse> result = settlementRepository.searchMerchantSettlements(
+                "merchant-1",
+                PageRequest.of(0, 20)
+        );
+
+        // then
+        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent())
+                .extracting(MerchantSettlementListItemResponse::settlementId)
+                .containsExactly(target1.getSettlementId(), target2.getSettlementId());
+
+        assertThat(result.getContent())
+                .extracting(MerchantSettlementListItemResponse::baseDate)
+                .containsExactly(LocalDate.of(2026, 3, 10), LocalDate.of(2026, 3, 9));
+    }
+
+    @Test
+    @DisplayName("Merchant 정산 상세 조회 시 merchantId와 settlementId가 일치하면 상세와 line 목록을 반환한다")
+    void findMerchantSettlementDetail_returnsDetailWhenMerchantMatches() {
+        // given
+        Settlement settlement = createSettlement(
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        settlementRepository.save(settlement);
+        entityManager.flush();
+
+        SettlementLine laterLine = SettlementLine.of(
+                settlement.getSettlementId(),
+                "payment-2",
+                SettlementLineType.PAYMENT,
+                3000L
+        );
+        SettlementLine earlierLine = SettlementLine.of(
+                settlement.getSettlementId(),
+                "payment-1",
+                SettlementLineType.PAYMENT,
+                7000L
+        );
+
+        entityManager.persist(laterLine);
+        entityManager.persist(earlierLine);
+        entityManager.flush();
+
+        updateSettlementLineCreatedAt(earlierLine.getSettlementLineId(), LocalDateTime.of(2026, 3, 11, 9, 0));
+        updateSettlementLineCreatedAt(laterLine.getSettlementLineId(), LocalDateTime.of(2026, 3, 11, 10, 0));
+        entityManager.clear();
+
+        // when
+        MerchantSettlementDetailResponse result = settlementRepository.findMerchantSettlementDetail(
+                "merchant-1",
+                settlement.getSettlementId()
+        );
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.settlementId()).isEqualTo(settlement.getSettlementId());
+        assertThat(result.baseDate()).isEqualTo(LocalDate.of(2026, 3, 10));
+        assertThat(result.status()).isEqualTo(SettlementStatus.READY);
+        assertThat(result.net()).isEqualTo(10000L);
+
+        assertThat(result.lines()).hasSize(2);
+        assertThat(result.lines())
+                .extracting(MerchantSettlementLineItemResponse::paymentId)
+                .containsExactly("payment-1", "payment-2");
+    }
+
+    @Test
+    @DisplayName("Merchant 정산 상세 조회 시 다른 merchant의 settlement이면 null을 반환한다")
+    void findMerchantSettlementDetail_returnsNullWhenMerchantDoesNotMatch() {
+        // given
+        Settlement settlement = createSettlement(
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        settlementRepository.save(settlement);
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        MerchantSettlementDetailResponse result = settlementRepository.findMerchantSettlementDetail(
+                "merchant-2",
+                settlement.getSettlementId()
+        );
+
+        // then
+        assertThat(result).isNull();
+    }
+
     private void updateCreatedAt(String settlementId, LocalDateTime createdAt) {
         jdbcTemplate.update(
                 "UPDATE settlement SET created_at = ? WHERE settlement_id = ?",
                 Timestamp.valueOf(createdAt),
                 settlementId
+        );
+    }
+
+    private void updateSettlementLineCreatedAt(Long settlementLineId, LocalDateTime createdAt) {
+        jdbcTemplate.update(
+                "UPDATE settlement_line SET created_at = ? WHERE settlement_line_id = ?",
+                Timestamp.valueOf(createdAt),
+                settlementLineId
         );
     }
 }
