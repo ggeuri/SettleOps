@@ -32,9 +32,9 @@ class RefundSettlementAssemblerImplTest {
     }
 
     @Test
-    void baseDate_시작시각을_cutoff로_사용해_조회한다() {
+    void KST기준_baseDate_당일_00시_이전_승인건만_포함된다() {
         LocalDate baseDate = LocalDate.of(2026, 3, 11);
-        LocalDateTime cutoff = baseDate.atStartOfDay();
+        LocalDateTime cutoff = LocalDateTime.of(2026, 3, 11, 0, 0);
 
         List<ApprovedRefundAdjustment> expected = List.of(
                 new ApprovedRefundAdjustment(

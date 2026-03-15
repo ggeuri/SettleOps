@@ -14,11 +14,20 @@ import java.util.List;
 /**
  * C 오너 구현체.
  *
+ * 책임:
+ * - 다음 배치에 반영할 REFUND line 입력집합을 산출한다.
+ *
  * LOCKED:
  * - refund.status = APPROVED
  * - decidedAt 존재
- * - baseDate 배치 기준, baseDate 당일 00:00 이전에 승인 완료된 건만 포함
- * - refund_settlement_link 미존재
+ * - refund_settlement_link 미존재(미반영)
+ * - baseDate(KST) 당일 00:00 이전 승인 완료건만 포함
+ *
+ * 비책임:
+ * - settlement 생성
+ * - settlement_line(REFUND) insert
+ * - refund_settlement_link insert
+ * - batch 내부 재판정
  */
 @Service
 @RequiredArgsConstructor

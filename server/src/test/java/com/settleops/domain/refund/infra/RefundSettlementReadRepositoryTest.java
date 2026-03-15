@@ -41,13 +41,11 @@ class RefundSettlementReadRepositoryTest {
     }
 
     @Test
-    void approved이면서_link가_없고_cutoff이전인_refund만_조회된다() {
-        String refund1 = "11111111-1111-1111-1111-111111111111";
-        String refund2 = "22222222-2222-2222-2222-222222222222";
-        String refund3 = "33333333-3333-3333-3333-333333333333";
+    void APPROVED이고_link가_없고_cutoff_이전이면_입력집합에_포함된다() {
+        String refundId = "11111111-1111-1111-1111-111111111111";
 
         em.persist(Refund.builder()
-                .refundId(refund1)
+                .refundId(refundId)
                 .paymentId("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
                 .merchantId("merchant1")
                 .buyerId("buyer1")
@@ -59,8 +57,24 @@ class RefundSettlementReadRepositoryTest {
                 .decidedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
                 .build());
 
+        em.flush();
+        em.clear();
+
+        List<ApprovedRefundAdjustment> result =
+                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                        LocalDateTime.of(2026, 3, 11, 0, 0)
+                );
+
+        assertThat(result).extracting(ApprovedRefundAdjustment::refundId)
+                .containsExactly(refundId);
+    }
+
+    @Test
+    void APPROVED라도_link가_있으면_입력집합에서_제외된다() {
+        String refundId = "22222222-2222-2222-2222-222222222222";
+
         em.persist(Refund.builder()
-                .refundId(refund2)
+                .refundId(refundId)
                 .paymentId("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
                 .merchantId("merchant1")
                 .buyerId("buyer1")
@@ -73,23 +87,10 @@ class RefundSettlementReadRepositoryTest {
                 .build());
 
         em.persist(RefundSettlementLink.of(
-                refund2,
+                refundId,
                 "settlement-1",
                 LocalDateTime.of(2026, 3, 11, 0, 30)
         ));
-
-        em.persist(Refund.builder()
-                .refundId(refund3)
-                .paymentId("cccccccc-cccc-cccc-cccc-cccccccccccc")
-                .merchantId("merchant1")
-                .buyerId("buyer1")
-                .amount(1000L)
-                .currency("KRW")
-                .status(RefundStatus.APPROVED)
-                .reasonText("same day")
-                .requestedAt(LocalDateTime.of(2026, 3, 11, 1, 0))
-                .decidedAt(LocalDateTime.of(2026, 3, 11, 1, 30))
-                .build());
 
         em.flush();
         em.clear();
@@ -99,12 +100,11 @@ class RefundSettlementReadRepositoryTest {
                         LocalDateTime.of(2026, 3, 11, 0, 0)
                 );
 
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).refundId()).isEqualTo(refund1);
+        assertThat(result).isEmpty();
     }
 
     @Test
-    void approved_status만_refund_adjustment_대상이된다() {
+    void APPROVED상태만_다음배치_REFUND입력집합_대상이된다() {
         String refundRequested = "aaaa1111-1111-1111-1111-111111111111";
         String refundRejected = "bbbb2222-2222-2222-2222-222222222222";
         String refundApproved = "cccc3333-3333-3333-3333-333333333333";
@@ -160,6 +160,119 @@ class RefundSettlementReadRepositoryTest {
                 );
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).refundId()).isEqualTo(refundApproved);
+        assertThat(result).extracting(ApprovedRefundAdjustment::refundId)
+                .containsExactly(refundApproved);
+    }
+
+    @Test
+    void KST기준_cutoff는_baseDate_당일_00시_lt이다() {
+        String includedRefundId = "10101010-1010-1010-1010-101010101010";
+        String excludedRefundId = "20202020-2020-2020-2020-202020202020";
+
+        em.persist(Refund.builder()
+                .refundId(includedRefundId)
+                .paymentId("pay-included")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(3000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("included")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 20, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 23, 59, 59))
+                .build());
+
+        em.persist(Refund.builder()
+                .refundId(excludedRefundId)
+                .paymentId("pay-excluded")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(4000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("excluded")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 21, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 11, 0, 0))
+                .build());
+
+        em.flush();
+        em.clear();
+
+        List<ApprovedRefundAdjustment> result =
+                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                        LocalDateTime.of(2026, 3, 11, 0, 0)
+                );
+
+        assertThat(result).extracting(ApprovedRefundAdjustment::refundId)
+                .containsExactly(includedRefundId);
+    }
+
+    @Test
+    void APPROVED라도_decidedAt이_null이면_입력집합에서_제외된다() {
+        em.persist(Refund.builder()
+                .refundId("99999999-9999-9999-9999-999999999999")
+                .paymentId("pay-no-decided")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(1500L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("invalid approved")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .decidedAt(null)
+                .build());
+
+        em.flush();
+        em.clear();
+
+        List<ApprovedRefundAdjustment> result =
+                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                        LocalDateTime.of(2026, 3, 11, 0, 0)
+                );
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void cutoff이전의_unlinked_APPROVED가_여러건이면_모두_입력집합에_포함된다() {
+        String refund1 = "aaaa0000-0000-0000-0000-000000000001";
+        String refund2 = "aaaa0000-0000-0000-0000-000000000002";
+
+        em.persist(Refund.builder()
+                .refundId(refund1)
+                .paymentId("pay-1")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(1000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved1")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 9, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .build());
+
+        em.persist(Refund.builder()
+                .refundId(refund2)
+                .paymentId("pay-2")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(2000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved2")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 12, 0))
+                .build());
+
+        em.flush();
+        em.clear();
+
+        List<ApprovedRefundAdjustment> result =
+                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                        LocalDateTime.of(2026, 3, 11, 0, 0)
+                );
+
+        assertThat(result).extracting(ApprovedRefundAdjustment::refundId)
+                .containsExactlyInAnyOrder(refund1, refund2);
     }
 }
