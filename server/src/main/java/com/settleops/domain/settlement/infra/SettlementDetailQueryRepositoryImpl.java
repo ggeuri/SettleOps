@@ -89,6 +89,13 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
         return result != null ? result : AdminSettlementHoldSummaryResponse.empty();
     }
 
+    /**
+     * A4 refund summary 정책:
+     * - hasApprovedRefund는 현재 settlement에 포함된 paymentId 기준으로 조회한다.
+     * - refundAdjustmentPending의 SoT는 refund_settlement_link 이다.
+     * - pending 판정은 refund_id가 refund_settlement_link에 존재하는지 여부만 사용한다.
+     * - pending 판정에서는 settlement_id 조건으로 범위를 좁히지 않는다.
+     */
     @Override
     public AdminSettlementRefundSummaryResponse findRefundSummary(String settlementId) {
         QRefund refund = QRefund.refund;
@@ -124,7 +131,6 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                                 JPAExpressions
                                         .select(refundSettlementLink.refundId)
                                         .from(refundSettlementLink)
-                                        .where(refundSettlementLink.settlementId.eq(settlementId))
                         )
                 )
                 .fetchFirst() != null;

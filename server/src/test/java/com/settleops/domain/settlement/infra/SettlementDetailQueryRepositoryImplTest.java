@@ -280,4 +280,61 @@ public class SettlementDetailQueryRepositoryImplTest {
                 settlementLineId
         );
     }
+
+    @Test
+    @DisplayName("A4 상세 조회용 refund summary는 approved refund가 다른 settlement에 반영되어 있어도 pending이 아니다")
+    void findRefundSummary_returnsPendingFalseWhenApprovedRefundAlreadyLinkedToAnotherSettlement() {
+        // given
+        String settlementId = UUID.randomUUID().toString();
+        String anotherSettlementId = UUID.randomUUID().toString();
+
+        Settlement settlement = createSettlement(
+                settlementId,
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        settlementRepository.save(settlement);
+
+        Settlement anotherSettlement = createSettlement(
+                anotherSettlementId,
+                "merchant-1",
+                LocalDate.of(2026, 3, 11),
+                9000L
+        );
+        settlementRepository.save(anotherSettlement);
+
+        SettlementLine line = SettlementLine.of(
+                settlementId,
+                "payment-1",
+                SettlementLineType.PAYMENT,
+                10000L
+        );
+        settlementLineRepository.save(line);
+
+        Refund refund = createRefund(
+                "refund-1",
+                "payment-1",
+                RefundStatus.APPROVED
+        );
+        refundRepository.save(refund);
+
+        RefundSettlementLink link = RefundSettlementLink.of(
+                "refund-1",
+                anotherSettlementId,
+                LocalDateTime.of(2026, 3, 11, 12, 0)
+        );
+        refundSettlementLinkRepository.save(link);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        AdminSettlementRefundSummaryResponse result =
+                settlementDetailQueryRepository.findRefundSummary(settlementId);
+
+        // then
+        assertThat(result.hasApprovedRefund()).isTrue();
+        assertThat(result.refundAdjustmentPending()).isFalse();
+    }
 }
