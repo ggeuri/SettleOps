@@ -102,7 +102,7 @@ create table idempotency_record (
                                     target_id        varchar(64) not null,
                                     idempotency_key  varchar(128) not null,
                                     payment_id       char(36),
-                                    response_status  int not null,
+                                    response_status  int null,
                                     request_id       char(36) not null,
                                     created_at       timestamp(3) not null default current_timestamp(3)
 );

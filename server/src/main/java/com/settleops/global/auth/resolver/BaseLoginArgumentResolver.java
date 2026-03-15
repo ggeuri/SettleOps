@@ -1,6 +1,6 @@
 package com.settleops.global.auth.resolver;
 
-import com.settleops.global.error.ForbiddenException;
+import com.settleops.global.error.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.web.context.request.NativeWebRequest;
@@ -12,7 +12,7 @@ public abstract class BaseLoginArgumentResolver {
         HttpSession session = request == null ? null : request.getSession(false);
 
         if (session == null) {
-            throw new ForbiddenException("로그인이 필요합니다.");
+            throw new UnauthorizedException("로그인이 필요합니다.");
         }
         return session;
     }

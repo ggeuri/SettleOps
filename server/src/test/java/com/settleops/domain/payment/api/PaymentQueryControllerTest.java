@@ -7,8 +7,10 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.controller.MeController;
 import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
+import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.GlobalExceptionHandler;
 import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -168,6 +170,45 @@ class PaymentQueryControllerTest {
 
             verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID));
         }
+
+        @Test
+        @DisplayName("GET /api/payments/{paymentId} - 세션 없으면 401")
+        void getPaymentDetail_returns_unauthorized_when_session_missing() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any()))
+                    .thenThrow(new UnauthorizedException("로그인이 필요합니다."));
+
+            // when & then
+            mockMvc.perform(get("/api/payments/{paymentId}", PAYMENT_ID)
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                    .andExpect(jsonPath("$.reason").doesNotExist())
+                    .andExpect(jsonPath("$.message").value("로그인이 필요합니다."));
+        }
+
+        @Test
+        @DisplayName("GET /api/payments/{paymentId} - 다른 merchant 소유면 403")
+        void getPaymentDetail_returns_forbidden_when_merchant_mismatch() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID)))
+                    .thenThrow(new ForbiddenException("다른 상점의 데이터는 조회할 수 없습니다."));
+
+            // when & then
+            mockMvc.perform(get("/api/payments/{paymentId}", PAYMENT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isForbidden())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                    .andExpect(jsonPath("$.reason").doesNotExist())
+                    .andExpect(jsonPath("$.message").value("다른 상점의 데이터는 조회할 수 없습니다."));
+
+            verify(paymentQueryService).getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID));
+        }
     }
 
     // =========================================================
@@ -232,6 +273,45 @@ class PaymentQueryControllerTest {
                     .andExpect(jsonPath("$.message").value("payment not found"));
 
             verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID));
+        }
+
+        @Test
+        @DisplayName("GET /api/payments/{paymentId}/refund-context - 세션 없으면 401")
+        void getRefundContext_returns_unauthorized_when_session_missing() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any()))
+                    .thenThrow(new UnauthorizedException("로그인이 필요합니다."));
+
+            // when & then
+            mockMvc.perform(get("/api/payments/{paymentId}/refund-context", PAYMENT_ID)
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                    .andExpect(jsonPath("$.reason").doesNotExist())
+                    .andExpect(jsonPath("$.message").value("로그인이 필요합니다."));
+        }
+
+        @Test
+        @DisplayName("GET /api/payments/{paymentId}/refund-context - 다른 merchant 소유면 403")
+        void getRefundContext_returns_forbidden_when_merchant_mismatch() throws Exception {
+            // given
+            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(paymentQueryService.getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID)))
+                    .thenThrow(new ForbiddenException("다른 상점의 데이터는 조회할 수 없습니다."));
+
+            // when & then
+            mockMvc.perform(get("/api/payments/{paymentId}/refund-context", PAYMENT_ID)
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isForbidden())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                    .andExpect(jsonPath("$.reason").doesNotExist())
+                    .andExpect(jsonPath("$.message").value("다른 상점의 데이터는 조회할 수 없습니다."));
+
+            verify(paymentQueryService).getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID));
         }
     }
 }

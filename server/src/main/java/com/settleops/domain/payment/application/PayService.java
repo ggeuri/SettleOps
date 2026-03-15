@@ -41,7 +41,6 @@ public class PayService {
     private final IdempotencyRecordRepository idempotencyRecordRepository;
     private final OrderService orderService;
     private final PayQueryService payQueryService;
-
     private final AuditLogger auditLogger;
 
     /**
@@ -59,17 +58,12 @@ public class PayService {
 
         final IdempotencyTargetType targetType = IdempotencyTargetType.PAY_ORDER;
 
-        // 2. 동일 (orderId, idempotencyKey) 요청 선점 시도
-        boolean owner = claimIdempotency(targetType, orderId, idempotencyKey, requestId);
+        // 2. 동일 (orderId, idempotencyKey) 성공 이력이 이미 있으면 현재 결과 반환(no-op 200)
+        Payment idempotent = payQueryService
+                .findSucceededIdempotentPayment(targetType, orderId, idempotencyKey)
+                .orElse(null);
 
-        // 3. 이미 같은 키 요청이 먼저 성공 완료된 경우 → 현재 결과 반환(no-op 200)
-        if (!owner) {
-            Payment idempotent = payQueryService
-                    .findSucceededIdempotentPayment(targetType, orderId, idempotencyKey)
-                    .orElseThrow(() -> new IllegalStateException(
-                            "동일 멱등키 row는 존재하지만 성공 결과가 없습니다. orderId=" + orderId
-                    ));
-
+        if (idempotent != null) {
             LocalDateTime capturedAt = payQueryService.getCapturedAtOrThrow(idempotent);
             logPay(
                     idempotent,
@@ -83,11 +77,11 @@ public class PayService {
             return PayResponseDTO.from(idempotent, capturedAt);
         }
 
-        // 4. 주문 조회
+        // 3. 주문 조회
         Orders orders = orderService.getByOrderId(orderId);
         assertOrderNotPaid(orders);
 
-        // 5. 신규 Payment 엔티티 생성
+        // 4. 신규 Payment 엔티티 생성
         Payment newPayment = Payment.create(
                 orders.getOrderId(),
                 orders.getMerchantId(),
@@ -95,36 +89,46 @@ public class PayService {
                 orders.getAmount()
         );
 
-        // 6. payment insert 시 UNIQUE 충돌이면 기존 payment로 수렴
+        // 5. payment insert 시 UNIQUE 충돌이면 기존 payment로 수렴
         Payment payment = createPaymentOrConverge(newPayment, orderId);
         boolean convergedToExisting = !payment.getPaymentId().equals(newPayment.getPaymentId());
 
         if (convergedToExisting) {
             if (payment.getStatus() == PaymentStatus.CAPTURED) {
-                throw new ConflictException(ReasonCode.PAID_ALREADY, "이미 PAID 상태입니다.");
+                LocalDateTime capturedAt = payQueryService.getCapturedAtOrThrow(payment);
+                logPay(
+                        payment,
+                        requestId,
+                        capturedAt,
+                        PaymentStatus.CAPTURED,
+                        PaymentStatus.CAPTURED,
+                        true,
+                        NoOpReason.IDEMPOTENT_REPLAY
+                );
+                return PayResponseDTO.from(payment, capturedAt);
             }
             throw new ConflictException(ReasonCode.IN_PROGRESS, "결제가 진행 중입니다.");
         }
 
-        // 7. PAYMENT_EVENT :: CREATED (insert-only, duplicate ignore)
+        // 6. PAYMENT_EVENT :: CREATED (insert-only, duplicate ignore)
         saveEventIgnoreDuplicate(PaymentEvent.created(payment.getPaymentId(), requestId));
 
         PaymentStatus paymentStatusBefore = payment.getStatus();
 
-        // 8. CAPTURE 수행 (도메인 로직)
+        // 7. CAPTURE 수행 (도메인 로직)
         payment.capture();
 
-        // 9. flush 보장 (UPDATE SQL 실행 시점 확정)
+        // 8. flush 보장 (UPDATE SQL 실행 시점 확정)
         payment = paymentRepository.saveAndFlush(payment);
 
-        // 10. PAYMENT_EVENT :: CAPTURED (duplicate면 DB 상태로 수렴)
+        // 9. PAYMENT_EVENT :: CAPTURED (duplicate면 DB 상태로 수렴)
         CaptureResult captureResult = saveCapturedEventOrConverge(payment, requestId);
         payment = captureResult.payment();
 
-        // 11. capturedAt 확정
+        // 10. capturedAt 확정
         LocalDateTime capturedAt = payQueryService.getCapturedAtOrThrow(payment);
 
-        // 12. audit_log 적재
+        // 11. audit_log 적재
         // - PAY에서는 PAYMENT_CAPTURED만 감사 로그로 남김
         // - PAYMENT_CREATED는 payment_event로 대체
         logPay(
@@ -137,16 +141,16 @@ public class PayService {
                 captureResult.converged() ? NoOpReason.CAPTURED_EVENT_DUPLICATE_CONVERGED : null
         );
 
-        // 13. 주문 상태 PAID 전이
+        // 12. 주문 상태 PAID 전이
         orderService.markPaid(orderId);
 
         log.info("PAY 성공. orderId={}, paymentId={}, amount={}",
                 orderId, payment.getPaymentId(), payment.getRequestedAmount());
 
-        // 14. 선점된 idempotency row에 성공 결과 기록
-        markIdempotencySucceeded(targetType, orderId, idempotencyKey, payment, requestId);
+        // 13. 성공 결과를 idempotency_record에 저장
+        saveIdempotencySuccess(targetType, orderId, idempotencyKey, payment, requestId);
 
-        // 15. 최종 응답 반환
+        // 14. 최종 응답 반환
         return PayResponseDTO.from(payment, capturedAt);
     }
 
@@ -166,48 +170,36 @@ public class PayService {
     }
 
     /**
-     * 동일 (targetType, targetId, idempotencyKey) 요청의 선점 row 생성 시도.
+     * 성공 결과를 idempotency_record에 저장한다.
      *
-     * <p>최초 요청만 insert에 성공하며 true를 반환한다.</p>
-     * <p>이미 같은 키 row가 존재하면 duplicate로 간주하고 false를 반환한다.</p>
-     * <p>선점 row는 같은 트랜잭션 안에서 최종 성공 결과로 완성된다.</p>
+     * <p>최초 성공 시 insert된다.</p>
+     * <p>동일 키 중복 insert는 이미 저장된 성공 이력으로 간주하고 무시한다.</p>
      */
-    private boolean claimIdempotency(
-            IdempotencyTargetType targetType,
-            String orderId,
-            String idempotencyKey,
-            String requestId
-    ) {
-        try {
-            idempotencyRecordRepository.saveAndFlush(
-                    IdempotencyRecord.claim(targetType, orderId, idempotencyKey, requestId)
-            );
-            return true;
-        } catch (DataIntegrityViolationException e) {
-            if (!DbConstraintUtils.isDuplicateKey(e)) throw e;
-            return false;
-        }
-    }
-
-    /**
-     * 선점된 멱등 row에 성공 결과를 기록한다.
-     *
-     * <p>pay 성공 이후 같은 트랜잭션 안에서 호출한다.</p>
-     */
-    private void markIdempotencySucceeded(
+    private void saveIdempotencySuccess(
             IdempotencyTargetType targetType,
             String orderId,
             String idempotencyKey,
             Payment payment,
             String requestId
     ) {
-        IdempotencyRecord record = idempotencyRecordRepository
-                .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, orderId, idempotencyKey)
-                .orElseThrow(() -> new IllegalStateException(
-                        "idempotency_record가 존재하지 않습니다. orderId=" + orderId
-                ));
+        try {
+            idempotencyRecordRepository.saveAndFlush(
+                    IdempotencyRecord.success(
+                            targetType,
+                            orderId,
+                            idempotencyKey,
+                            payment.getPaymentId(),
+                            200,
+                            requestId
+                    )
+            );
+        } catch (DataIntegrityViolationException e) {
+            if (!DbConstraintUtils.isDuplicateKey(e)) {
+                throw e;
+            }
 
-        record.markSucceeded(payment.getPaymentId(), 200, requestId);
+            log.info("IDEMPOTENCY_RECORD 중복 무시. orderId={}, idempotencyKey={}", orderId, idempotencyKey);
+        }
     }
 
     /**
@@ -254,7 +246,7 @@ public class PayService {
      */
     private CaptureResult saveCapturedEventOrConverge(Payment payment, String requestId) {
         try {
-            paymentEventRepository.saveAndFlush(PaymentEvent.captured(payment.getPaymentId(),requestId));
+            paymentEventRepository.saveAndFlush(PaymentEvent.captured(payment.getPaymentId(), requestId));
             return new CaptureResult(payment, false);
         } catch (DataIntegrityViolationException e) {
             if (!DbConstraintUtils.isDuplicateKey(e)) throw e;

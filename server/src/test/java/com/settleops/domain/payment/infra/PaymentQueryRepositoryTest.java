@@ -3,6 +3,7 @@ package com.settleops.domain.payment.infra;
 import com.settleops.domain.payment.api.dto.*;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.support.QuerydslTestConfig;
+import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +12,6 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;

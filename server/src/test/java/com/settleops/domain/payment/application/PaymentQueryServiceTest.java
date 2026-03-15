@@ -27,7 +27,7 @@ import static org.mockito.Mockito.when;
 class PaymentQueryServiceTest {
 
     private static final String MERCHANT_ID = "MERCHANT_1";
-    private static final String OTHER_MERCHANT_ID = "MERCHANT_2"; // ✅ 권한 불일치 테스트용
+    private static final String OTHER_MERCHANT_ID = "MERCHANT_2";
     private static final String PAYMENT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     private static final String PAYMENT_ID_MISSING = "99999999-9999-9999-9999-999999999999";
 
@@ -37,53 +37,58 @@ class PaymentQueryServiceTest {
     @InjectMocks
     private PaymentQueryService paymentQueryService;
 
-    @Test
-    void getMerchantPayments_should_throw_forbidden_when_merchant_mismatch() {
-        // given
-        MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
-
-        // when & then
-        assertThatThrownBy(() ->
-                paymentQueryService.getMerchantPayments(MERCHANT_ID, OTHER_MERCHANT_ID, condition)
-        ).isInstanceOf(ForbiddenException.class)
-                .hasMessage("다른 상점의 데이터는 조회할 수 없습니다.");
-    }
-
     // =========================================================
     // U2. Merchant 결제 목록 조회
     // =========================================================
 
-    @Test
-    @DisplayName("U2_merchant 결제 목록 조회를 repository에 위임")
-    void getMerchantPayments_delegates_to_repository() {
-        // given
-        MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
+    @Nested
+    class GetMerchantPaymentsTest {
 
-        List<MerchantPaymentListItemResponse> expected = List.of(
-                new MerchantPaymentListItemResponse(
-                        PAYMENT_ID,
-                        "11111111-1111-1111-1111-111111111111",
-                        "CAPTURED",
-                        100_000L,
-                        100_000L,
-                        "KRW",
-                        "BUYER_1",
-                        LocalDateTime.of(2026, 3, 13, 10, 0, 0),
-                        true,
-                        LocalDateTime.of(2026, 3, 13, 11, 0, 0)
-                )
-        );
+        @Test
+        @DisplayName("U2_merchant 결제 목록 조회를 repository에 위임")
+        void getMerchantPayments_returns_list() {
+            // given
+            MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
 
-        when(paymentQueryRepository.searchMerchantPayments(MERCHANT_ID, condition))
-                .thenReturn(expected);
+            List<MerchantPaymentListItemResponse> expected = List.of(
+                    new MerchantPaymentListItemResponse(
+                            PAYMENT_ID,
+                            "11111111-1111-1111-1111-111111111111",
+                            "CAPTURED",
+                            100_000L,
+                            100_000L,
+                            "KRW",
+                            "BUYER_1",
+                            LocalDateTime.of(2026, 3, 13, 10, 0, 0),
+                            true,
+                            LocalDateTime.of(2026, 3, 13, 11, 0, 0)
+                    )
+            );
 
-        // when
-        List<MerchantPaymentListItemResponse> result =
-                paymentQueryService.getMerchantPayments(MERCHANT_ID, MERCHANT_ID, condition);
+            when(paymentQueryRepository.searchMerchantPayments(MERCHANT_ID, condition))
+                    .thenReturn(expected);
 
-        // then
-        assertThat(result).isEqualTo(expected);
-        verify(paymentQueryRepository).searchMerchantPayments(MERCHANT_ID, condition);
+            // when
+            List<MerchantPaymentListItemResponse> result =
+                    paymentQueryService.getMerchantPayments(MERCHANT_ID, MERCHANT_ID, condition);
+
+            // then
+            assertThat(result).isEqualTo(expected);
+            verify(paymentQueryRepository).searchMerchantPayments(MERCHANT_ID, condition);
+        }
+
+        @Test
+        @DisplayName("U2_다른 상점 merchantId로 조회 시 ForbiddenException 발생")
+        void getMerchantPayments_throws_forbidden_when_merchant_mismatch() {
+            // given
+            MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
+
+            // when & then
+            assertThatThrownBy(() ->
+                    paymentQueryService.getMerchantPayments(MERCHANT_ID, OTHER_MERCHANT_ID, condition)
+            ).isInstanceOf(ForbiddenException.class)
+                    .hasMessage("다른 상점의 데이터는 조회할 수 없습니다.");
+        }
     }
 
     // =========================================================
@@ -170,7 +175,7 @@ class PaymentQueryServiceTest {
     }
 
     // =========================================================
-    // Refund Context 조회
+    // refund-context 조회
     // =========================================================
 
     @Nested
