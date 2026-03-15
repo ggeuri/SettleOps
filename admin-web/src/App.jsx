@@ -1,16 +1,17 @@
-import { useEffect, useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import AdminRoutes from "./routes/AdminRoutes.jsx";
 
-function App() {
-  const [msg, setMsg] = useState("뿌엥");
+export default function App() {
+  return (
+    <Routes>
+      {/* /admin 아래는 AdminRoutes가 처리 */}
+      <Route path="/admin/*" element={<AdminRoutes />} />
 
-  useEffect(() => {
-    fetch("http://localhost:8080/api/health", { credentials: "include" })
-      .then((r) => r.text())
-      .then(setMsg("연결돼따리!!!!!!!!"))
-      .catch(() => setMsg("서버랑 연결실패해따리..."));
-  }, []);
+      {/* 임시 홈 */}
+      <Route path="/" element={<Navigate to="/admin/audit" replace />} />
 
-  return <div>프론트 돼따링!!!!!!!!!!!!!!!!!!!!! {msg}</div>;
+      {/* 404 */}
+      <Route path="*" element={<div>Not Found</div>} />
+    </Routes>
+  );
 }
-
-export default App;
