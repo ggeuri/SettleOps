@@ -8,8 +8,8 @@ public record AdminSettlementHoldSummaryResponse(
         String status,
         String reasonCode,
         String comment,
-        String approvedBy,
-        LocalDateTime approvedAt
+        String createdBy,
+        LocalDateTime createdAt
 ) {
     public static AdminSettlementHoldSummaryResponse empty() {
         return new AdminSettlementHoldSummaryResponse(

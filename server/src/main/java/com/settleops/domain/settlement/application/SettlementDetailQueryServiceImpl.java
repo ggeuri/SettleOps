@@ -1,13 +1,11 @@
 package com.settleops.domain.settlement.application;
 
+import com.settleops.domain.settlement.dto.AdminSettlementDetailBaseView;
 import com.settleops.domain.settlement.dto.AdminSettlementDetailResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
-import com.settleops.domain.settlement.entity.Settlement;
-import com.settleops.domain.settlement.entity.SettlementLine;
-import com.settleops.domain.settlement.infra.SettlementLineRepository;
-import com.settleops.domain.settlement.infra.SettlementRepository;
+import com.settleops.domain.settlement.infra.SettlementDetailQueryRepository;
 import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -20,10 +18,9 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class SettlementDetailQueryServiceImpl implements SettlementDetailQueryService{
+public class SettlementDetailQueryServiceImpl implements SettlementDetailQueryService {
 
-    private final SettlementRepository settlementRepository;
-    private final SettlementLineRepository settlementLineRepository;
+    private final SettlementDetailQueryRepository settlementDetailQueryRepository;
 
     @Override
     public AdminSettlementDetailResponse getAdminSettlementDetail(String settlementId) {
@@ -31,36 +28,34 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
-        Settlement settlement = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+        AdminSettlementDetailBaseView base =
+                settlementDetailQueryRepository.findSettlementBase(settlementId);
 
-        List<AdminSettlementLineItemResponse> lines = settlementLineRepository
-                .findBySettlementIdOrderByCreatedAtAsc(settlementId)
-                .stream()
-                .map(this::toLineItemResponse)
-                .toList();
+        if (base == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found");
+        }
+
+        List<AdminSettlementLineItemResponse> lines =
+                settlementDetailQueryRepository.findSettlementLines(settlementId);
+
+        AdminSettlementHoldSummaryResponse hold =
+                settlementDetailQueryRepository.findHoldSummary(settlementId);
+
+        AdminSettlementRefundSummaryResponse refund =
+                settlementDetailQueryRepository.findRefundSummary(settlementId);
 
         return new AdminSettlementDetailResponse(
-                settlement.getSettlementId(),
-                settlement.getMerchantId(),
-                settlement.getBaseDate(),
-                settlement.getStatus(),
-                settlement.getGross(),
-                settlement.getFee(),
-                settlement.getVat(),
-                settlement.getNet(),
+                base.settlementId(),
+                base.merchantId(),
+                base.baseDate(),
+                base.status(),
+                base.gross(),
+                base.fee(),
+                base.vat(),
+                base.net(),
                 lines,
-                AdminSettlementHoldSummaryResponse.empty(),
-                AdminSettlementRefundSummaryResponse.empty()
-        );
-    }
-
-    private AdminSettlementLineItemResponse toLineItemResponse(SettlementLine line) {
-        return new AdminSettlementLineItemResponse(
-                String.valueOf(line.getSettlementLineId()),
-                line.getLineType(),
-                line.getPaymentId(),
-                line.getAmount()
+                hold,
+                refund
         );
     }
 }
