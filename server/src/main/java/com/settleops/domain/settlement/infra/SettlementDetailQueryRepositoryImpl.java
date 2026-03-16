@@ -11,7 +11,7 @@ import com.settleops.domain.settlement.dto.AdminSettlementDetailBaseView;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
-import com.settleops.domain.settlement.entity.QHold;
+import com.settleops.domain.hold.entity.QHold;
 import com.settleops.domain.settlement.entity.QSettlement;
 import com.settleops.domain.settlement.entity.QSettlementLine;
 import lombok.RequiredArgsConstructor;
@@ -77,7 +77,7 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                         Expressions.constant(true),
                         hold.holdId,
                         hold.status.stringValue(),
-                        hold.requestedReasonCode,
+                        hold.requestedReasonCode.stringValue(),
                         hold.requestedComment,
                         hold.createdBy,
                         hold.createdAt

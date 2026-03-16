@@ -19,6 +19,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import lombok.RequiredArgsConstructor;
@@ -298,7 +299,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             auditSettlementAction(
                     requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
-                    settlement, before, after, comment
+                    settlement, before, after, comment,
+                    true, "ALREADY_PAY_REQUESTED"
             );
             return toPayActionResponse(settlement, requestId);
         }
@@ -324,7 +326,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         auditSettlementAction(
                 requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
-                settlement, before, after, comment
+                settlement, before, after, comment,
+                false, null
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -350,7 +353,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             auditSettlementAction(
                     requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                    current, before, after, comment
+                    current, before, after, comment,
+                    true, "ALREADY_PAID"
             );
             return toPayActionResponse(current, requestId);
         }
@@ -371,16 +375,26 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             auditSettlementAction(
                     requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                    settlement, before, after, comment
+                    settlement, before, after, comment,
+                    true, "ALREADY_PAID"
             );
             return toPayActionResponse(settlement, requestId);
         }
 
         // 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
-            throw new ConflictException(
+            throw new AuditableConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
-                    "requester and approver must be different"
+                    "requester and approver must be different",
+                    ActorType.ADMIN,
+                    approverId,
+                    Action.SETTLEMENT_PAY_APPROVED,
+                    EntityType.SETTLEMENT,
+                    settlement.getSettlementId(),
+                    settlement.getMerchantId(),
+                    settlement.getStatus().name(),
+                    settlement.getStatus().name(),
+                    comment
             );
         }
 
@@ -390,7 +404,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         auditSettlementAction(
                 requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                settlement, before, after, comment
+                settlement, before, after, comment,
+                false, null
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -439,7 +454,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             Settlement settlement,
             String before,
             String after,
-            String comment
+            String comment,
+            boolean noOp,
+            String noOpReason
     ) {
         AuditLogCommand cmd = AuditLogCommand.builder()
                 .requestId(requestId)
@@ -452,7 +469,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                .metaJson(buildMetaJson(comment))
+                .metaJson(buildMetaJson(comment, noOp, noOpReason))
                 .build();
 
         auditLogger.log(cmd);
@@ -464,7 +481,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             Action action,
             LocalDate baseDate,
             String runId,
-           Map<String, Object> extraMeta
+            Map<String, Object> extraMeta
     ) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("baseDate", baseDate.toString());
@@ -507,10 +524,16 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         auditLogger.log(cmd);
     }
 
-    private String buildMetaJson(String comment) {
+    private String buildMetaJson(String comment, boolean noOp, String noOpReason) {
         try {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("comment", (comment == null || comment.isBlank()) ? null : comment);
+            meta.put("noOp", noOp);
+
+            if (noOp) {
+                meta.put("noOpReason", noOpReason);
+            }
+
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);

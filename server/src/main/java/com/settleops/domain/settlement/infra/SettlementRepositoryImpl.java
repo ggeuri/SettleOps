@@ -19,6 +19,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -61,7 +62,8 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                 .where(where)
                 .orderBy(
                         settlement.baseDate.desc(),
-                        settlement.createdAt.desc()
+                        settlement.createdAt.desc(),
+                        settlement.settlementId.desc()
                 )
                 .offset(pageable.getOffset())
                 .limit(pageable.getPageSize())
@@ -95,7 +97,8 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                 .where(settlement.merchantId.eq(merchantId))
                 .orderBy(
                         settlement.baseDate.desc(),
-                        settlement.createdAt.desc()
+                        settlement.createdAt.desc(),
+                        settlement.settlementId.desc()
                 )
                 .offset(pageable.getOffset())
                 .limit(pageable.getPageSize())
@@ -110,22 +113,33 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
     }
 
     @Override
+    public Optional<String> findMerchantIdBySettlementId(String settlementId) {
+        QSettlement settlement = QSettlement.settlement;
+
+        String merchantId = queryFactory
+                .select(settlement.merchantId)
+                .from(settlement)
+                .where(settlement.settlementId.eq(settlementId))
+                .fetchOne();
+
+        return Optional.ofNullable(merchantId);
+    }
+
+    @Override
     public MerchantSettlementDetailResponse findMerchantSettlementDetail(String merchantId, String settlementId) {
         QSettlement settlement = QSettlement.settlement;
         QSettlementLine settlementLine = QSettlementLine.settlementLine;
 
         var base = queryFactory
-                .select(Projections.constructor(
-                        MerchantSettlementDetailResponse.class,
+                .select(
                         settlement.settlementId,
                         settlement.baseDate,
                         settlement.status,
                         settlement.gross,
                         settlement.fee,
                         settlement.vat,
-                        settlement.net,
-                        Expressions.constant(java.util.List.of())
-                ))
+                        settlement.net
+                )
                 .from(settlement)
                 .where(
                         settlement.merchantId.eq(merchantId),
@@ -154,13 +168,13 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                 .fetch();
 
         return new MerchantSettlementDetailResponse(
-                base.settlementId(),
-                base.baseDate(),
-                base.status(),
-                base.gross(),
-                base.fee(),
-                base.vat(),
-                base.net(),
+                base.get(settlement.settlementId),
+                base.get(settlement.baseDate),
+                base.get(settlement.status),
+                base.get(settlement.gross),
+                base.get(settlement.fee),
+                base.get(settlement.vat),
+                base.get(settlement.net),
                 lines
         );
     }

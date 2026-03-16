@@ -8,10 +8,12 @@ import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
-import com.settleops.domain.settlement.entity.Hold;
+import com.settleops.domain.hold.entity.Hold;
+import com.settleops.domain.hold.enums.HoldReasonCode;
+import com.settleops.domain.hold.enums.HoldStatus;
+import com.settleops.domain.hold.infra.HoldRepository;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementLine;
-import com.settleops.domain.settlement.enums.HoldStatus;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
@@ -117,14 +119,13 @@ public class SettlementDetailQueryRepositoryImplTest {
         );
         settlementRepository.save(settlement);
 
-        Hold hold = Hold.builder()
-                .holdId(UUID.randomUUID().toString())
-                .settlementId(settlementId)
-                .status(HoldStatus.HOLD_ACTIVE)
-                .requestedReasonCode("SUSPECTED_FRAUD")
-                .requestedComment("운영 확인 필요")
-                .createdBy("admin1")
-                .build();
+        Hold hold = Hold.requested(
+                settlementId,
+                HoldReasonCode.RISK_SUSPECTED,
+                "운영 확인 필요",
+                "admin1"
+        );
+        hold.approve();
 
         holdRepository.save(hold);
         entityManager.flush();
@@ -138,7 +139,7 @@ public class SettlementDetailQueryRepositoryImplTest {
         assertThat(result.exists()).isTrue();
         assertThat(result.holdId()).isEqualTo(hold.getHoldId());
         assertThat(result.status()).isEqualTo(HoldStatus.HOLD_ACTIVE.name());
-        assertThat(result.reasonCode()).isEqualTo("SUSPECTED_FRAUD");
+        assertThat(result.reasonCode()).isEqualTo(HoldReasonCode.RISK_SUSPECTED.name());
         assertThat(result.comment()).isEqualTo("운영 확인 필요");
         assertThat(result.createdBy()).isEqualTo("admin1");
         assertThat(result.createdAt()).isNotNull();

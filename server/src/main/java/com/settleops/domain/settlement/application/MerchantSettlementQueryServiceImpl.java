@@ -4,18 +4,18 @@ import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
 import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.error.ForbiddenException;
+import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQueryService{
+public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQueryService {
 
     private final SettlementRepository settlementRepository;
 
@@ -33,11 +33,18 @@ public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQue
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
+        String ownerMerchantId = settlementRepository.findMerchantIdBySettlementId(settlementId)
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
+
+        if (!ownerMerchantId.equals(loginMerchantId)) {
+            throw new ForbiddenException("merchant mismatch");
+        }
+
         MerchantSettlementDetailResponse response =
                 settlementRepository.findMerchantSettlementDetail(merchantId, settlementId);
 
         if (response == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found");
+            throw new NotFoundException("settlement not found");
         }
 
         return response;
@@ -53,7 +60,7 @@ public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQue
         }
 
         if (!loginMerchantId.equals(merchantId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "merchant mismatch");
+            throw new ForbiddenException("merchant mismatch");
         }
     }
 }

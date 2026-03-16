@@ -1,7 +1,13 @@
 package com.settleops.domain.settlement.infra;
 
 import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementLineItemResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.entity.Settlement;
+import com.settleops.domain.settlement.entity.SettlementBatch;
+import com.settleops.domain.settlement.entity.SettlementLine;
+import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
@@ -13,11 +19,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
-import com.settleops.domain.settlement.dto.MerchantSettlementLineItemResponse;
-import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
-import com.settleops.domain.settlement.entity.SettlementLine;
-import com.settleops.domain.settlement.enums.SettlementLineType;
 
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -36,6 +37,9 @@ public class SettlementRepositoryImplTest {
     SettlementRepository settlementRepository;
 
     @Autowired
+    SettlementBatchRepository settlementBatchRepository;
+
+    @Autowired
     JdbcTemplate jdbcTemplate;
 
     @Autowired
@@ -45,22 +49,30 @@ public class SettlementRepositoryImplTest {
     @DisplayName("관리자 정산 리스트 조회 시 status와 merchantId 조건을 함께 적용한다")
     void searchAdminSettlements_filtersByStatusAndMerchantId() {
         // given
+        Long batchId0310 = createBatchId(LocalDate.of(2026, 3, 10));
+        Long batchId0309 = createBatchId(LocalDate.of(2026, 3, 9));
+        Long batchId0308 = createBatchId(LocalDate.of(2026, 3, 8));
+
         Settlement target1 = createSettlement(
+                batchId0310,
                 "merchant-1",
                 LocalDate.of(2026, 3, 10),
                 10000L
         );
         Settlement target2 = createSettlement(
+                batchId0309,
                 "merchant-1",
                 LocalDate.of(2026, 3, 9),
                 9000L
         );
         Settlement otherMerchant = createSettlement(
+                batchId0310,
                 "merchant-2",
                 LocalDate.of(2026, 3, 10),
                 11000L
         );
         Settlement otherStatus = createSettlement(
+                batchId0308,
                 "merchant-1",
                 LocalDate.of(2026, 3, 8),
                 12000L
@@ -95,16 +107,19 @@ public class SettlementRepositoryImplTest {
     void searchAdminSettlements_ordersByBaseDateDesc() {
         // given
         Settlement newest = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 11)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 11),
                 12000L
         );
         Settlement middle = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 10)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 10),
                 11000L
         );
         Settlement oldest = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 9)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 9),
                 9000L
@@ -133,6 +148,7 @@ public class SettlementRepositoryImplTest {
     }
 
     private Settlement createSettlement(
+            Long batchId,
             String merchantId,
             LocalDate baseDate,
             long net
@@ -140,7 +156,7 @@ public class SettlementRepositoryImplTest {
         return Settlement.createReady(
                 UUID.randomUUID().toString(),
                 "SET-" + baseDate.toString().replace("-", "") + "-" + merchantId + "-" + UUID.randomUUID().toString().substring(0, 8),
-                1L,
+                batchId,
                 merchantId,
                 baseDate,
                 net,
@@ -148,6 +164,18 @@ public class SettlementRepositoryImplTest {
                 0L,
                 net
         );
+    }
+
+    private Long createBatchId(LocalDate baseDate) {
+        SettlementBatch batch = SettlementBatch.started(
+                baseDate,
+                UUID.randomUUID().toString(),
+                "ADMIN:test",
+                UUID.randomUUID().toString()
+        );
+        SettlementBatch saved = settlementBatchRepository.save(batch);
+        entityManager.flush();
+        return saved.getBatchId();
     }
 
     private void forceStatus(String settlementId, SettlementStatus status) {
@@ -162,28 +190,37 @@ public class SettlementRepositoryImplTest {
     @DisplayName("관리자 정산 리스트 조회 시 같은 baseDate에서는 createdAt desc 순으로 정렬된다")
     void searchAdminSettlements_ordersByCreatedAtDescWithinSameBaseDate() {
         // given
+        LocalDate sameBaseDate = LocalDate.of(2099, 12, 31);
+        LocalDate olderBaseDate = LocalDate.of(2099, 12, 30);
+
+        Long sameBaseDateBatchId = createBatchId(sameBaseDate);
+        Long olderBaseDateBatchId = createBatchId(olderBaseDate);
+
         Settlement olderCreatedAt = createSettlement(
-                "merchant-1",
-                LocalDate.of(2026, 3, 10),
+                sameBaseDateBatchId,
+                "m-a-" + UUID.randomUUID().toString().substring(0, 8),
+                sameBaseDate,
                 10000L
         );
         Settlement newerCreatedAt = createSettlement(
-                "merchant-2",
-                LocalDate.of(2026, 3, 10),
+                sameBaseDateBatchId,
+                "m-b-" + UUID.randomUUID().toString().substring(0, 8),
+                sameBaseDate,
                 11000L
         );
-        Settlement olderBaseDate = createSettlement(
-                "merchant-3",
-                LocalDate.of(2026, 3, 9),
+        Settlement olderBaseDateSettlement = createSettlement(
+                olderBaseDateBatchId,
+                "m-c-" + UUID.randomUUID().toString().substring(0, 8),
+                olderBaseDate,
                 9000L
         );
 
-        settlementRepository.saveAll(List.of(olderCreatedAt, newerCreatedAt, olderBaseDate));
+        settlementRepository.saveAll(List.of(olderCreatedAt, newerCreatedAt, olderBaseDateSettlement));
         entityManager.flush();
 
-        updateCreatedAt(olderCreatedAt.getSettlementId(), LocalDateTime.of(2026, 3, 11, 9, 0));
-        updateCreatedAt(newerCreatedAt.getSettlementId(), LocalDateTime.of(2026, 3, 11, 10, 0));
-        updateCreatedAt(olderBaseDate.getSettlementId(), LocalDateTime.of(2026, 3, 11, 11, 0));
+        updateCreatedAt(olderCreatedAt.getSettlementId(), LocalDateTime.of(2099, 12, 31, 9, 0));
+        updateCreatedAt(newerCreatedAt.getSettlementId(), LocalDateTime.of(2099, 12, 31, 10, 0));
+        updateCreatedAt(olderBaseDateSettlement.getSettlementId(), LocalDateTime.of(2099, 12, 31, 11, 0));
 
         entityManager.clear();
 
@@ -197,16 +234,16 @@ public class SettlementRepositoryImplTest {
         // then
         List<AdminSettlementListItemResponse> content = result.getContent();
 
-        assertThat(content).hasSize(3);
+        assertThat(content).hasSizeGreaterThanOrEqualTo(3);
 
         // 1순위: baseDate desc
-        assertThat(content.get(0).baseDate()).isEqualTo(LocalDate.of(2026, 3, 10));
-        assertThat(content.get(1).baseDate()).isEqualTo(LocalDate.of(2026, 3, 10));
-        assertThat(content.get(2).baseDate()).isEqualTo(LocalDate.of(2026, 3, 9));
+        assertThat(content.get(0).baseDate()).isEqualTo(sameBaseDate);
+        assertThat(content.get(1).baseDate()).isEqualTo(sameBaseDate);
+        assertThat(content.get(2).baseDate()).isEqualTo(olderBaseDate);
 
         // 2순위: 같은 baseDate면 createdAt desc
-        assertThat(content.get(0).merchantId()).isEqualTo("merchant-2");
-        assertThat(content.get(1).merchantId()).isEqualTo("merchant-1");
+        assertThat(content.get(0).createdAt()).isEqualTo(LocalDateTime.of(2099, 12, 31, 10, 0));
+        assertThat(content.get(1).createdAt()).isEqualTo(LocalDateTime.of(2099, 12, 31, 9, 0));
     }
 
     @Test
@@ -214,16 +251,19 @@ public class SettlementRepositoryImplTest {
     void searchMerchantSettlements_filtersByMerchantId() {
         // given
         Settlement target1 = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 10)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 10),
                 10000L
         );
         Settlement target2 = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 9)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 9),
                 9000L
         );
         Settlement otherMerchant = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 11)),
                 "merchant-2",
                 LocalDate.of(2026, 3, 11),
                 11000L
@@ -255,6 +295,7 @@ public class SettlementRepositoryImplTest {
     void findMerchantSettlementDetail_returnsDetailWhenMerchantMatches() {
         // given
         Settlement settlement = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 10)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 10),
                 10000L
@@ -307,6 +348,7 @@ public class SettlementRepositoryImplTest {
     void findMerchantSettlementDetail_returnsNullWhenMerchantDoesNotMatch() {
         // given
         Settlement settlement = createSettlement(
+                createBatchId(LocalDate.of(2026, 3, 10)),
                 "merchant-1",
                 LocalDate.of(2026, 3, 10),
                 10000L

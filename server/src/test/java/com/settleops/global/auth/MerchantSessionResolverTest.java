@@ -1,12 +1,11 @@
 package com.settleops.global.auth;
 
-import com.settleops.global.auth.controller.MeController;
+import com.settleops.global.error.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
-import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,11 +21,8 @@ public class MerchantSessionResolverTest {
         Mockito.when(request.getSession(false)).thenReturn(null);
 
         assertThatThrownBy(() -> resolver.resolveMerchantId(request))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(401);
-                });
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("login required");
     }
 
     @Test
@@ -37,14 +33,11 @@ public class MerchantSessionResolverTest {
         HttpSession session = Mockito.mock(HttpSession.class);
 
         Mockito.when(request.getSession(false)).thenReturn(session);
-        Mockito.when(session.getAttribute(MeController.SessionKeys.MERCHANT_ID)).thenReturn(null);
+        Mockito.when(session.getAttribute(MerchantSessionResolver.MERCHANT_ID_SESSION_KEY)).thenReturn(null);
 
         assertThatThrownBy(() -> resolver.resolveMerchantId(request))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(401);
-                });
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("login required");
     }
 
     @Test
@@ -55,7 +48,7 @@ public class MerchantSessionResolverTest {
         HttpSession session = Mockito.mock(HttpSession.class);
 
         Mockito.when(request.getSession(false)).thenReturn(session);
-        Mockito.when(session.getAttribute(MeController.SessionKeys.MERCHANT_ID)).thenReturn("merchant-1");
+        Mockito.when(session.getAttribute(MerchantSessionResolver.MERCHANT_ID_SESSION_KEY)).thenReturn("merchant-1");
 
         String result = resolver.resolveMerchantId(request);
 

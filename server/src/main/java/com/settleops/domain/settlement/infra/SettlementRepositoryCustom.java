@@ -7,6 +7,8 @@ import com.settleops.domain.settlement.enums.SettlementStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Optional;
+
 public interface SettlementRepositoryCustom {
     Page<AdminSettlementListItemResponse> searchAdminSettlements(
             SettlementStatus status,
@@ -18,6 +20,8 @@ public interface SettlementRepositoryCustom {
             String merchantId,
             Pageable pageable
     );
+
+    Optional<String> findMerchantIdBySettlementId(String settlementId);
 
     MerchantSettlementDetailResponse findMerchantSettlementDetail(
             String merchantId,

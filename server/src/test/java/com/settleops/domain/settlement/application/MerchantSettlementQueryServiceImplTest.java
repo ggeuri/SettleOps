@@ -6,17 +6,19 @@ import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementRepository;
+import com.settleops.global.error.ForbiddenException;
+import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,11 +38,8 @@ public class MerchantSettlementQueryServiceImplTest {
                         PageRequest.of(0, 20)
                 )
         )
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(403);
-                });
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("merchant mismatch");
 
         Mockito.verifyNoInteractions(settlementRepository);
     }
@@ -104,6 +103,8 @@ public class MerchantSettlementQueryServiceImplTest {
                 )
         );
 
+        Mockito.when(settlementRepository.findMerchantIdBySettlementId("settlement-1"))
+                .thenReturn(Optional.of("merchant-1"));
         Mockito.when(settlementRepository.findMerchantSettlementDetail("merchant-1", "settlement-1"))
                 .thenReturn(detail);
 
@@ -114,34 +115,56 @@ public class MerchantSettlementQueryServiceImplTest {
         assertThat(result.lines()).hasSize(1);
 
         Mockito.verify(settlementRepository)
+                .findMerchantIdBySettlementId("settlement-1");
+        Mockito.verify(settlementRepository)
                 .findMerchantSettlementDetail("merchant-1", "settlement-1");
     }
 
     @Test
-    @DisplayName("Merchant 정산 상세 조회 시 결과가 없으면 404를 반환한다")
-    void getMerchantSettlementDetail_notFound() {
+    @DisplayName("Merchant 정산 상세 조회 시 settlementId가 없으면 404를 반환한다")
+    void getMerchantSettlementDetail_notFoundWhenSettlementDoesNotExist() {
         SettlementRepository settlementRepository = Mockito.mock(SettlementRepository.class);
         MerchantSettlementQueryServiceImpl service = new MerchantSettlementQueryServiceImpl(settlementRepository);
 
-        Mockito.when(settlementRepository.findMerchantSettlementDetail("merchant-1", "settlement-404"))
-                .thenReturn(null);
+        Mockito.when(settlementRepository.findMerchantIdBySettlementId("settlement-404"))
+                .thenReturn(Optional.empty());
 
         assertThatThrownBy(() ->
                 service.getMerchantSettlementDetail("merchant-1", "merchant-1", "settlement-404")
         )
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(404);
-                });
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("settlement not found");
 
         Mockito.verify(settlementRepository)
-                .findMerchantSettlementDetail("merchant-1", "settlement-404");
+                .findMerchantIdBySettlementId("settlement-404");
+        Mockito.verify(settlementRepository, Mockito.never())
+                .findMerchantSettlementDetail(Mockito.anyString(), Mockito.anyString());
+    }
+
+    @Test
+    @DisplayName("Merchant 정산 상세 조회 시 다른 merchant의 settlement이면 403을 반환한다")
+    void getMerchantSettlementDetail_forbiddenWhenSettlementOwnerDoesNotMatch() {
+        SettlementRepository settlementRepository = Mockito.mock(SettlementRepository.class);
+        MerchantSettlementQueryServiceImpl service = new MerchantSettlementQueryServiceImpl(settlementRepository);
+
+        Mockito.when(settlementRepository.findMerchantIdBySettlementId("settlement-1"))
+                .thenReturn(Optional.of("merchant-2"));
+
+        assertThatThrownBy(() ->
+                service.getMerchantSettlementDetail("merchant-1", "merchant-1", "settlement-1")
+        )
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("merchant mismatch");
+
+        Mockito.verify(settlementRepository)
+                .findMerchantIdBySettlementId("settlement-1");
+        Mockito.verify(settlementRepository, Mockito.never())
+                .findMerchantSettlementDetail(Mockito.anyString(), Mockito.anyString());
     }
 
     @Test
     @DisplayName("Merchant 정산 상세 조회 시 로그인 merchantId와 경로 merchantId가 다르면 403을 반환한다")
-    void getMerchantSettlementDetail_forbiddenWhenMerchantMismatch() {
+    void getMerchantSettlementDetail_forbiddenWhenPathMerchantMismatch() {
         SettlementRepository settlementRepository = Mockito.mock(SettlementRepository.class);
         MerchantSettlementQueryServiceImpl service = new MerchantSettlementQueryServiceImpl(settlementRepository);
 
@@ -152,11 +175,8 @@ public class MerchantSettlementQueryServiceImplTest {
                         "settlement-1"
                 )
         )
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(403);
-                });
+                .isInstanceOf(ForbiddenException.class)
+                .hasMessageContaining("merchant mismatch");
 
         Mockito.verifyNoInteractions(settlementRepository);
     }
