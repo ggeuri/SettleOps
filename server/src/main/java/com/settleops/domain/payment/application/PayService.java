@@ -48,6 +48,8 @@ public class PayService {
      * <br>- 먼저 성공 이력(idempotency_record)을 조회하고, 이미 성공 결과가 있으면 no-op 200으로 반환한다.
      * <br>- 최초 성공 요청은 payment.order_id UNIQUE 제약과 후행 성공 결과 저장(idempotency_record)으로 수렴한다.
      * <br>- 따라서 현재 구조는 선점형 멱등이 아니라 성공 결과 저장형 + payment.order_id UNIQUE 수렴 방식이다.
+     * <br>- 동일 요청이 동시 처리 중인 구간에서 write 충돌이 발생하면 기존 성공 결과로 즉시 수습하지 않고
+     *     409 IN_PROGRESS + "잠시 후 다시 시도해주세요." 정책으로 수렴한다.
      * </p>
      */
     @Transactional
@@ -90,8 +92,9 @@ public class PayService {
         );
 
         // 5. payment 생성
-        // - 중복 충돌이면 기존 payment 재조회/수렴하지 않고
-        //   "동시 처리 중"으로 해석하여 409 IN_PROGRESS 반환
+        // - payment.order_id UNIQUE 충돌 등 write 시점 경합이 발생하면
+        //   기존 성공 결과를 즉시 재사용하지 않고 동시 처리 중으로 간주한다.
+        // - 이 경우 409 IN_PROGRESS + "잠시 후 다시 시도해주세요." 정책으로 수렴한다.
         Payment payment = payPaymentWriter.create(newPayment, orderId);
 
         // 6. PAYMENT_EVENT :: CREATED
@@ -135,8 +138,8 @@ public class PayService {
                 orderId, payment.getPaymentId(), payment.getRequestedAmount());
 
         // 13. 성공 결과를 idempotency_record에 저장
-        // - duplicate 발생 시 이미 다른 요청이 먼저 성공 기록 완료한 상황이므로
-        //   여기서도 409 IN_PROGRESS 로 정리
+        // - 이 단계에서 duplicate가 발생하더라도 기존 성공 응답으로 재수습하지 않는다.
+        // - 동일 요청에 대한 동시 처리 경합 상황으로 간주하고 409 IN_PROGRESS로 수렴한다.
         payIdempotencyWriter.saveSuccess(
                 targetType,
                 orderId,
