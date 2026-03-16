@@ -165,7 +165,7 @@ class RefundSettlementReadRepositoryTest {
     }
 
     @Test
-    void KST기준_cutoff는_baseDate_당일_00시_lt이다() {
+    void KST기준_cutoff는_lt이며_baseDate_당일_00시_승인건은_제외된다() {
         String includedRefundId = "10101010-1010-1010-1010-101010101010";
         String excludedRefundId = "20202020-2020-2020-2020-202020202020";
 
