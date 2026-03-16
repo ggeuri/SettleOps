@@ -9,6 +9,7 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.controller.MeController;
 import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
+import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.GlobalExceptionHandler;
 import com.settleops.global.error.UnauthorizedException;
 import org.junit.jupiter.api.DisplayName;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -183,6 +185,26 @@ class MerchantPaymentQueryControllerTest {
         }
 
         @Test
+        @DisplayName("GET /api/merchants/{merchantId}/payments - merchant 불일치면 403")
+        void getMerchantPayments_returns_forbidden_when_merchant_mismatch() throws Exception {
+            // given
+            doThrow(new ForbiddenException("접근 권한이 없습니다."))
+                    .when(sessionAuthProvider).getRequiredMerchantId(any());
+
+            // when & then
+            mockMvc.perform(get("/api/merchants/{merchantId}/payments", "OTHER_MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
+                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID))
+                    .andExpect(status().isForbidden())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+                    .andExpect(jsonPath("$.reason").doesNotExist())
+                    .andExpect(jsonPath("$.message").value("접근 권한이 없습니다."));
+
+            verifyNoInteractions(paymentQueryService);
+        }
+
+        @Test
         @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 confirmed면 400")
         void getMerchantPayments_returns_bad_request_when_confirmed_invalid() throws Exception {
             // given
@@ -321,6 +343,8 @@ class MerchantPaymentQueryControllerTest {
                     .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("로그인이 필요합니다."));
+
+            verifyNoInteractions(paymentQueryService);
         }
     }
 

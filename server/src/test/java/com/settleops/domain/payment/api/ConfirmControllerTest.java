@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -36,7 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc(addFilters = false)
 @Import(GlobalExceptionHandler.class)
 @ActiveProfiles("test")
-class ConsumerPaymentControllerTest {
+class ConfirmControllerTest {
 
     private static final String PAYMENT_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     private static final String ORDER_ID = "11111111-1111-1111-1111-111111111111";
@@ -109,6 +110,8 @@ class ConsumerPaymentControllerTest {
                     .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("인증이 필요합니다."));
+
+            verifyNoInteractions(confirmService);
         }
 
         @Test
@@ -122,6 +125,8 @@ class ConsumerPaymentControllerTest {
                     .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("인증이 필요합니다."));
+
+            verifyNoInteractions(confirmService);
         }
 
         @Test

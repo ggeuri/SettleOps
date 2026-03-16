@@ -219,7 +219,7 @@ public class PaymentQueryRepository {
             );
         }
 
-        if (confirmed == ConfirmedFilter.UNCONFIRMED) {
+        else if (confirmed == ConfirmedFilter.UNCONFIRMED) {
             builder.and(
                     JPAExpressions
                             .selectOne()
