@@ -14,5 +14,5 @@ public interface SettlementDetailQueryRepository {
 
     AdminSettlementHoldSummaryResponse findHoldSummary(String settlementId);
 
-    AdminSettlementRefundSummaryResponse findRefundSummary(String settlementId);
+    boolean hasApprovedRefund(String settlementId);
 }
