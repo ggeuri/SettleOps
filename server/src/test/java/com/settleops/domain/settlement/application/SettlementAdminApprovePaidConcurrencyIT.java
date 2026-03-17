@@ -113,7 +113,7 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     Action.SETTLEMENT_PAY_APPROVED.name()
             );
             assertThat(actorIds).hasSize(2);
-            assertThat(actorIds).allMatch(actorId -> actorId != null && !actorId.isBlank());
+            assertThat(actorIds).containsExactlyInAnyOrder("approverA", "approverB");
 
             List<String> requestIds = jdbcTemplate.queryForList(
                     """
@@ -144,19 +144,34 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     Action.SETTLEMENT_PAY_APPROVED.name()
             );
 
-            ObjectMapper mapper = new ObjectMapper();
-            List<JsonNode> metaNodes = metaJsons.stream()
-                    .map(json -> {
-                        try {
-                            return mapper.readTree(json);
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                    })
-                    .toList();
-
             assertThat(metaJsons).hasSize(2);
             assertThat(metaJsons).allMatch(json -> json != null && !json.isBlank());
+
+            ObjectMapper mapper = new ObjectMapper();
+            List<JsonNode> metaNodes = metaJsons.stream()
+                    .map(json -> parseMetaJson(mapper, json))
+                    .toList();
+
+            assertThat(metaNodes).hasSize(2);
+            assertThat(metaNodes).allMatch(node -> node.has("noOp"));
+
+            long noOpTrueCount = metaNodes.stream()
+                    .filter(node -> node.get("noOp").asBoolean())
+                    .count();
+
+            long noOpFalseCount = metaNodes.stream()
+                    .filter(node -> !node.get("noOp").asBoolean())
+                    .count();
+
+            long alreadyPaidCount = metaNodes.stream()
+                    .filter(node -> node.get("noOp").asBoolean())
+                    .filter(node -> node.has("noOpReason"))
+                    .filter(node -> "ALREADY_PAID".equals(node.get("noOpReason").asText()))
+                    .count();
+
+            assertThat(noOpTrueCount).isEqualTo(1L);
+            assertThat(noOpFalseCount).isEqualTo(1L);
+            assertThat(alreadyPaidCount).isEqualTo(1L);
 
         } finally {
             pool.shutdown();
@@ -259,5 +274,20 @@ class SettlementAdminApprovePaidConcurrencyIT {
             em.clear();
             return saved.getBatchId();
         });
+    }
+
+    private JsonNode parseMetaJson(ObjectMapper mapper, String json) {
+        try {
+            JsonNode node = mapper.readTree(json);
+
+            // audit_log.meta_json 이 JSON 문자열로 한 번 더 감싸진 경우까지 흡수
+            if (node.isTextual()) {
+                node = mapper.readTree(node.asText());
+            }
+
+            return node;
+        } catch (Exception e) {
+            throw new RuntimeException("failed to parse meta_json: " + json, e);
+        }
     }
 }

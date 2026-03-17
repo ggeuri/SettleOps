@@ -343,32 +343,14 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
-        Settlement current = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new NotFoundException("settlement not found"));
-
-        // 1) no-op 200: 이미 PAID (+ audit)
-        if (current.isPaid()) {
-            String before = current.getStatus().name();
-            String after = current.getStatus().name();
-
-            auditSettlementAction(
-                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                    current, before, after, comment,
-                    true, "ALREADY_PAID"
-            );
-            return toPayActionResponse(current, requestId);
-        }
-
-        // 2) PAY_REQUESTED 아니면 409
-        if (!current.isPayRequested()) {
-            throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
-        }
-
-        // 3) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
+        // 동시성 LOCKED 기준:
+        // approve-paid는 처음부터 락 조회로 진입해 stale 상태(PAY_REQUESTED) 재사용을 막는다.
+        // 같은 트랜잭션에서 비락 조회 후 락 조회를 섞으면 영속성 컨텍스트의 이전 상태가 남아
+        // 이미 PAID인 건도 성공 경로로 잘못 처리될 수 있다.
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new NotFoundException("settlement not found"));
 
-        // 락 후 재확인(no-op) (+ audit)
+        // 1) 이미 PAID면 no-op 200 (+ audit)
         if (settlement.isPaid()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -381,7 +363,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 4-eyes 검사
+        // 2) PAY_REQUESTED 아니면 409
+        if (!settlement.isPayRequested()) {
+            throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
+        }
+
+        // 3) 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
             throw new AuditableConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
@@ -398,6 +385,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             );
         }
 
+        // 4) 실제 PAID 전이는 1회만 발생
         String before = settlement.getStatus().name();
         settlement.approvePaid(approverId, LocalDateTime.now());
         String after = settlement.getStatus().name();

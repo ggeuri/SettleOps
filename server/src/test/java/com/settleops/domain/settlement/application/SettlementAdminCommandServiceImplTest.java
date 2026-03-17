@@ -245,7 +245,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlement.getPaidApprovedAt()).thenReturn(LocalDateTime.of(2026, 3, 16, 11, 0));
         Mockito.when(settlement.isPaid()).thenReturn(true);
 
-        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+        Mockito.when(settlementRepository.findByIdForUpdate("S1")).thenReturn(Optional.of(settlement));
 
         var response = service.approvePaid("S1", "memo", "req-test-001");
 
