@@ -1,0 +1,10 @@
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+}
+
+.status-created {
+    background: #eef2ff;
+}
