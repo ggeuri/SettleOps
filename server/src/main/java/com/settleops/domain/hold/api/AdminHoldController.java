@@ -1,4 +1,4 @@
-package com.settleops.domain.hold.controller;
+package com.settleops.domain.hold.api;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.RequestMapping;

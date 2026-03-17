@@ -9,6 +9,8 @@ import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.IdempotencyRecordRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
 import com.settleops.global.enums.IdempotencyTargetType;
+import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.ConflictException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @ActiveProfiles("test")
 @SpringBootTest
@@ -129,7 +132,62 @@ class PayServiceIdempotencyTest {
         assertThat(secondRecord.getPaymentId()).isEqualTo(first.paymentId());
         assertThat(secondRecord.getResponseStatus()).isEqualTo(200);
 
-        // 현재 구현 기준: 재시도 requestId로 마지막 요청 흔적 갱신
+        // 현재 구현 기준: 성공 이력은 최초 requestId를 유지한다
         assertThat(secondRecord.getRequestId()).isEqualTo(requestId1);
+    }
+
+    @Test
+    @DisplayName("이미 PAID인 order에 다른 idempotency key로 pay 재요청하면 409 ORDER_ALREADY_PAID이고 row는 추가되지 않는다")
+    void pay_different_idempotency_key_should_throw_conflict_when_order_already_paid() {
+        // given
+        String firstIdempotencyKey = "idem-" + UUID.randomUUID();
+        String secondIdempotencyKey = "idem-" + UUID.randomUUID();
+        String requestId1 = UUID.randomUUID().toString();
+        String requestId2 = UUID.randomUUID().toString();
+
+        Orders order = Orders.create(
+                MERCHANT_ID,
+                BUYER_ID,
+                ITEM_NAME,
+                AMOUNT
+        );
+        order = ordersRepository.saveAndFlush(order);
+
+        String orderId = order.getOrderId();
+
+        // 첫 번째 결제 성공
+        PayResponseDTO first = payService.pay(orderId, firstIdempotencyKey, requestId1);
+
+        long paymentCountBefore = paymentRepository.count();
+        long idempotencyCountBefore = idempotencyRecordRepository.count();
+
+        // when & then
+        assertThatThrownBy(() -> payService.pay(orderId, secondIdempotencyKey, requestId2))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException conflict = (ConflictException) ex;
+                    assertThat(conflict.getReasonCode()).isEqualTo(ReasonCode.ORDER_ALREADY_PAID);
+                });
+
+        long paymentCountAfter = paymentRepository.count();
+        long idempotencyCountAfter = idempotencyRecordRepository.count();
+
+        assertThat(first).isNotNull();
+        assertThat(paymentCountAfter).isEqualTo(paymentCountBefore);
+        assertThat(idempotencyCountAfter).isEqualTo(idempotencyCountBefore);
+
+        Payment savedPayment = paymentRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new AssertionError("payment가 조회되지 않습니다."));
+
+        assertThat(savedPayment.getPaymentId()).isEqualTo(first.paymentId());
+        assertThat(savedPayment.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
+
+        assertThat(
+                idempotencyRecordRepository.findByTargetTypeAndTargetIdAndIdempotencyKey(
+                        IdempotencyTargetType.PAY_ORDER,
+                        orderId,
+                        secondIdempotencyKey
+                )
+        ).isEmpty();
     }
 }

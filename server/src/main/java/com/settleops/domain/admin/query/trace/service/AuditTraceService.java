@@ -1,8 +1,8 @@
-package com.settleops.domain.admin.trace.service;
+package com.settleops.domain.admin.query.trace.service;
 
-import com.settleops.domain.admin.trace.dto.AuditTraceResponseDto;
-import com.settleops.domain.admin.trace.dto.AuditTraceRowDto;
-import com.settleops.domain.admin.trace.dto.AuditTraceSearchRequestDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceResponseDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceRowDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceSearchRequestDto;
 import com.settleops.global.audit.AuditLog;
 import com.settleops.global.audit.AuditTraceQueryService;
 import com.settleops.global.audit.EntityType;

@@ -1,13 +1,15 @@
-package com.settleops.domain.admin.trace;
+package com.settleops.domain.admin.query.trace;
 
-import com.settleops.domain.admin.trace.controller.AuditTraceController;
-import com.settleops.domain.admin.trace.dto.AuditTraceResponseDto;
-import com.settleops.domain.admin.trace.dto.AuditTraceRowDto;
-import com.settleops.domain.admin.trace.dto.AuditTraceSearchRequestDto;
-import com.settleops.domain.admin.trace.service.AuditTraceService;
+import com.settleops.domain.admin.query.trace.controller.AuditTraceController;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceResponseDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceRowDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceSearchRequestDto;
+import com.settleops.domain.admin.query.trace.service.AuditTraceService;
 import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.AuditLog;
+import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
+import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
 import org.junit.jupiter.api.Test;
@@ -40,6 +42,10 @@ class AuditTraceControllerTest {
     MockMvc mockMvc;
     @MockitoBean
     AuditTraceService auditTraceService;
+    @MockitoBean
+    SessionAuthProvider sessionAuthProvider;
+    @MockitoBean
+    AuditLogger auditLogger;
 
     //requestId/merchantId 둘 다 없으면 400
     @Test
@@ -75,17 +81,17 @@ class AuditTraceControllerTest {
                 0L,
                 0
         );
-        given(auditTraceService.searchAuditTraces(any(),any()))
+        given(auditTraceService.searchAuditTraces(any(), any()))
                 .willReturn(response);
 
         // When: requestId + merchantId + from/to 같이 보냄
         mockMvc.perform(get("/api/admin/audit-logs")
-                .param("requestId","R1")
-                .param("merchantId","M1")
-                .param("from", "2026-02-20T00:00:00")
-                .param("to", "2026-02-25T00:00:00"))
+                        .param("requestId", "R1")
+                        .param("merchantId", "M1")
+                        .param("from", "2026-02-20T00:00:00")
+                        .param("to", "2026-02-25T00:00:00"))
 
-        // Then: 200 + response.requestId == R1인지 검증할 것
+                // Then: 200 + response.requestId == R1인지 검증할 것
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.requestId").value("R1"));
 
@@ -99,7 +105,7 @@ class AuditTraceControllerTest {
 
         AuditTraceSearchRequestDto rq = captor.getValue();
 
-        assertEquals("R1",rq.getRequestId());
+        assertEquals("R1", rq.getRequestId());
         assertEquals("M1", rq.getMerchantId());
         assertEquals(LocalDateTime.parse("2026-02-20T00:00:00"), rq.getFrom());
         assertEquals(LocalDateTime.parse("2026-02-25T00:00:00"), rq.getTo());
@@ -109,7 +115,7 @@ class AuditTraceControllerTest {
     //3. requestId 검색은 기간(from/to) 없어도 200
     @Test
     @WithMockUser(roles = "ADMIN")
-    void requestId_search_without_from_to_should_return_200() throws Exception{
+    void requestId_search_without_from_to_should_return_200() throws Exception {
 
 //        (requestId="R1", items=List.of(…dummy 1개…), page/size/total…)
         AuditLog log = AuditLog.builder()
@@ -136,12 +142,12 @@ class AuditTraceControllerTest {
                 1
         );
 
-        given(auditTraceService.searchAuditTraces(any(),any()))
+        given(auditTraceService.searchAuditTraces(any(), any()))
                 .willReturn(response);
 
         // When: requestId + merchantId + from/to 같이 안보냄
         mockMvc.perform(get("/api/admin/audit-logs")
-                .param("requestId","R1"))
+                        .param("requestId", "R1"))
 
                 // Then: 200 , items 반환
                 .andExpect(status().isOk())

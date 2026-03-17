@@ -4,18 +4,10 @@ import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.domain.Payment;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.PaymentRepository;
-import com.settleops.global.audit.ActorType;
-import com.settleops.global.audit.AuditLogCommand;
-import com.settleops.global.audit.AuditLogger;
-import com.settleops.global.audit.AuditMetaFactory;
-import com.settleops.global.audit.EntityType;
-import com.settleops.global.audit.NoOpReason;
+import com.settleops.global.audit.*;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
-import com.settleops.global.error.BadRequestException;
-import com.settleops.global.error.ConflictException;
-import com.settleops.global.error.ForbiddenException;
-import com.settleops.global.error.UnauthorizedException;
+import com.settleops.global.error.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +45,7 @@ public class ConfirmService {
 
         // 1) 결제 조회
         Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new BadRequestException("존재하지 않는 결제입니다."));
+                .orElseThrow(() -> new NotFoundException("존재하지 않는 결제입니다."));
 
         // 2) 선행조건 및 권한 검증
         validateConfirmable(payment, currentBuyerId);

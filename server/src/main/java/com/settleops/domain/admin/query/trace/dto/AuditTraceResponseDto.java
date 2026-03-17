@@ -1,4 +1,4 @@
-package com.settleops.domain.admin.trace.dto;
+package com.settleops.domain.admin.query.trace.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

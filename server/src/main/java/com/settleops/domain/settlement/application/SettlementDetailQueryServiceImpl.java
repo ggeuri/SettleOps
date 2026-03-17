@@ -7,11 +7,10 @@ import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
 import com.settleops.domain.settlement.infra.SettlementDetailQueryRepository;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -33,7 +32,7 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
                 settlementDetailQueryRepository.findSettlementBase(settlementId);
 
         if (base == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found");
+            throw new NotFoundException("settlement not found");
         }
 
         List<AdminSettlementLineItemResponse> lines =
