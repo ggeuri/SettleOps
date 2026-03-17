@@ -17,6 +17,5 @@ public enum NoOpReason {
     BATCH_KEY_EXISTS,
 
     // Payment
-    IDEMPOTENT_REPLAY,
-    CAPTURED_EVENT_DUPLICATE_CONVERGED
+    ALREADY_CAPTURED
 }

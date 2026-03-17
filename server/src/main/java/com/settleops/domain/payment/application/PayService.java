@@ -74,7 +74,7 @@ public class PayService {
                     PaymentStatus.CAPTURED,
                     PaymentStatus.CAPTURED,
                     true,
-                    NoOpReason.IDEMPOTENT_REPLAY
+                    NoOpReason.ALREADY_CAPTURED
             );
             return PayResponseDTO.from(idempotent, capturedAt);
         }
@@ -220,7 +220,7 @@ public class PayService {
      */
     private static void assertOrderNotPaid(Orders orders) {
         if (orders.getStatus() == OrderStatus.PAID) {
-            throw new ConflictException(ReasonCode.PAID_ALREADY, "이미 PAID 상태입니다.");
+            throw new ConflictException(ReasonCode.ORDER_ALREADY_PAID, "이미 PAID 상태입니다.");
         }
     }
 }
