@@ -1,9 +1,12 @@
 package com.settleops.domain.payment.infra;
 
-import com.settleops.domain.payment.api.dto.*;
+import com.settleops.domain.payment.api.dto.ConfirmedFilter;
+import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
+import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
+import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
+import com.settleops.domain.payment.api.dto.RefundContextResponse;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.support.QuerydslTestConfig;
-import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,6 +61,8 @@ class PaymentQueryRepositoryTest {
     private static final String PAYMENT_ID_MISSING = "99999999-9999-9999-9999-999999999999";
 
     private static final String REFUND_ID_1 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    private static final String REFUND_ID_2 = "12121212-1212-1212-1212-121212121212";
+    private static final String REFUND_ID_3 = "13131313-1313-1313-1313-131313131313";
 
     private static final String REQUEST_ID_1 = "90000000-0000-0000-0000-000000000001";
     private static final String REQUEST_ID_2 = "90000000-0000-0000-0000-000000000002";
@@ -285,8 +290,92 @@ class PaymentQueryRepositoryTest {
     // =========================================================
 
     @Test
-    @DisplayName("refund-context는 APPROVED 환불 1건 기준 refundableAmount 계산")
-    void findRefundContext_calculates_refundable_amount() {
+    @DisplayName("refund-context는 REQUESTED 환불을 refundableAmount 계산에서 제외한다")
+    void findRefundContext_ignores_requested_refund() {
+        // given
+        LocalDateTime createdAt = LocalDateTime.of(2026, 3, 13, 11, 0, 0);
+        LocalDateTime capturedAt = createdAt.plusMinutes(3);
+
+        insertOrder(ORDER_ID_REFUND, "MERCHANT_1", "BUYER_1", "에어팟 프로", 500_000L, "PAID", createdAt, createdAt);
+        insertPayment(PAYMENT_ID_REFUND, ORDER_ID_REFUND, "MERCHANT_1", "BUYER_1", "KRW", 500_000L, 500_000L, "CAPTURED", createdAt, createdAt);
+
+        insertPaymentEvent(PAYMENT_ID_REFUND, "PAYMENT_CREATED", "CREATED", "CREATED", REQUEST_ID_REFUND_1, createdAt);
+        insertPaymentEvent(PAYMENT_ID_REFUND, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_REFUND_2, capturedAt);
+
+        insertRefund(
+                REFUND_ID_2,
+                PAYMENT_ID_REFUND,
+                "MERCHANT_1",
+                "BUYER_1",
+                100_000L,
+                "KRW",
+                "REQUESTED",
+                "단순 변심",
+                createdAt.plusHours(1),
+                null,
+                createdAt.plusHours(1),
+                createdAt.plusHours(1)
+        );
+
+        // when
+        RefundContextResponse result = paymentQueryRepository.findRefundContext(PAYMENT_ID_REFUND);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getRefundableAmount()).isEqualTo(500_000L);
+        assertThat(result.getCapturedAt()).isEqualTo(capturedAt);
+        assertThat(result.getPaymentId().trim()).isEqualTo(PAYMENT_ID_REFUND);
+        assertThat(result.getStatus()).isEqualTo("CAPTURED");
+        assertThat(result.getCapturedAmount()).isEqualTo(500_000L);
+        assertThat(result.getCurrency()).isEqualTo("KRW");
+        assertThat(result.getMerchantId()).isEqualTo("MERCHANT_1");
+    }
+
+    @Test
+    @DisplayName("refund-context는 REJECTED 환불을 refundableAmount 계산에서 제외한다")
+    void findRefundContext_ignores_rejected_refund() {
+        // given
+        LocalDateTime createdAt = LocalDateTime.of(2026, 3, 13, 11, 0, 0);
+        LocalDateTime capturedAt = createdAt.plusMinutes(3);
+
+        insertOrder(ORDER_ID_REFUND, "MERCHANT_1", "BUYER_1", "에어팟 프로", 500_000L, "PAID", createdAt, createdAt);
+        insertPayment(PAYMENT_ID_REFUND, ORDER_ID_REFUND, "MERCHANT_1", "BUYER_1", "KRW", 500_000L, 500_000L, "CAPTURED", createdAt, createdAt);
+
+        insertPaymentEvent(PAYMENT_ID_REFUND, "PAYMENT_CREATED", "CREATED", "CREATED", REQUEST_ID_REFUND_1, createdAt);
+        insertPaymentEvent(PAYMENT_ID_REFUND, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_REFUND_2, capturedAt);
+
+        insertRefund(
+                REFUND_ID_3,
+                PAYMENT_ID_REFUND,
+                "MERCHANT_1",
+                "BUYER_1",
+                100_000L,
+                "KRW",
+                "REJECTED",
+                "단순 변심",
+                createdAt.plusHours(1),
+                createdAt.plusHours(2),
+                createdAt.plusHours(1),
+                createdAt.plusHours(2)
+        );
+
+        // when
+        RefundContextResponse result = paymentQueryRepository.findRefundContext(PAYMENT_ID_REFUND);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getRefundableAmount()).isEqualTo(500_000L);
+        assertThat(result.getCapturedAt()).isEqualTo(capturedAt);
+        assertThat(result.getPaymentId().trim()).isEqualTo(PAYMENT_ID_REFUND);
+        assertThat(result.getStatus()).isEqualTo("CAPTURED");
+        assertThat(result.getCapturedAmount()).isEqualTo(500_000L);
+        assertThat(result.getCurrency()).isEqualTo("KRW");
+        assertThat(result.getMerchantId()).isEqualTo("MERCHANT_1");
+    }
+
+    @Test
+    @DisplayName("refund-context는 APPROVED 환불만 refundableAmount 계산에 반영한다")
+    void findRefundContext_subtracts_only_approved_refund() {
         // given
         LocalDateTime createdAt = LocalDateTime.of(2026, 3, 13, 11, 0, 0);
         LocalDateTime capturedAt = createdAt.plusMinutes(3);
