@@ -1,5 +1,5 @@
 import { Routes, Route } from "react-router-dom";
-import AdminAuditPage from "../pages/AdminAuditPage.jsx";
+import AdminAuditPage from "../../pages/AdminAuditPage.jsx";
 
 export default function AdminRoutes() {
   return (

@@ -1,0 +1,16 @@
+.button-row {
+    display: flex;
+    gap: 8px;
+}
+
+.btn {
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background: #111827;
+    color: #fff;
+}

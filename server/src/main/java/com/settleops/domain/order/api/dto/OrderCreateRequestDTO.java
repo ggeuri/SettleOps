@@ -11,15 +11,15 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class OrderCreateRequestDTO {
 
-    @NotBlank
+    @NotBlank(message = "merchantId는 필수입니다.")
     private String merchantId;
 
-    @NotBlank
+    @NotBlank(message = "buyerId는 필수입니다.")
     private String buyerId;
 
-    @NotBlank
+    @NotBlank(message = "itemName은 필수입니다.")
     private String itemName;
 
-    @Positive
+    @Positive(message = "amount는 0보다 커야 합니다.")
     private long amount;
 }

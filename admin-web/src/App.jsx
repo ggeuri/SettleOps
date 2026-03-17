@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import AdminRoutes from "./routes/AdminRoutes.jsx";
+import AdminRoutes from "./app/router/AdminRoutes.jsx";
+import ConsumerRoutes from "./app/router/ConsumerRoutes.jsx";
 
 export default function App() {
   return (

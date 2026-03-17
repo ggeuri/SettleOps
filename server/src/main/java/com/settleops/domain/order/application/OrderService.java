@@ -36,6 +36,7 @@ public class OrderService {
     @Transactional
     public Orders createSeedOrder(String merchantId, String buyerId, String itemName, long amount) {
         validateCreateInputs(merchantId, buyerId, itemName, amount);
+
         Orders order = Orders.create(merchantId, buyerId, itemName, amount);
         return ordersRepository.save(order);
     }
