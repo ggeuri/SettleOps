@@ -1,7 +1,5 @@
-package com.settleops.domain.hold.entity;
+package com.settleops.domain.hold.domain;
 
-import com.settleops.domain.hold.enums.HoldReasonCode;
-import com.settleops.domain.hold.enums.HoldStatus;
 import com.settleops.global.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;

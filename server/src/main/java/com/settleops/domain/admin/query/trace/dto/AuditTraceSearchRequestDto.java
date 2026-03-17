@@ -1,4 +1,4 @@
-package com.settleops.domain.admin.trace.dto;
+package com.settleops.domain.admin.query.trace.dto;
 
 import com.settleops.global.audit.EntityType;
 import lombok.AllArgsConstructor;
