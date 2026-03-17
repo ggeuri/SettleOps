@@ -9,14 +9,12 @@ import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
 import com.settleops.global.enums.IdempotencyTargetType;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -29,40 +27,27 @@ public class PayQueryService {
     /**
      * 멱등키 기준으로 "성공 완료된" 기존 결제를 조회한다.
      *
-     * <p>idempotency_record가 없으면 Optional.empty()를 반환한다.</p>
-     * <p>idempotency_record는 존재하지만 아직 성공 결과가 완성되지 않았다면
-     * (paymentId / responseStatus 미기록) Optional.empty()를 반환한다.</p>
-     * <p>성공 완료 row인데 참조 payment가 없으면 정합성 오류로 간주한다.</p>
+     * <p>현재 PAY 멱등은 성공 결과 저장형 기준이다.</p>
+     * <p>즉, idempotency_record는 성공적으로 처리 완료된 요청 결과만
+     * 유효한 멱등 성공 이력으로 간주한다.</p>
+     * <p>해당 키의 성공 이력이 없으면 Optional.empty()를 반환한다.</p>
+     * <p>성공 완료 record인데 참조 payment가 없으면 정합성 오류로 간주한다.</p>
      */
     public Optional<Payment> findSucceededIdempotentPayment(
             IdempotencyTargetType targetType,
             String targetId,
             String idempotencyKey
     ) {
-        Optional<IdempotencyRecord> recordOpt = idempotencyRecordRepository
-                .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, targetId, idempotencyKey);
-
-        if (recordOpt.isEmpty()) {
-            return Optional.empty();
-        }
-
-        IdempotencyRecord record = recordOpt.get();
-
-        // 선점 row만 존재하고 아직 성공 결과가 완성되지 않은 상태
-        if (record.getPaymentId() == null || record.getResponseStatus() == null) {
-            return Optional.empty();
-        }
-
-        if (record.getResponseStatus() != 200) {
-            return Optional.empty();
-        }
-
-        return Optional.of(
-                paymentRepository.findById(record.getPaymentId())
+        return idempotencyRecordRepository
+                .findByTargetTypeAndTargetIdAndIdempotencyKey(targetType, targetId, idempotencyKey)
+                .filter(this::isSucceededRecord)
+                .map(record -> paymentRepository.findById(record.getPaymentId())
                         .orElseThrow(() -> new IllegalStateException(
-                                "idempotency_record는 성공 완료 상태지만 참조 payment가 없습니다. targetId=" + targetId
-                        ))
-        );
+                                "idempotency_record는 성공 완료 상태지만 참조 payment가 없습니다. " +
+                                        "targetType=" + targetType +
+                                        ", targetId=" + targetId +
+                                        ", idempotencyKey=" + idempotencyKey
+                        )));
     }
 
     /**
@@ -87,5 +72,11 @@ public class PayQueryService {
                 .orElseThrow(() -> new IllegalStateException(
                         "CAPTURE 이벤트가 존재하지 않습니다. paymentId=" + payment.getPaymentId()
                 ));
+    }
+
+    private boolean isSucceededRecord(IdempotencyRecord record) {
+        return record.getPaymentId() != null
+                && record.getResponseStatus() != null
+                && record.getResponseStatus() == 200;
     }
 }
