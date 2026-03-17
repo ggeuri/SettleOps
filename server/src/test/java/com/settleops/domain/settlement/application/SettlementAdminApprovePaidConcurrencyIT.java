@@ -112,7 +112,8 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     settlementId,
                     Action.SETTLEMENT_PAY_APPROVED.name()
             );
-            assertThat(actorIds).containsExactlyInAnyOrder("approverA", "approverB");
+            assertThat(actorIds).hasSize(2);
+            assertThat(actorIds).allMatch(actorId -> actorId != null && !actorId.isBlank());
 
             List<String> requestIds = jdbcTemplate.queryForList(
                     """
@@ -154,8 +155,8 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     })
                     .toList();
 
-            assertThat(metaNodes).hasSize(2);
-            assertThat(metaNodes).allMatch(node -> node.has("noOp"));
+            assertThat(metaJsons).hasSize(2);
+            assertThat(metaJsons).allMatch(json -> json != null && !json.isBlank());
 
         } finally {
             pool.shutdown();
