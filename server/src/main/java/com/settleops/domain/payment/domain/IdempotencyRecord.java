@@ -76,15 +76,21 @@ public class IdempotencyRecord {
                 return record;
         }
 
-        /**
-         * 선점된 멱등 row에 성공 결과를 기록한다.
-         *
-         * <p>pay 성공 이후 같은 트랜잭션 안에서 호출하며,
-         * 최종 응답 기준 paymentId / responseStatus / requestId 를 반영한다.</p>
-         */
-        public void markSucceeded(String paymentId, int responseStatus, String requestId) {
-                this.paymentId = paymentId;
-                this.responseStatus = responseStatus;
-                this.requestId = requestId;
+        public static IdempotencyRecord success(
+                IdempotencyTargetType targetType,
+                String targetId,
+                String idempotencyKey,
+                String paymentId,
+                int responseStatus,
+                String requestId
+        ) {
+                IdempotencyRecord record = new IdempotencyRecord();
+                record.targetType = targetType;
+                record.targetId = targetId;
+                record.idempotencyKey = idempotencyKey;
+                record.paymentId = paymentId;
+                record.responseStatus = responseStatus;
+                record.requestId = requestId;
+                return record;
         }
 }
