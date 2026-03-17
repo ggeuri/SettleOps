@@ -8,6 +8,8 @@ import com.settleops.global.auth.controller.MeController;
 import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
 import com.settleops.global.auth.resolver.LoginConsumerArgumentResolver;
 import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
+import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.GlobalExceptionHandler;
 import com.settleops.global.web.RequestIdResolver;
@@ -146,6 +148,27 @@ class ConfirmControllerTest {
                     .andExpect(jsonPath("$.code").value("FORBIDDEN"))
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("구매자 정보가 일치하지 않습니다."));
+        }
+
+        @Test
+        @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - CAPTURED 상태가 아니면 409")
+        void confirm_returns_conflict_when_payment_not_captured() throws Exception {
+            // given
+            when(requestIdResolver.resolve(any())).thenReturn(REQUEST_ID);
+            when(confirmService.confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID)))
+                    .thenThrow(new ConflictException(
+                            ReasonCode.PAYMENT_NOT_CAPTURED,
+                            "결제 상태가 CAPTURED가 아닙니다."
+                    ));
+
+            // when & then
+            mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
+                            .sessionAttr(MeController.SessionKeys.BUYER_ID, BUYER_ID)
+                            .accept(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isConflict())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.code").value("RULE_VIOLATION"))
+                    .andExpect(jsonPath("$.reason").value("PAYMENT_NOT_CAPTURED"));
         }
     }
 }

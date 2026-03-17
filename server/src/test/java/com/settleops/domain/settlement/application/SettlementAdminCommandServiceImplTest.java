@@ -28,7 +28,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.server.ResponseStatusException;
+import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -125,17 +126,6 @@ class SettlementAdminCommandServiceImplTest {
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
     }
 
-    @Test
-    void requestPaid_settlementNotFound_then404() {
-        Mockito.when(settlementRepository.findById("S404")).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> service.requestPaid("S404", null, "req-test-001"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(404);
-                });
-    }
 
     @Test
     void requestPaid_requestIdMissing_then400_BadRequest() {
@@ -145,24 +135,21 @@ class SettlementAdminCommandServiceImplTest {
     }
 
     @Test
+    void requestPaid_settlementNotFound_then404() {
+        Mockito.when(settlementRepository.findById("S404")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.requestPaid("S404", null, "req-test-001"))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("settlement not found");
+    }
+
+    @Test
     void requestPaid_actorMissing_then401() {
         SecurityContextHolder.clearContext();
 
-        Settlement settlement = Mockito.mock(Settlement.class);
-        Mockito.when(settlement.isPayRequested()).thenReturn(true);
-        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
-        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
-        Mockito.when(settlement.getPaidRequestedAt()).thenReturn(LocalDateTime.now());
-        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
-
-        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
-
         assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(401);
-                });
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessageContaining("unauthorized");
     }
 
     @Test

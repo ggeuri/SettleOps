@@ -22,14 +22,14 @@ import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -290,7 +290,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         Settlement settlement = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
         // 1) no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환 (+ audit)
         if (settlement.isPayRequested()) {
@@ -344,7 +344,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         Settlement current = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
         // 1) no-op 200: 이미 PAID (+ audit)
         if (current.isPaid()) {
@@ -366,7 +366,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         // 3) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
         // 락 후 재확인(no-op) (+ audit)
         if (settlement.isPaid()) {
@@ -439,10 +439,15 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
     }
 
+    /**
+     * Settlement 도메인 공통 예외 계층 정렬:
+     * - 인증 주체 없음/공백은 UnauthorizedException으로 통일한다.
+     * - 통합 스모크 및 GlobalExceptionHandler 계약과 동일한 의미를 유지한다.
+     */
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
+            throw new UnauthorizedException("unauthorized");
         }
         return auth.getName();
     }

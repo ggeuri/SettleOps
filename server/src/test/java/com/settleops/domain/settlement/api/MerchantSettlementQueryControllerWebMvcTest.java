@@ -8,6 +8,9 @@ import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.MerchantSessionResolver;
+import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
+import com.settleops.global.auth.resolver.LoginConsumerArgumentResolver;
+import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.GlobalExceptionHandler;
 import com.settleops.global.error.NotFoundException;
@@ -51,6 +54,15 @@ class MerchantSettlementQueryControllerWebMvcTest {
 
     @MockitoBean
     private AuditLogger auditLogger;
+
+    @MockitoBean
+    private LoginMerchantArgumentResolver loginMerchantArgumentResolver;
+
+    @MockitoBean
+    private LoginConsumerArgumentResolver loginConsumerArgumentResolver;
+
+    @MockitoBean
+    private LoginAdminArgumentResolver loginAdminArgumentResolver;
 
     @Test
     @DisplayName("Merchant 정산 리스트 조회 시 세션이 없으면 401을 반환한다")
