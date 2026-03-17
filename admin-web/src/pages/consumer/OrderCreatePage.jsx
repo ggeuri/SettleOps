@@ -35,18 +35,25 @@ export default function OrderCreatePage() {
         setErrorMessage("");
         setResult(null);
 
-        if (
-            !form.merchantId.trim() ||
-            !form.buyerId.trim() ||
-            !form.itemName.trim() ||
-            !form.amount
-        ) {
+        const merchantId = form.merchantId.trim();
+        const buyerId = form.buyerId.trim();
+        const itemName = form.itemName.trim();
+        const rawAmount = form.amount.trim();
+
+        if (!merchantId || !buyerId || !itemName || !rawAmount) {
             setErrorMessage("모든 값을 입력해야 합니다.");
             return;
         }
 
-        if (Number(form.amount) <= 0) {
-            setErrorMessage("amount는 0보다 커야 합니다.");
+        if (!/^\d+$/.test(rawAmount)) {
+            setErrorMessage("amount는 KRW 정수(원)만 입력 가능합니다.");
+            return;
+        }
+
+        const amount = Number(rawAmount);
+
+        if (!Number.isSafeInteger(amount) || amount <= 0) {
+            setErrorMessage("amount는 1원 이상의 정수여야 합니다.");
             return;
         }
 
@@ -54,14 +61,14 @@ export default function OrderCreatePage() {
 
         try {
             const response = await createConsumerOrder({
-                merchantId: form.merchantId.trim(),
-                buyerId: form.buyerId.trim(),
-                itemName: form.itemName.trim(),
-                amount: Number(form.amount),
+                merchantId,
+                buyerId,
+                itemName,
+                amount,
             });
 
             setResult(response);
-            setForm(INITIAL_FORM); // 성공 시 폼 초기화
+            setForm(INITIAL_FORM);
         } catch (error) {
             setErrorMessage(error?.body?.message || "주문 생성에 실패했습니다.");
         } finally {
@@ -78,22 +85,42 @@ export default function OrderCreatePage() {
                 <form className="form-stack" onSubmit={handleSubmit}>
                     <div className="form-field">
                         <label>merchantId</label>
-                        <input name="merchantId" value={form.merchantId} onChange={handleChange} />
+                        <input
+                            name="merchantId"
+                            value={form.merchantId}
+                            onChange={handleChange}
+                        />
                     </div>
 
                     <div className="form-field">
                         <label>buyerId</label>
-                        <input name="buyerId" value={form.buyerId} onChange={handleChange} />
+                        <input
+                            name="buyerId"
+                            value={form.buyerId}
+                            onChange={handleChange}
+                        />
                     </div>
 
                     <div className="form-field">
                         <label>itemName</label>
-                        <input name="itemName" value={form.itemName} onChange={handleChange} />
+                        <input
+                            name="itemName"
+                            value={form.itemName}
+                            onChange={handleChange}
+                        />
                     </div>
 
                     <div className="form-field">
                         <label>amount</label>
-                        <input name="amount" type="number" value={form.amount} onChange={handleChange} />
+                        <input
+                            name="amount"
+                            type="number"
+                            step="1"
+                            min="1"
+                            inputMode="numeric"
+                            value={form.amount}
+                            onChange={handleChange}
+                        />
                     </div>
 
                     {errorMessage ? <div className="state-error">{errorMessage}</div> : null}

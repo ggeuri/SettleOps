@@ -14,9 +14,6 @@ export default function App() {
       {/* 기본 진입 */}
       <Route path="/" element={<Navigate to="/consumer/orders/new" replace />} />
 
-      {/* 임시 홈 */}
-      <Route path="/" element={<Navigate to="/admin/audit" replace />} />
-
       {/* 404 */}
       <Route path="*" element={<div>Not Found</div>} />
     </Routes>
