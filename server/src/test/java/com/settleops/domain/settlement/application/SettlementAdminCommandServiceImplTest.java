@@ -363,4 +363,98 @@ class SettlementAdminCommandServiceImplTest {
 
         verifyNoInteractions(auditLogger);
     }
+
+    @Test
+    void requestPaid_batchFailed_then409_BATCH_FAILED() {
+        Settlement settlement = Mockito.mock(Settlement.class);
+
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
+
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+        Mockito.when(settlement.isHoldActive()).thenReturn(false);
+        Mockito.when(settlement.isReady()).thenReturn(true);
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        SettlementBatch batch = Mockito.mock(SettlementBatch.class);
+        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now());
+        Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.FAIL);
+        Mockito.when(settlementBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException ce = (ConflictException) ex;
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.BATCH_FAILED.name());
+                });
+
+        verify(settlementBatchRepository, times(1)).findById(1L);
+        verifyNoInteractions(refundAdjustmentPolicy);
+        verifyNoInteractions(auditLogger);
+    }
+
+    @Test
+    void requestPaid_notReady_then409_SETTLEMENT_NOT_READY_even_if_batchFailed() {
+        Settlement settlement = Mockito.mock(Settlement.class);
+
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.PAY_REQUESTED);
+
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+        Mockito.when(settlement.isHoldActive()).thenReturn(false);
+        Mockito.when(settlement.isReady()).thenReturn(false);
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException ce = (ConflictException) ex;
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.SETTLEMENT_NOT_READY.name());
+                });
+
+        verifyNoInteractions(settlementBatchRepository);
+        verifyNoInteractions(refundAdjustmentPolicy);
+        verifyNoInteractions(auditLogger);
+    }
+
+    @Test
+    void requestPaid_batchFailed_then409_BATCH_FAILED_even_if_refundAdjustmentPending() {
+        Settlement settlement = Mockito.mock(Settlement.class);
+
+        Mockito.when(settlement.getSettlementId()).thenReturn("S1");
+        Mockito.when(settlement.getMerchantId()).thenReturn("M1");
+        Mockito.when(settlement.getBatchId()).thenReturn(1L);
+        Mockito.when(settlement.getStatus()).thenReturn(SettlementStatus.READY);
+
+        Mockito.when(settlement.isPayRequested()).thenReturn(false);
+        Mockito.when(settlement.isHoldActive()).thenReturn(false);
+        Mockito.when(settlement.isReady()).thenReturn(true);
+
+        Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
+
+        SettlementBatch batch = Mockito.mock(SettlementBatch.class);
+        Mockito.when(batch.getFinishedAt()).thenReturn(LocalDateTime.now());
+        Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.FAIL);
+        Mockito.when(settlementBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
+
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+                .isInstanceOf(ConflictException.class)
+                .satisfies(ex -> {
+                    ConflictException ce = (ConflictException) ex;
+                    assertThat(ce.toErrorResponse().reason())
+                            .isEqualTo(ReasonCode.BATCH_FAILED.name());
+                });
+
+        verify(settlementBatchRepository, times(1)).findById(1L);
+        verifyNoInteractions(refundAdjustmentPolicy);
+        verifyNoInteractions(auditLogger);
+    }
 }
