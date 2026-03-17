@@ -1,5 +1,7 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.audit.EntityType;
@@ -12,7 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
@@ -20,7 +21,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@Transactional
 class SettlementBatchRunIT {
 
     @Autowired
@@ -36,44 +36,56 @@ class SettlementBatchRunIT {
     }
 
     @Test
-    void runBatch_sameBaseDate_twice_should_skip_second_time() {
-        // 재현성 고정(자정/타임존 흔들림 제거)
+    void runBatch_sameBaseDate_twice_should_skip_second_time() throws Exception {
         LocalDate baseDate = LocalDate.of(2026, 3, 2);
         String actorId = "adminA";
+        String firstRequestId = "req-test-001";
+        String secondRequestId = "req-test-002";
+
+        assertThat(settlementBatchRepository.findByBatchKey(baseDate)).isEmpty();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(actorId, "N/A")
         );
-        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
+        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate, firstRequestId);
         assertThat(r1.runId()).isNotBlank();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(actorId, "N/A")
         );
-        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate, "req-test-002");
+        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate, secondRequestId);
         assertThat(r2.runId()).isNotBlank();
 
         String metaJson = jdbcTemplate.queryForObject("""
-                        SELECT meta_json
-                        FROM audit_log
-                        WHERE action = ?
-                          AND entity_type = ?
-                          AND actor_id = ?
-                        ORDER BY occurred_at DESC
-                        LIMIT 1
-                        """,
+                SELECT meta_json
+                FROM audit_log
+                WHERE action = ?
+                  AND entity_type = ?
+                  AND actor_id = ?
+                  AND request_id = ?
+                ORDER BY occurred_at DESC
+                LIMIT 1
+                """,
                 String.class,
                 Action.BATCH_RUN_SKIPPED.name(),
                 EntityType.BATCH.name(),
-                actorId
+                actorId,
+                secondRequestId
         );
 
         assertThat(metaJson).isNotBlank();
-        assertThat(metaJson).contains("\"noOp\":true");
-        assertThat(metaJson).contains("\"noOpReason\":\"BATCH_KEY_EXISTS\"");
-        assertThat(metaJson).contains("\"baseDate\":\"" + baseDate + "\"");
 
-        // 첫 실행은 처리 결과(OK/FAIL), 두 번째는 무조건 SKIP
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode metaNode = mapper.readTree(metaJson);
+
+        if (metaNode.isTextual()) {
+            metaNode = mapper.readTree(metaNode.asText());
+        }
+
+        assertThat(metaNode.get("noOp").asBoolean()).isTrue();
+        assertThat(metaNode.get("noOpReason").asText()).isEqualTo("BATCH_KEY_EXISTS");
+        assertThat(metaNode.get("baseDate").asText()).isEqualTo(baseDate.toString());
+
         assertThat(r1.result()).isIn(
                 SettlementBatchRunResponse.RunResult.OK,
                 SettlementBatchRunResponse.RunResult.FAIL

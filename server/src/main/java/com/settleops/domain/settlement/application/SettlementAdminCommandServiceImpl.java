@@ -3,6 +3,10 @@ package com.settleops.domain.settlement.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.refund.application.RefundSettlementAssembler;
+import com.settleops.domain.refund.application.dto.ApprovedRefundAdjustment;
+import com.settleops.domain.refund.domain.RefundSettlementLink;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
@@ -53,6 +57,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
     private final SettlementBatchRunRecorder settlementBatchRunRecorder;
     private final ObjectMapper objectMapper;
+
+    private final RefundSettlementAssembler refundSettlementAssembler;
+    private final RefundSettlementLinkRepository refundSettlementLinkRepository;
 
     @Override
     @Transactional
@@ -121,25 +128,41 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             List<PaymentEventRepository.ConfirmedPaymentRow> rows =
                     paymentEventRepository.findConfirmedPaymentsByOccurredAtRange(from, to);
 
-            // 4) merchant별 집계 (gross=ΣcapturedAmount)
+            // 4) APPROVED refund 반영 대상 조회 (C 오너 입력 집합 소비)
+            List<ApprovedRefundAdjustment> refundAdjustments =
+                    refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+// 5) merchant별 집계
             Map<String, Long> grossByMerchant = rows.stream()
                     .collect(Collectors.groupingBy(
                             PaymentEventRepository.ConfirmedPaymentRow::getMerchantId,
                             Collectors.summingLong(PaymentEventRepository.ConfirmedPaymentRow::getCapturedAmount)
                     ));
 
-            // 5) settlement 생성 (SoT)
+            Map<String, Long> refundAmountByMerchant = refundAdjustments.stream()
+                    .collect(Collectors.groupingBy(
+                            ApprovedRefundAdjustment::merchantId,
+                            Collectors.summingLong(ApprovedRefundAdjustment::amount)
+                    ));
+
+// payment merchant + refund merchant 모두 settlement 생성 대상
+            Set<String> merchantIds = new LinkedHashSet<>();
+            merchantIds.addAll(grossByMerchant.keySet());
+            merchantIds.addAll(refundAmountByMerchant.keySet());
+
+            // 6) settlement 생성 (SoT)
             // settlementNo 결정적 규칙(LOCKED): SET-{yyyyMMdd}-{merchantId}
             String yyyyMMdd = baseDate.toString().replace("-", "");
 
-            List<Settlement> settlements = grossByMerchant.entrySet().stream()
-                    .map(e -> {
-                        String merchantId = e.getKey();
-                        long gross = e.getValue();
+            List<Settlement> settlements = merchantIds.stream()
+                    .sorted()
+                    .map(merchantId -> {
+                        long gross = grossByMerchant.getOrDefault(merchantId, 0L);
+                        long refundAmount = refundAmountByMerchant.getOrDefault(merchantId, 0L);
 
                         long fee = 0L;
                         long vat = 0L;
-                        long net = gross - fee - vat;
+                        long net = gross - fee - vat - refundAmount;
 
                         String settlementNo = "SET-" + yyyyMMdd + "-" + merchantId;
 
@@ -174,8 +197,53 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             settlementLineRepository.saveAll(paymentLines);
 
+            List<SettlementLine> refundLines = refundAdjustments.stream()
+                    .map(refund -> {
+                        String settlementId = settlementIdByMerchant.get(refund.merchantId());
+
+                        if (settlementId == null) {
+                            throw new IllegalStateException(
+                                    "settlement not found for merchantId=" + refund.merchantId() + ", baseDate=" + baseDate
+                            );
+                        }
+
+                        return SettlementLine.of(
+                                settlementId,
+                                refund.paymentId(),
+                                SettlementLineType.REFUND,
+                                refund.amount()
+                        );
+                    })
+                    .toList();
+
+            settlementLineRepository.saveAll(refundLines);
+
+            List<RefundSettlementLink> refundLinks = refundAdjustments.stream()
+                    .map(refund -> {
+                        String settlementId = settlementIdByMerchant.get(refund.merchantId());
+
+                        if (settlementId == null) {
+                            throw new IllegalStateException(
+                                    "settlement not found for merchantId=" + refund.merchantId() + ", baseDate=" + baseDate
+                            );
+                        }
+
+                        return RefundSettlementLink.of(
+                                refund.refundId(),
+                                settlementId,
+                                LocalDateTime.now()
+                        );
+                    })
+                    .toList();
+
+            refundSettlementLinkRepository.saveAll(refundLinks);
+
             // 7) 정합성 검증(LOCKED): settlement.net == Σ(line.amount × sign)
-            Map<String, Long> sumSignedBySettlementId = paymentLines.stream()
+            List<SettlementLine> allLines = new ArrayList<>();
+            allLines.addAll(paymentLines);
+            allLines.addAll(refundLines);
+
+            Map<String, Long> sumSignedBySettlementId = allLines.stream()
                     .collect(Collectors.groupingBy(
                             SettlementLine::getSettlementId,
                             Collectors.summingLong(SettlementLine::signedAmount)
@@ -196,6 +264,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 );
                 completedMeta.put("settlementCount", settlements.size());
                 completedMeta.put("paymentLineCount", paymentLines.size());
+                completedMeta.put("refundLineCount", refundLines.size());
 
                 auditBatchAction(
                         requestId,
