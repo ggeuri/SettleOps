@@ -9,6 +9,9 @@ package com.settleops.global.enums;
  */
 public enum ReasonCode {
 
+    /** 주문이 이미 결제 와뇰된 상태 */
+    ORDER_ALREADY_PAID,
+
     /** 결제가 capture 되지 않은 상태 */
     PAYMENT_NOT_CAPTURED,
 
