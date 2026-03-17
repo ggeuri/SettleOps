@@ -1,5 +1,7 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementStatus;
@@ -48,7 +50,6 @@ class SettlementAdminApprovePaidConcurrencyIT {
     void approvePaid_concurrent_two_requests_should_write_two_audits_and_return_paid_for_both() throws Exception {
         String settlementId = UUID.randomUUID().toString(); // CHAR(36) 맞춤
         LocalDate baseDate = LocalDate.now();
-
 
         Long batchId = createBatchAndReturnId(baseDate);
         seedPayRequestedCommitted(settlementId, "M1", batchId, baseDate); // 커밋된 상태 보장
@@ -128,6 +129,34 @@ class SettlementAdminApprovePaidConcurrencyIT {
             );
             assertThat(requestIds).doesNotHaveDuplicates();
 
+            List<String> metaJsons = jdbcTemplate.queryForList(
+                    """
+                    select meta_json
+                    from audit_log
+                    where entity_type = ?
+                      and entity_id = ?
+                      and action = ?
+                    """,
+                    String.class,
+                    EntityType.SETTLEMENT.name(),
+                    settlementId,
+                    Action.SETTLEMENT_PAY_APPROVED.name()
+            );
+
+            ObjectMapper mapper = new ObjectMapper();
+            List<JsonNode> metaNodes = metaJsons.stream()
+                    .map(json -> {
+                        try {
+                            return mapper.readTree(json);
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    })
+                    .toList();
+
+            assertThat(metaNodes).hasSize(2);
+            assertThat(metaNodes).allMatch(node -> node.has("noOp"));
+
         } finally {
             pool.shutdown();
             if (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
@@ -155,7 +184,7 @@ class SettlementAdminApprovePaidConcurrencyIT {
                         UUID.randomUUID().toString()
                 )
         ).isInstanceOf(BadRequestException.class)
-                        .hasMessageContaining("actorId");
+                .hasMessageContaining("actorId");
     }
 
     private SettlementStatus callApprovePaid(

@@ -2,9 +2,14 @@ package com.settleops.domain.settlement.infra;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementLineItemResponse;
+import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.entity.QSettlement;
+import com.settleops.domain.settlement.entity.QSettlementLine;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -14,6 +19,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -56,7 +62,8 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                 .where(where)
                 .orderBy(
                         settlement.baseDate.desc(),
-                        settlement.createdAt.desc()
+                        settlement.createdAt.desc(),
+                        settlement.settlementId.desc()
                 )
                 .offset(pageable.getOffset())
                 .limit(pageable.getPageSize())
@@ -68,5 +75,107 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                 .where(where);
 
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
+    }
+
+    @Override
+    public Page<MerchantSettlementListItemResponse> searchMerchantSettlements(String merchantId, Pageable pageable) {
+        QSettlement settlement = QSettlement.settlement;
+
+        List<MerchantSettlementListItemResponse> content = queryFactory
+                .select(Projections.constructor(
+                        MerchantSettlementListItemResponse.class,
+                        settlement.settlementId,
+                        settlement.baseDate,
+                        settlement.status,
+                        settlement.gross,
+                        settlement.fee,
+                        settlement.vat,
+                        settlement.net,
+                        settlement.createdAt
+                ))
+                .from(settlement)
+                .where(settlement.merchantId.eq(merchantId))
+                .orderBy(
+                        settlement.baseDate.desc(),
+                        settlement.createdAt.desc(),
+                        settlement.settlementId.desc()
+                )
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
+                .fetch();
+
+        var countQuery = queryFactory
+                .select(settlement.count())
+                .from(settlement)
+                .where(settlement.merchantId.eq(merchantId));
+
+        return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
+    }
+
+    @Override
+    public Optional<String> findMerchantIdBySettlementId(String settlementId) {
+        QSettlement settlement = QSettlement.settlement;
+
+        String merchantId = queryFactory
+                .select(settlement.merchantId)
+                .from(settlement)
+                .where(settlement.settlementId.eq(settlementId))
+                .fetchOne();
+
+        return Optional.ofNullable(merchantId);
+    }
+
+    @Override
+    public MerchantSettlementDetailResponse findMerchantSettlementDetail(String merchantId, String settlementId) {
+        QSettlement settlement = QSettlement.settlement;
+        QSettlementLine settlementLine = QSettlementLine.settlementLine;
+
+        var base = queryFactory
+                .select(
+                        settlement.settlementId,
+                        settlement.baseDate,
+                        settlement.status,
+                        settlement.gross,
+                        settlement.fee,
+                        settlement.vat,
+                        settlement.net
+                )
+                .from(settlement)
+                .where(
+                        settlement.merchantId.eq(merchantId),
+                        settlement.settlementId.eq(settlementId)
+                )
+                .fetchOne();
+
+        if (base == null) {
+            return null;
+        }
+
+        List<MerchantSettlementLineItemResponse> lines = queryFactory
+                .select(Projections.constructor(
+                        MerchantSettlementLineItemResponse.class,
+                        settlementLine.settlementLineId.stringValue(),
+                        settlementLine.lineType,
+                        settlementLine.paymentId,
+                        settlementLine.amount
+                ))
+                .from(settlementLine)
+                .where(settlementLine.settlementId.eq(settlementId))
+                .orderBy(
+                        settlementLine.createdAt.asc(),
+                        settlementLine.settlementLineId.asc()
+                )
+                .fetch();
+
+        return new MerchantSettlementDetailResponse(
+                base.get(settlement.settlementId),
+                base.get(settlement.baseDate),
+                base.get(settlement.status),
+                base.get(settlement.gross),
+                base.get(settlement.fee),
+                base.get(settlement.vat),
+                base.get(settlement.net),
+                lines
+        );
     }
 }
