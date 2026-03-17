@@ -7,6 +7,12 @@ export default function App() {
       {/* /admin 아래는 AdminRoutes가 처리 */}
       <Route path="/admin/*" element={<AdminRoutes />} />
 
+      {/* C1 */}
+      <Route path="/consumer/*" element={<ConsumerRoutes />} />
+
+      {/* 기본 진입 */}
+      <Route path="/" element={<Navigate to="/consumer/orders/new" replace />} />
+
       {/* 임시 홈 */}
       <Route path="/" element={<Navigate to="/admin/audit" replace />} />
 
