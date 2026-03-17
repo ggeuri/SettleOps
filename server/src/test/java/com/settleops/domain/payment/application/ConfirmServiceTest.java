@@ -7,6 +7,7 @@ import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
 import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.ForbiddenException;
+import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -97,6 +98,44 @@ class ConfirmServiceTest {
         assertThat(confirmedAt).isNotNull();
         assertThat(confirmedAt).isEqualTo(first.confirmedAt());
         assertThat(confirmedAt).isEqualTo(second.confirmedAt());
+    }
+
+    @Test
+    @DisplayName("재confirm 되어도 PAYMENT_CONFIRMED 이벤트는 1건만 유지된다")
+    void confirm_noop_should_not_create_duplicate_confirmed_event() {
+        // given
+        Payment payment = createCapturedPayment(MERCHANT_ID, BUYER_ID, 10_000L);
+        String paymentId = payment.getPaymentId();
+
+        String requestId1 = UUID.randomUUID().toString();
+        String requestId2 = UUID.randomUUID().toString();
+
+        // when
+        ConfirmResponseDTO first = confirmService.confirm(paymentId, BUYER_ID, requestId1);
+        ConfirmResponseDTO second = confirmService.confirm(paymentId, BUYER_ID, requestId2);
+
+        // then
+        assertThat(first.confirmedAt()).isNotNull();
+        assertThat(second.confirmedAt()).isEqualTo(first.confirmedAt());
+
+        long confirmedEventCount = paymentEventRepository.countByPaymentIdAndEventType(
+                paymentId,
+                PaymentEventType.PAYMENT_CONFIRMED
+        );
+
+        assertThat(confirmedEventCount).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 paymentId로 confirm 호출 시 NotFoundException이 발생한다")
+    void confirm_should_throw_not_found_when_payment_not_exists() {
+        // given
+        String notExistingPaymentId = UUID.randomUUID().toString();
+        String requestId = UUID.randomUUID().toString();
+
+        // when & then
+        assertThatThrownBy(() -> confirmService.confirm(notExistingPaymentId, BUYER_ID, requestId))
+                .isInstanceOf(NotFoundException.class);
     }
 
     @Test

@@ -51,4 +51,6 @@ public interface PaymentEventRepository extends JpaRepository<PaymentEvent,Long>
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to
     );
+
+    long countByPaymentIdAndEventType(String paymentId, PaymentEventType eventType);
 }
