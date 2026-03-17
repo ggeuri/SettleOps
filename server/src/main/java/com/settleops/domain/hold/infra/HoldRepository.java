@@ -1,6 +1,6 @@
 package com.settleops.domain.hold.infra;
 
-import com.settleops.domain.hold.entity.Hold;
+import com.settleops.domain.hold.domain.Hold;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

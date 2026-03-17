@@ -1,8 +1,8 @@
-package com.settleops.domain.admin.trace.controller;
+package com.settleops.domain.admin.query.trace.controller;
 
-import com.settleops.domain.admin.trace.dto.AuditTraceResponseDto;
-import com.settleops.domain.admin.trace.dto.AuditTraceSearchRequestDto;
-import com.settleops.domain.admin.trace.service.AuditTraceService;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceResponseDto;
+import com.settleops.domain.admin.query.trace.dto.AuditTraceSearchRequestDto;
+import com.settleops.domain.admin.query.trace.service.AuditTraceService;
 import com.settleops.global.audit.EntityType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;

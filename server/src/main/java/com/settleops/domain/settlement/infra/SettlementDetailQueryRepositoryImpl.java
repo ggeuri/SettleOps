@@ -9,7 +9,7 @@ import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.settlement.dto.AdminSettlementDetailBaseView;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
-import com.settleops.domain.hold.entity.QHold;
+import com.settleops.domain.hold.domain.QHold;
 import com.settleops.domain.settlement.entity.QSettlement;
 import com.settleops.domain.settlement.entity.QSettlementLine;
 import lombok.RequiredArgsConstructor;

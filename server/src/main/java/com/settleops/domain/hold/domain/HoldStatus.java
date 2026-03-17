@@ -1,4 +1,4 @@
-package com.settleops.domain.hold.enums;
+package com.settleops.domain.hold.domain;
 
 public enum HoldStatus {
     HOLD_REQUESTED,
