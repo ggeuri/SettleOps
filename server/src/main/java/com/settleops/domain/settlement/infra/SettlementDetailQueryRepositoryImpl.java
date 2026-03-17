@@ -5,13 +5,11 @@ import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.refund.domain.QRefund;
-import com.settleops.domain.refund.domain.QRefundSettlementLink;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.settlement.dto.AdminSettlementDetailBaseView;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
-import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
-import com.settleops.domain.settlement.entity.QHold;
+import com.settleops.domain.hold.entity.QHold;
 import com.settleops.domain.settlement.entity.QSettlement;
 import com.settleops.domain.settlement.entity.QSettlementLine;
 import lombok.RequiredArgsConstructor;
@@ -77,7 +75,7 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                         Expressions.constant(true),
                         hold.holdId,
                         hold.status.stringValue(),
-                        hold.requestedReasonCode,
+                        hold.requestedReasonCode.stringValue(),
                         hold.requestedComment,
                         hold.createdBy,
                         hold.createdAt
@@ -92,17 +90,15 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
     /**
      * A4 refund summary 정책:
      * - hasApprovedRefund는 현재 settlement에 포함된 paymentId 기준으로 조회한다.
-     * - refundAdjustmentPending의 SoT는 refund_settlement_link 이다.
-     * - pending 판정은 refund_id가 refund_settlement_link에 존재하는지 여부만 사용한다.
-     * - pending 판정에서는 settlement_id 조건으로 범위를 좁히지 않는다.
+     * - refundAdjustmentPending 판정은 Repository에서 계산하지 않는다.
+     * - pending SoT는 RefundAdjustmentPolicy 단일 구현이 담당한다.
      */
     @Override
-    public AdminSettlementRefundSummaryResponse findRefundSummary(String settlementId) {
+    public boolean hasApprovedRefund(String settlementId) {
         QRefund refund = QRefund.refund;
-        QRefundSettlementLink refundSettlementLink = QRefundSettlementLink.refundSettlementLink;
         QSettlementLine settlementLine = QSettlementLine.settlementLine;
 
-        boolean hasApprovedRefund = queryFactory
+        return queryFactory
                 .selectOne()
                 .from(refund)
                 .where(
@@ -115,29 +111,5 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                         refund.status.eq(RefundStatus.APPROVED)
                 )
                 .fetchFirst() != null;
-
-        boolean refundAdjustmentPending = queryFactory
-                .selectOne()
-                .from(refund)
-                .where(
-                        refund.paymentId.in(
-                                JPAExpressions
-                                        .select(settlementLine.paymentId)
-                                        .from(settlementLine)
-                                        .where(settlementLine.settlementId.eq(settlementId))
-                        ),
-                        refund.status.eq(RefundStatus.APPROVED),
-                        refund.refundId.notIn(
-                                JPAExpressions
-                                        .select(refundSettlementLink.refundId)
-                                        .from(refundSettlementLink)
-                        )
-                )
-                .fetchFirst() != null;
-
-        return new AdminSettlementRefundSummaryResponse(
-                hasApprovedRefund,
-                refundAdjustmentPending
-        );
     }
 }

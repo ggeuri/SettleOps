@@ -21,6 +21,7 @@ import java.util.List;
 public class SettlementDetailQueryServiceImpl implements SettlementDetailQueryService {
 
     private final SettlementDetailQueryRepository settlementDetailQueryRepository;
+    private final RefundAdjustmentPolicy refundAdjustmentPolicy;
 
     @Override
     public AdminSettlementDetailResponse getAdminSettlementDetail(String settlementId) {
@@ -41,8 +42,17 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
         AdminSettlementHoldSummaryResponse hold =
                 settlementDetailQueryRepository.findHoldSummary(settlementId);
 
+        boolean hasApprovedRefund =
+                settlementDetailQueryRepository.hasApprovedRefund(settlementId);
+
+        boolean refundAdjustmentPending =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId);
+
         AdminSettlementRefundSummaryResponse refund =
-                settlementDetailQueryRepository.findRefundSummary(settlementId);
+                new AdminSettlementRefundSummaryResponse(
+                        hasApprovedRefund,
+                        refundAdjustmentPending
+                );
 
         return new AdminSettlementDetailResponse(
                 base.settlementId(),
