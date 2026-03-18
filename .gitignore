@@ -93,3 +93,4 @@ dist/
 # pnpm-lock.yaml
 # yarn.lock.env
 server/src/test/resources/application-test.yml
+server/src/test/resources/application-test-db.yml
