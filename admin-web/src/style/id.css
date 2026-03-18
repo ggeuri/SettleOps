@@ -1,0 +1,43 @@
+.copyable-id {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copyable-id__text {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.copyable-id__text--short {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copyable-id__button {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-size: var(--font-size-xs);
+}
+
+.copyable-id__button:hover {
+  background: var(--color-surface-muted);
+}
+
+.amount-text {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.amount-text--positive {
+  color: var(--color-success);
+}
+
+.amount-text--negative {
+  color: var(--color-danger);
+}
