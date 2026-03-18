@@ -1,27 +1,21 @@
 spring:
-  datasource:
-    url: jdbc:h2:mem:settleops_test;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
-
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema-test.sql
+      mode: never   # ✅ schema-test.sql 실행 완전 중단
 
   jpa:
-    defer-datasource-initialization: true
     hibernate:
-      ddl-auto: create-drop
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
-        format_sql: true
     open-in-view: false
 
   flyway:
-    enabled: false
+    enabled: true
+    locations: classpath:db/test-migration
+    # clean 금지 권장(실수 방지)
+    clean-disabled: true
 
 logging:
   level:
