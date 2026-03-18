@@ -1,0 +1,43 @@
+@import "./token.css";
+@import "./reset.css";
+@import "./layout.css";
+@import "./button.css";
+@import "./badge.css";
+@import "./card.css";
+@import "./state.css";
+@import "./id.css";
+@import "./table.css";
+@import "./form.css";
+@import "./timeline.css";
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-md);
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+* {
+  box-sizing: border-box;
+}
