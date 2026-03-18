@@ -17,9 +17,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@ActiveProfiles("test")
-class RefundSettlementReadRepositoryTest {
+@ActiveProfiles("test-db")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)class RefundSettlementReadRepositoryTest {
 
     @jakarta.annotation.Resource
     private EntityManager em;
