@@ -17,9 +17,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@ActiveProfiles("test")
-@DataJpaTest
+@ActiveProfiles("test-db")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@DataJpaTest
 @Import({com.settleops.global.config.QuerydslConfig.class, RefundReadRepositoryIT.TestConfig.class})
 @Rollback(true) // 테스트 끝나면 true로 수정
 class RefundReadRepositoryIT {
