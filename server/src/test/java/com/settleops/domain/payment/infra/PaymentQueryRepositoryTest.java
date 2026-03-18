@@ -43,8 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @Import({PaymentQueryRepository.class, QuerydslTestConfig.class})
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@ActiveProfiles("test")
+@ActiveProfiles("test-db")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class PaymentQueryRepositoryTest {
 
     private static final String ORDER_ID_1 = "11111111-1111-1111-1111-111111111111";
