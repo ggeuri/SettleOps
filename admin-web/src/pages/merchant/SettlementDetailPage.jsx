@@ -2,7 +2,9 @@ import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
-import StatusBadge from "../../components/display/StatusBadge.jsx";
+import SettlementSummarySection from "../../components/settlement/SettlementSummarySection.jsx";
+import SettlementAmountSection from "../../components/settlement/SettlementAmountSection.jsx";
+import SettlementLineTable from "../../components/settlement/SettlementLineTable.jsx";
 
 const MOCK_SETTLEMENT_DETAIL = {
   settlementId: "SET-20260318-0001",
@@ -34,17 +36,6 @@ const MOCK_SETTLEMENT_DETAIL = {
   ],
 };
 
-function formatAmount(value) {
-  if (typeof value !== "number") return "-";
-  return `${value.toLocaleString("ko-KR")}원`;
-}
-
-function shortId(value) {
-  if (!value) return "-";
-  if (value.length <= 16) return value;
-  return `${value.slice(0, 8)}...${value.slice(-4)}`;
-}
-
 export default function SettlementDetailPage() {
   const navigate = useNavigate();
   const { settlementId } = useParams();
@@ -61,112 +52,23 @@ export default function SettlementDetailPage() {
       title="정산 상세"
       description="판매자 기준 정산 상세를 조회합니다. 정산 요약과 라인 내역을 확인할 수 있습니다."
     >
-      <SectionCard title="기본 정보">
-        <div className="summary-card-grid">
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">settlementId</div>
-              <div className="summary-card__value" style={{ fontSize: "16px" }}>
-                <div className="copyable-id">
-                  <span className="copyable-id__text copyable-id__text--short">
-                    {detail.settlementId}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+      <SettlementSummarySection
+        settlementId={detail.settlementId}
+        merchantId={detail.merchantId}
+        status={detail.status}
+        baseDate={detail.baseDate}
+      />
 
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">merchantId</div>
-              <div className="summary-card__value" style={{ fontSize: "16px" }}>
-                {detail.merchantId}
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">status</div>
-              <div className="summary-card__value" style={{ fontSize: "16px" }}>
-                <StatusBadge status={detail.status} />
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">baseDate</div>
-              <div className="summary-card__value" style={{ fontSize: "16px" }}>
-                {detail.baseDate}
-              </div>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="금액 요약">
-        <div className="summary-card-grid">
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">gross</div>
-              <div className="summary-card__value">
-                {formatAmount(detail.gross)}
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">fee</div>
-              <div className="summary-card__value">
-                -{formatAmount(detail.fee)}
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">vat</div>
-              <div className="summary-card__value">
-                -{formatAmount(detail.vat)}
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">net</div>
-              <div className="summary-card__value">
-                {formatAmount(detail.net)}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="table-wrap" style={{ marginTop: "16px" }}>
-          <table className="data-table">
-            <tbody>
-              <tr>
-                <th>createdAt</th>
-                <td>{detail.createdAt}</td>
-              </tr>
-              <tr>
-                <th>paidAt</th>
-                <td>{detail.paidAt || "-"}</td>
-              </tr>
-              <tr>
-                <th>approvedRefundExists</th>
-                <td>{detail.approvedRefundExists ? "Y" : "N"}</td>
-              </tr>
-              <tr>
-                <th>refundAdjustmentAmount</th>
-                <td>{formatAmount(detail.refundAdjustmentAmount)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      <SettlementAmountSection
+        gross={detail.gross}
+        fee={detail.fee}
+        vat={detail.vat}
+        net={detail.net}
+        createdAt={detail.createdAt}
+        paidAt={detail.paidAt}
+        approvedRefundExists={detail.approvedRefundExists}
+        refundAdjustmentAmount={detail.refundAdjustmentAmount}
+      />
 
       {detail.refundAdjustmentPending ? (
         <SectionCard title="안내">
@@ -179,62 +81,18 @@ export default function SettlementDetailPage() {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="정산 라인">
-        <div className="table-toolbar">
-          <div>settlement_line 목록</div>
-          <div className="action-panel">
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={() => navigate("/merchant/settlements")}
-            >
-              목록으로
-            </button>
-          </div>
-        </div>
-
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>lineId</th>
-                <th>type</th>
-                <th>paymentId</th>
-                <th>amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.lines.map((line) => (
-                <tr key={line.lineId}>
-                  <td>{shortId(line.lineId)}</td>
-                  <td>
-                    <StatusBadge status={line.type} />
-                  </td>
-                  <td>
-                    <div className="copyable-id">
-                      <span className="copyable-id__text copyable-id__text--short">
-                        {line.paymentId}
-                      </span>
-                    </div>
-                  </td>
-                  <td>
-                    <span
-                      className={
-                        line.type === "REFUND"
-                          ? "amount-text amount-text--negative"
-                          : "amount-text amount-text--positive"
-                      }
-                    >
-                      {line.type === "REFUND" ? "-" : "+"}
-                      {formatAmount(line.amount)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+      <SettlementLineTable
+        lines={detail.lines}
+        toolbarRight={
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={() => navigate("/merchant/settlements")}
+          >
+            목록으로
+          </button>
+        }
+      />
     </PageLayout>
   );
 }
