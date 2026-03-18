@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "../../components/layout/PageLayout.jsx";
-import SectionCard from "../../components/layout/SectionCard.jsx";
-import StatusBadge from "../../components/display/StatusBadge.jsx";
+import SettlementListSummarySection from "../../components/settlement/SettlementListSummarySection.jsx";
+import SettlementListFilterSection from "../../components/settlement/SettlementListFilterSection.jsx";
+import SettlementListTable from "../../components/settlement/SettlementListTable.jsx";
 
 const MOCK_SETTLEMENTS = [
   {
@@ -50,10 +51,6 @@ const MOCK_SETTLEMENTS = [
     createdAt: "2026-03-17 16:10:00",
   },
 ];
-
-function formatAmount(value) {
-  return `${value.toLocaleString("ko-KR")}원`;
-}
 
 export default function SettlementListPage() {
   const navigate = useNavigate();
@@ -116,177 +113,28 @@ export default function SettlementListPage() {
       title="정산 리스트"
       description="판매자 기준 정산 내역을 조회합니다. row 클릭 시 정산 상세(U5)로 이동합니다."
     >
-      <SectionCard title="요약">
-        <div className="summary-card-grid">
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">총 정산 건수</div>
-              <div className="summary-card__value">{summary.totalCount}</div>
-            </div>
-          </div>
+      <SettlementListSummarySection
+        totalCount={summary.totalCount}
+        readyCount={summary.readyCount}
+        holdCount={summary.holdCount}
+        extraLabel="PAID"
+        extraCount={summary.paidCount}
+      />
 
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">READY</div>
-              <div className="summary-card__value">{summary.readyCount}</div>
-            </div>
-          </div>
+      <SettlementListFilterSection
+        merchantId={filters.merchantId}
+        status={filters.status}
+        keyword={filters.keyword}
+        onChange={handleChange}
+        onReset={handleReset}
+        merchantIdPlaceholder="MRC_1001"
+      />
 
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">HOLD_ACTIVE</div>
-              <div className="summary-card__value">{summary.holdCount}</div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card__body">
-              <div className="summary-card__label">PAID</div>
-              <div className="summary-card__value">{summary.paidCount}</div>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="검색 조건">
-        <div className="filter-bar">
-          <div className="form-field">
-            <label className="form-field__label">merchantId</label>
-            <input
-              className="input"
-              name="merchantId"
-              value={filters.merchantId}
-              onChange={handleChange}
-              placeholder="MRC_1001"
-            />
-          </div>
-
-          <div className="form-field">
-            <label className="form-field__label">status</label>
-            <select
-              className="select"
-              name="status"
-              value={filters.status}
-              onChange={handleChange}
-            >
-              <option>전체</option>
-              <option>READY</option>
-              <option>HOLD_ACTIVE</option>
-              <option>PAY_REQUESTED</option>
-              <option>PAID</option>
-            </select>
-          </div>
-
-          <div className="form-field search-field">
-            <label className="form-field__label">keyword</label>
-            <input
-              className="input"
-              name="keyword"
-              value={filters.keyword}
-              onChange={handleChange}
-              placeholder="settlementId / merchantId"
-            />
-          </div>
-        </div>
-
-        <div className="button-row action-panel" style={{ marginTop: "16px" }}>
-          <button type="button" className="btn btn--primary">
-            조회
-          </button>
-          <button type="button" className="btn btn--secondary" onClick={handleReset}>
-            초기화
-          </button>
-        </div>
-      </SectionCard>
-
-      <SectionCard title="목록">
-        <div className="table-toolbar">
-          <div>정산 목록</div>
-          <div className="action-panel">
-            <button type="button" className="btn btn--secondary">
-              새로고침
-            </button>
-          </div>
-        </div>
-
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>settlementId</th>
-                <th>merchantId</th>
-                <th>status</th>
-                <th>gross</th>
-                <th>fee</th>
-                <th>vat</th>
-                <th>net</th>
-                <th>baseDate</th>
-                <th>createdAt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSettlements.length === 0 ? (
-                <tr>
-                  <td colSpan={9}>조회 결과가 없습니다.</td>
-                </tr>
-              ) : (
-                filteredSettlements.map((item) => (
-                  <tr
-                    key={item.settlementId}
-                    onClick={() => handleRowClick(item.settlementId)}
-                    style={{ cursor: "pointer" }}
-                    title={item.settlementId}
-                  >
-                    <td>
-                      <div className="copyable-id">
-                        <span className="copyable-id__text copyable-id__text--short">
-                          {item.settlementId}
-                        </span>
-                      </div>
-                    </td>
-                    <td>{item.merchantId}</td>
-                    <td>
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td>
-                      <span className="amount-text">
-                        {formatAmount(item.gross)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="amount-text amount-text--negative">
-                        -{formatAmount(item.fee)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="amount-text amount-text--negative">
-                        -{formatAmount(item.vat)}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="amount-text">{formatAmount(item.net)}</span>
-                    </td>
-                    <td>{item.baseDate}</td>
-                    <td>{item.createdAt}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="pagination">
-          <button type="button" className="btn btn--secondary">
-            이전
-          </button>
-          <button type="button" className="btn btn--primary">
-            1
-          </button>
-          <button type="button" className="btn btn--secondary">
-            다음
-          </button>
-        </div>
-      </SectionCard>
+      <SettlementListTable
+        items={filteredSettlements}
+        onRowClick={handleRowClick}
+        toolbarTitle="정산 목록"
+      />
     </PageLayout>
   );
 }
