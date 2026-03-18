@@ -12,7 +12,7 @@ export default function AdminRoutes() {
       <Route path="settlements" element={<SettlementManagePage />}/>
       <Route
         path="settlements/:settlementId"
-        element={<SettlementDetailAdminPage />}      
+        element={<SettlementDetailAdminPage />}
       />
     </Routes>
   );

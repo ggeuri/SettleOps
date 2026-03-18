@@ -1,6 +1,7 @@
 package com.settleops.domain.order.api.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.Getter;
 import lombok.AllArgsConstructor;
@@ -20,6 +21,7 @@ public class OrderCreateRequestDTO {
     @NotBlank(message = "itemName은 필수입니다.")
     private String itemName;
 
+    @NotNull(message = "amount는 필수입니다.")
     @Positive(message = "amount는 0보다 커야 합니다.")
-    private long amount;
+    private Long amount;
 }
