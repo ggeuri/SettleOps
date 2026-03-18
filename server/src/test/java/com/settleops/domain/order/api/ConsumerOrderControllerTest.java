@@ -197,4 +197,22 @@ class ConsumerOrderControllerTest {
                 .andExpect(jsonPath("$.createdAt").doesNotExist())
                 .andExpect(jsonPath("$.requestId").doesNotExist());
     }
+
+    @Test
+    @DisplayName("amount가 음수이면 400을 반환한다")
+    void createOrder_negativeAmount() throws Exception {
+        String requestBody = """
+            {
+              "merchantId": "merchant-1",
+              "buyerId": "buyer-1",
+              "itemName": "아이템",
+              "amount": -1
+            }
+            """;
+
+        mockMvc.perform(post("/api/consumer/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isBadRequest());
+    }
 }
