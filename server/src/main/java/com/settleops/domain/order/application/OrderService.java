@@ -32,4 +32,10 @@ public class OrderService {
         order.markPaid();   // 엔티티 내부 상태 변경
         return order;       // 별도 save 필요 없음 (영속 상태라면)
     }
+
+    @Transactional
+    public Orders createSeedOrder(String merchantId, String buyerId, String itemName, Long amount) {
+        Orders order = Orders.create(merchantId, buyerId, itemName, amount);
+        return ordersRepository.save(order);
+    }
 }

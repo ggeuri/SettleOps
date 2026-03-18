@@ -1,0 +1,310 @@
+.page-layout {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+}
+
+.page-header {
+    margin-bottom: 20px;
+}
+
+.page-content {
+    display: grid;
+    gap: 16px;
+}
+/* =========================================================
+   AppLayout 전체 골격
+   - src/layouts/AppLayout.jsx
+   - .app-layout
+   - .app-layout__sidebar
+   - .app-layout__main
+   - .app-layout__header
+   - .app-layout__content
+   ========================================================= */
+
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+.app-layout__sidebar {
+  width: 260px;
+  min-width: 260px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.app-layout__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.app-layout__header {
+  height: 72px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.app-layout__content {
+  flex: 1;
+  min-width: 0;
+  padding: 24px;
+  background: var(--color-bg);
+  overflow-y: auto;
+}
+
+
+/* =========================================================
+   Sidebar 전체
+   - src/layouts/Sidebar.jsx
+   - .sidebar
+   - .sidebar__logo
+   - .sidebar__nav
+   - .sidebar__group
+   - .sidebar__group-title
+   - .sidebar__menu
+   - .sidebar__link
+   - .sidebar__link--active
+   ========================================================= */
+
+.sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding: 20px 16px;
+}
+
+.sidebar__logo {
+  margin-bottom: 24px;
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sidebar__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar__group-title {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.sidebar__menu {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sidebar__link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.4;
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar__link:hover {
+  background: var(--color-surface-muted);
+}
+
+.sidebar__link--active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   AppHeader 전체
+   - src/layouts/AppHeader.jsx
+   - .app-header
+   - .app-header__left
+   - .app-header__title
+   - .app-header__meta
+   - .app-header__right
+   - .app-header__badge
+   ========================================================= */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 24px;
+  background: var(--color-surface);
+}
+
+.app-header__left {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.app-header__title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.app-header__meta {
+  margin: 4px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.app-header__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.app-header__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+
+/* =========================================================
+   페이지 내부 공통 래퍼
+   - 본문 페이지에서 선택적으로 사용
+   - .page-layout
+   - .page-layout--narrow
+   - .page-layout__header
+   - .page-layout__body
+   ========================================================= */
+
+.page-layout {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.page-layout--narrow {
+  max-width: 960px;
+}
+
+.page-layout__header {
+  margin-bottom: 24px;
+}
+
+.page-layout__body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+
+/* =========================================================
+   페이지 섹션/그리드 공통
+   - 선택 사용
+   - .page-section
+   - .page-grid-2
+   - .page-grid-3
+   ========================================================= */
+
+.page-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.page-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.page-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+
+
+/* =========================================================
+   반응형
+   ========================================================= */
+
+@media (max-width: 1024px) {
+  .app-layout__sidebar {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .page-grid-2,
+  .page-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-layout__sidebar {
+    width: 100%;
+    min-width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-layout__header {
+    height: auto;
+    min-height: 72px;
+  }
+
+  .app-layout__content {
+    padding: 16px;
+  }
+
+  .app-header {
+    padding: 16px;
+  }
+
+  .app-header__title {
+    font-size: 18px;
+  }
+
+  .app-header__meta {
+    font-size: 12px;
+  }
+
+  .sidebar {
+    padding: 16px;
+  }
+}
