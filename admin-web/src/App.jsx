@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import AdminRoutes from "./app/router/AdminRoutes.jsx";
 import ConsumerRoutes from "./app/router/ConsumerRoutes.jsx";
+import MerchantRoutes from "./app/router/MerchantRoutes.jsx";
 
 export default function App() {
   return (
@@ -10,6 +11,9 @@ export default function App() {
 
       {/* C1 */}
       <Route path="/consumer/*" element={<ConsumerRoutes />} />
+
+      {/* merchant */}
+      <Route path="/merchant/*" element={<MerchantRoutes />}/>
 
       {/* 기본 진입 */}
       <Route path="/" element={<Navigate to="/consumer/orders/new" replace />} />
