@@ -20,6 +20,9 @@ import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,8 +31,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import com.settleops.global.error.NotFoundException;
-import com.settleops.global.error.UnauthorizedException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -52,6 +53,7 @@ class SettlementAdminCommandServiceImplTest {
     private AuditLogger auditLogger;
     private RefundAdjustmentPolicy refundAdjustmentPolicy;
     private SettlementBatchRunRecorder settlementBatchRunRecorder;
+    private EntityManager entityManager;
 
     private ObjectMapper objectMapper;
 
@@ -67,6 +69,7 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
+        entityManager = Mockito.mock(EntityManager.class);
 
         objectMapper = new ObjectMapper();
 
@@ -78,7 +81,8 @@ class SettlementAdminCommandServiceImplTest {
                 auditLogger,
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
-                objectMapper
+                objectMapper,
+                entityManager
         );
 
         SecurityContextHolder.getContext().setAuthentication(
@@ -125,7 +129,6 @@ class SettlementAdminCommandServiceImplTest {
         verify(settlementBatchRepository, times(1)).findById(1L);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
     }
-
 
     @Test
     void requestPaid_requestIdMissing_then400_BadRequest() {
@@ -258,6 +261,8 @@ class SettlementAdminCommandServiceImplTest {
         assertThat(meta.get("noOp").asBoolean()).isTrue();
         assertThat(meta.get("noOpReason").asText()).isEqualTo("ALREADY_PAID");
         assertThat(meta.get("comment").asText()).isEqualTo("memo");
+
+        verifyNoInteractions(entityManager);
     }
 
     @Test
@@ -348,6 +353,7 @@ class SettlementAdminCommandServiceImplTest {
                     assertThat(ace.getComment()).isEqualTo("memo");
                 });
 
+        verify(entityManager).detach(settlement);
         verifyNoInteractions(auditLogger);
     }
 
