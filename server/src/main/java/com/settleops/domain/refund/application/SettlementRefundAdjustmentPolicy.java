@@ -17,7 +17,7 @@ public class SettlementRefundAdjustmentPolicy implements RefundAdjustmentPolicy 
     @Override
     public boolean isRefundAdjustmentPending(String settlementId) {
         boolean hasApprovedRefund =
-                refundReadRepository.existsApprovedRefundBySettlementIdForDebug(settlementId);
+                refundReadRepository.existsRefundSettlementLinkEvidence(settlementId);
 
         if (!hasApprovedRefund) {
             return false;

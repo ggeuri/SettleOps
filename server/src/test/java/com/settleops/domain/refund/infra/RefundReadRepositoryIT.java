@@ -78,7 +78,7 @@ class RefundReadRepositoryIT {
         // =====================
         // 4) (2번) approved refund 존재 여부 확인
         // =====================
-        boolean hasApproved = refundReadRepository.existsApprovedRefundBySettlementIdForDebug(settlementId);
+        boolean hasApproved = refundReadRepository.existsRefundSettlementLinkEvidence(settlementId);
 
         // ✅ 여기서 true면 성공
         assertThat(hasApproved).isTrue();

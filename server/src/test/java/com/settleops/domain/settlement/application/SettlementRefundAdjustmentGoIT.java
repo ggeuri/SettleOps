@@ -2,13 +2,14 @@ package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundStatus;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.entity.SettlementLine;
-import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.enums.SettlementLineType;
+import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.domain.settlement.infra.SettlementLineRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
@@ -20,9 +21,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,9 +34,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.settleops.domain.refund.infra.RefundReadRepository;
-import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
-
 @ActiveProfiles("test")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class SettlementRefundAdjustmentGoIT {
@@ -51,11 +46,8 @@ class SettlementRefundAdjustmentGoIT {
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired TransactionTemplate tx;
 
-    @Autowired
-    RefundAdjustmentPolicy refundAdjustmentPolicy;
-    @Autowired RefundReadRepository refundReadRepository;
+    @Autowired RefundAdjustmentPolicy refundAdjustmentPolicy;
     @Autowired RefundSettlementLinkRepository refundSettlementLinkRepository;
-
 
     @AfterEach
     void tearDown() {
@@ -91,14 +83,14 @@ class SettlementRefundAdjustmentGoIT {
                 LocalDateTime.of(2026, 3, 11, 10, 0)
         );
 
-        boolean hasApprovedRefund =
-                refundReadRepository.existsApprovedRefundBySettlementIdForDebug(blockedSettlementId);
+        boolean pendingBeforeNextBatch =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(blockedSettlementId);
 
-        boolean hasLink =
+        boolean hasLinkBeforeNextBatch =
                 refundSettlementLinkRepository.existsBySettlementId(blockedSettlementId);
 
-        assertThat(hasApprovedRefund).isTrue();
-        assertThat(hasLink).isFalse();
+        assertThat(pendingBeforeNextBatch).isTrue();
+        assertThat(hasLinkBeforeNextBatch).isFalse();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
@@ -179,6 +171,15 @@ class SettlementRefundAdjustmentGoIT {
         );
 
         assertThat(refundLinkCount).isEqualTo(1L);
+
+        boolean pendingAfterNextBatch =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(newSettlementId);
+
+        boolean hasLinkAfterNextBatch =
+                refundSettlementLinkRepository.existsBySettlementId(newSettlementId);
+
+        assertThat(pendingAfterNextBatch).isFalse();
+        assertThat(hasLinkAfterNextBatch).isTrue();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")

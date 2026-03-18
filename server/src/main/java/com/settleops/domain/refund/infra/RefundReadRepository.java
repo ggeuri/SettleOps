@@ -29,7 +29,7 @@ public class RefundReadRepository {
      * LOCKED: REFUND_ADJUSTMENT_PENDING 정책 판정에는 사용 금지.
      * (조인 추론 금지, SoT는 refund_settlement_link 단일)
      */
-    public boolean existsApprovedRefundBySettlementIdForDebug(String settlementId) {
+    public boolean existsRefundSettlementLinkEvidence(String settlementId) {
         Integer one = queryFactory
                 .selectOne()
                 .from(settlementLine)
