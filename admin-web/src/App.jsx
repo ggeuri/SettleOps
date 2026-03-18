@@ -5,7 +5,6 @@ import MerchantRoutes from "./app/router/MerchantRoutes.jsx";
 import ConsumerRoutes from "./app/router/ConsumerRoutes.jsx";
 import CommonUiSamplePage from "./pages/_sample/CommonUiSamplePage.jsx";
 
-
 export default function App() {
   return (
     <Routes>
@@ -21,7 +20,7 @@ export default function App() {
 
         {/* /consumer 아래는 ConsumerRoutes가 처리 */}
         <Route path="/consumer/*" element={<ConsumerRoutes />} />
-        
+
         {/* 공통 UI 샘플 미리보기 */}
         <Route path="/sample/ui" element={<CommonUiSamplePage />} />
       </Route>

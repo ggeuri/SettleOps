@@ -42,6 +42,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.settleops.domain.refund.application.RefundSettlementAssembler;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
+
 class SettlementAdminCommandServiceImplTest {
 
     private SettlementRepository settlementRepository;
@@ -57,6 +60,9 @@ class SettlementAdminCommandServiceImplTest {
 
     private SettlementAdminCommandServiceImpl service;
 
+    private RefundSettlementAssembler refundSettlementAssembler;
+    private RefundSettlementLinkRepository refundSettlementLinkRepository;
+
     @BeforeEach
     void setUp() {
         settlementRepository = Mockito.mock(SettlementRepository.class);
@@ -67,6 +73,8 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
+        refundSettlementAssembler = Mockito.mock(RefundSettlementAssembler.class);
+        refundSettlementLinkRepository = Mockito.mock(RefundSettlementLinkRepository.class);
 
         objectMapper = new ObjectMapper();
 
@@ -78,8 +86,13 @@ class SettlementAdminCommandServiceImplTest {
                 auditLogger,
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
-                objectMapper
+                objectMapper,
+                refundSettlementAssembler,
+                refundSettlementLinkRepository
         );
+
+        Mockito.when(refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(Mockito.any()))
+                .thenReturn(List.of());
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
