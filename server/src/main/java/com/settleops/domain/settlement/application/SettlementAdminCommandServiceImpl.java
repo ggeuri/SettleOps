@@ -24,6 +24,7 @@ import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.NotFoundException;
 import com.settleops.global.error.UnauthorizedException;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
@@ -53,6 +54,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
     private final SettlementBatchRunRecorder settlementBatchRunRecorder;
     private final ObjectMapper objectMapper;
+    private final EntityManager entityManager;
 
     @Override
     @Transactional
@@ -343,14 +345,36 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
-        // 동시성 LOCKED 기준:
-        // approve-paid는 처음부터 락 조회로 진입해 stale 상태(PAY_REQUESTED) 재사용을 막는다.
-        // 같은 트랜잭션에서 비락 조회 후 락 조회를 섞으면 영속성 컨텍스트의 이전 상태가 남아
-        // 이미 PAID인 건도 성공 경로로 잘못 처리될 수 있다.
+        // 1) no-op 200: 이미 PAID면 현재 상태 반환 (+ audit)
+        Settlement current = settlementRepository.findById(settlementId)
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
+
+        // LOCKED: 이미 PAID면 no-op 200을 먼저 반환하고, PAY_REQUESTED일 때만 락을 시도한다.
+        if (current.isPaid()) {
+            String before = current.getStatus().name();
+            String after = current.getStatus().name();
+
+            auditSettlementAction(
+                    requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
+                    current, before, after, comment,
+                    true, "ALREADY_PAID"
+            );
+            return toPayActionResponse(current, requestId);
+        }
+
+        // 2) PAY_REQUESTED 아니면 409
+        if (!current.isPayRequested()) {
+            throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
+        }
+
+        // 비락 조회 엔티티가 영속성 컨텍스트에 남아 stale 상태로 재사용되지 않도록 분리한다.
+        entityManager.detach(current);
+
+        // 3) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
                 .orElseThrow(() -> new NotFoundException("settlement not found"));
 
-        // 1) 이미 PAID면 no-op 200 (+ audit)
+        // 락 후 재확인(no-op) (+ audit)
         if (settlement.isPaid()) {
             String before = settlement.getStatus().name();
             String after = settlement.getStatus().name();
@@ -363,12 +387,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             return toPayActionResponse(settlement, requestId);
         }
 
-        // 2) PAY_REQUESTED 아니면 409
         if (!settlement.isPayRequested()) {
             throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
         }
 
-        // 3) 4-eyes 검사
+        // 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
             throw new AuditableConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
