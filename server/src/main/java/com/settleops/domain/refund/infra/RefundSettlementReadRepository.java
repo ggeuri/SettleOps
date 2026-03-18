@@ -16,13 +16,10 @@ import static com.settleops.domain.refund.domain.QRefundSettlementLink.refundSet
 /**
  * READ 전용.
  *
- * LOCKED:
- * - APPROVED refund 중
- * - refund_settlement_link가 없는 미반영 건만
- * - decided_at < cutoffExclusive 인 건만 조회
- *
- * 주의:
- * - cutoffExclusive는 "baseDate 당일 00:00"을 넣는 것을 전제로 한다.
+ * LOCKED 해석:
+ * 1) approved refund 존재 여부는 refund 테이블에서 판단한다.
+ * 2) 반영 완료 증거는 refund_settlement_link 존재 여부로만 판단한다.
+ * 3) settlement_line/payment 기반 조인 추론은 사용하지 않는다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -30,7 +27,18 @@ public class RefundSettlementReadRepository {
 
     private final JPAQueryFactory queryFactory;
 
-    public List<ApprovedRefundAdjustment> findApprovedUnlinkedRefundAdjustmentsBefore(LocalDateTime cutoffExclusive) {
+    /**
+     * 다음 배치 입력집합 산출용.
+     *
+     * 조건:
+     * - refund.status = APPROVED
+     * - refund.decidedAt < cutoffExclusive
+     * - refund_settlement_link 없음(= 아직 어떤 settlement에도 반영되지 않음)
+     */
+
+    public List<ApprovedRefundAdjustment> findApprovedRefundsWithoutSettlementLinkBefore(
+            LocalDateTime cutoffExclusive
+    ) {
         return queryFactory
                 .select(Projections.constructor(
                         ApprovedRefundAdjustment.class,
@@ -54,5 +62,19 @@ public class RefundSettlementReadRepository {
                         refund.refundId.asc()
                 )
                 .fetch();
+    }
+
+    /**
+     * 개별 refundId 기준 반영 증거 확인용.
+     * refund_settlement_link insert 존재 여부만 확인한다.
+     */
+    public boolean existsSettlementLinkByRefundId(String refundId) {
+        Integer one = queryFactory
+                .selectOne()
+                .from(refundSettlementLink)
+                .where(refundSettlementLink.refundId.eq(refundId))
+                .fetchFirst();
+
+        return one != null;
     }
 }

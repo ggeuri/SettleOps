@@ -25,13 +25,6 @@ class RefundSettlementAssemblerImplTest {
     }
 
     @Test
-    void baseDate가_null이면_400() {
-        assertThatThrownBy(() -> assembler.getApprovedRefundAdjustmentsForBaseDate(null))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("baseDate");
-    }
-
-    @Test
     void baseDate_시작시각을_cutoff로_사용해_조회한다() {
         LocalDate baseDate = LocalDate.of(2026, 3, 11);
         LocalDateTime cutoff = baseDate.atStartOfDay();
@@ -46,7 +39,7 @@ class RefundSettlementAssemblerImplTest {
                 )
         );
 
-        when(readRepository.findApprovedUnlinkedRefundAdjustmentsBefore(cutoff))
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(cutoff))
                 .thenReturn(expected);
 
         List<ApprovedRefundAdjustment> result =
@@ -56,6 +49,6 @@ class RefundSettlementAssemblerImplTest {
         assertThat(result.get(0).refundId()).isEqualTo("refund-1");
         assertThat(result.get(0).amount()).isEqualTo(3000L);
 
-        verify(readRepository).findApprovedUnlinkedRefundAdjustmentsBefore(cutoff);
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
     }
 }

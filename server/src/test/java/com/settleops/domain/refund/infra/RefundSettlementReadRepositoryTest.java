@@ -94,7 +94,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         em.clear();
 
         List<ApprovedRefundAdjustment> result =
-                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                repository.findApprovedRefundsWithoutSettlementLinkBefore(
                         LocalDateTime.of(2026, 3, 11, 0, 0)
                 );
 
@@ -154,11 +154,67 @@ import static org.assertj.core.api.Assertions.assertThat;
         em.clear();
 
         List<ApprovedRefundAdjustment> result =
-                repository.findApprovedUnlinkedRefundAdjustmentsBefore(
+                repository.findApprovedRefundsWithoutSettlementLinkBefore(
                         LocalDateTime.of(2026, 3, 11, 0, 0)
                 );
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).refundId()).isEqualTo(refundApproved);
+    }
+    @Test
+    void refundId에_대한_link가_있으면_true() {
+        String refundId = "77777777-7777-7777-7777-777777777777";
+
+        em.persist(Refund.builder()
+                .refundId(refundId)
+                .paymentId("pay-7777")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(1000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
+                .build());
+
+        em.persist(RefundSettlementLink.of(
+                refundId,
+                "settlement-777",
+                LocalDateTime.of(2026, 3, 11, 0, 0)
+        ));
+
+        em.flush();
+        em.clear();
+
+        boolean result =
+                repository.existsSettlementLinkByRefundId(refundId);
+
+        assertThat(result).isTrue();
+    }
+    @Test
+    void refundId에_대한_link가_없으면_false() {
+        String refundId = "88888888-8888-8888-8888-888888888888";
+
+        em.persist(Refund.builder()
+                .refundId(refundId)
+                .paymentId("pay-8888")
+                .merchantId("merchant1")
+                .buyerId("buyer1")
+                .amount(2000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
+                .build());
+
+        em.flush();
+        em.clear();
+
+        boolean result =
+                repository.existsSettlementLinkByRefundId(refundId);
+
+        assertThat(result).isFalse();
     }
 }
