@@ -1,30 +1,23 @@
 spring:
-  datasource:
-    # Docker Compose MySQL 호스트 포트에 맞게 수정
-    url: jdbc:mysql://localhost:4406/settleops_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul
-    username: your_username
-    password: your_password
-    driver-class-name: com.mysql.cj.jdbc.Driver
-
   sql:
     init:
-      mode: never
+      mode: never   # ✅ schema-test.sql 실행 완전 중단
 
   jpa:
     hibernate:
       ddl-auto: validate
-    open-in-view: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
-        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+    open-in-view: false
 
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: classpath:db/test-migration
+    # clean 금지 권장(실수 방지)
     clean-disabled: true
 
 logging:
   level:
     org.hibernate.SQL: debug
-    org.hibernate.orm.jdbc.bind: trace
+    org.hibernate.type.descriptor.sql.BasicBinder: trace
