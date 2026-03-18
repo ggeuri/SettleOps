@@ -3,6 +3,8 @@ package com.settleops.domain.settlement.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.refund.application.RefundSettlementAssembler;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
@@ -20,6 +22,9 @@ import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,8 +33,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
-import com.settleops.global.error.NotFoundException;
-import com.settleops.global.error.UnauthorizedException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,9 +45,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
-import com.settleops.domain.refund.application.RefundSettlementAssembler;
-import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
-
 class SettlementAdminCommandServiceImplTest {
 
     private SettlementRepository settlementRepository;
@@ -55,6 +55,7 @@ class SettlementAdminCommandServiceImplTest {
     private AuditLogger auditLogger;
     private RefundAdjustmentPolicy refundAdjustmentPolicy;
     private SettlementBatchRunRecorder settlementBatchRunRecorder;
+    private EntityManager entityManager;
 
     private ObjectMapper objectMapper;
 
@@ -73,6 +74,7 @@ class SettlementAdminCommandServiceImplTest {
         auditLogger = Mockito.mock(AuditLogger.class);
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
+        entityManager = Mockito.mock(EntityManager.class);
         refundSettlementAssembler = Mockito.mock(RefundSettlementAssembler.class);
         refundSettlementLinkRepository = Mockito.mock(RefundSettlementLinkRepository.class);
 
@@ -87,6 +89,7 @@ class SettlementAdminCommandServiceImplTest {
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
                 objectMapper,
+                entityManager,
                 refundSettlementAssembler,
                 refundSettlementLinkRepository
         );
@@ -138,7 +141,6 @@ class SettlementAdminCommandServiceImplTest {
         verify(settlementBatchRepository, times(1)).findById(1L);
         verify(refundAdjustmentPolicy, times(1)).isRefundAdjustmentPending("S1");
     }
-
 
     @Test
     void requestPaid_requestIdMissing_then400_BadRequest() {
@@ -271,6 +273,8 @@ class SettlementAdminCommandServiceImplTest {
         assertThat(meta.get("noOp").asBoolean()).isTrue();
         assertThat(meta.get("noOpReason").asText()).isEqualTo("ALREADY_PAID");
         assertThat(meta.get("comment").asText()).isEqualTo("memo");
+
+        verifyNoInteractions(entityManager);
     }
 
     @Test
@@ -361,6 +365,7 @@ class SettlementAdminCommandServiceImplTest {
                     assertThat(ace.getComment()).isEqualTo("memo");
                 });
 
+        verify(entityManager).detach(settlement);
         verifyNoInteractions(auditLogger);
     }
 
