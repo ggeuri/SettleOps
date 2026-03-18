@@ -34,25 +34,8 @@ public class OrderService {
     }
 
     @Transactional
-    public Orders createSeedOrder(String merchantId, String buyerId, String itemName, long amount) {
-        validateCreateInputs(merchantId, buyerId, itemName, amount);
-
+    public Orders createSeedOrder(String merchantId, String buyerId, String itemName, Long amount) {
         Orders order = Orders.create(merchantId, buyerId, itemName, amount);
         return ordersRepository.save(order);
-    }
-
-    private void validateCreateInputs(String merchantId, String buyerId, String itemName, long amount) {
-        if (merchantId == null || merchantId.isBlank()) {
-            throw new BadRequestException("merchantId는 필수입니다.");
-        }
-        if (buyerId == null || buyerId.isBlank()) {
-            throw new BadRequestException("buyerId는 필수입니다.");
-        }
-        if (itemName == null || itemName.isBlank()) {
-            throw new BadRequestException("itemName은 필수입니다.");
-        }
-        if (amount <= 0) {
-            throw new BadRequestException("amount는 0보다 커야 합니다.");
-        }
     }
 }
