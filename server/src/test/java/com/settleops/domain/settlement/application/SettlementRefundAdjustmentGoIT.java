@@ -55,8 +55,8 @@ class SettlementRefundAdjustmentGoIT {
     }
 
     @Test
-    @DisplayName("GO: APPROVED refund -> next batch REFUND line/link 생성 -> request-paid 차단 해제")
-    void approved_refund_next_batch_refund_line_and_link_then_request_paid_unblocked() {
+    @DisplayName("GO: APPROVED refund 존재 시 request-paid 차단되고, 다음 batch에서 REFUND line/link 반영 후 차단이 해제된다")
+    void approved_refund_blocks_request_paid_then_next_batch_applies_refund_line_and_link_and_unblocks() {
         String merchantId = "M-GO-" + UUID.randomUUID().toString().substring(0, 8);
         String buyerId = "B-GO-1";
 
@@ -83,14 +83,14 @@ class SettlementRefundAdjustmentGoIT {
                 LocalDateTime.of(2026, 3, 11, 10, 0)
         );
 
-        boolean pendingBeforeNextBatch =
+        boolean pendingForBlockedSettlementBeforeBatch =
                 refundAdjustmentPolicy.isRefundAdjustmentPending(blockedSettlementId);
 
-        boolean hasLinkBeforeNextBatch =
+        boolean hasLinkForBlockedSettlementBeforeBatch =
                 refundSettlementLinkRepository.existsBySettlementId(blockedSettlementId);
 
-        assertThat(pendingBeforeNextBatch).isTrue();
-        assertThat(hasLinkBeforeNextBatch).isFalse();
+        assertThat(pendingForBlockedSettlementBeforeBatch).isTrue();
+        assertThat(hasLinkForBlockedSettlementBeforeBatch).isFalse();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
@@ -141,7 +141,7 @@ class SettlementRefundAdjustmentGoIT {
 
         assertThat(newSettlementId).isNotBlank();
 
-        Long refundLineCount = jdbcTemplate.queryForObject(
+        Long refundLineCountForApprovedOldPayment = jdbcTemplate.queryForObject(
                 """
                 select count(*)
                 from settlement_line
@@ -156,9 +156,9 @@ class SettlementRefundAdjustmentGoIT {
                 3000L
         );
 
-        assertThat(refundLineCount).isEqualTo(1L);
+        assertThat(refundLineCountForApprovedOldPayment).isEqualTo(1L);
 
-        Long refundLinkCount = jdbcTemplate.queryForObject(
+        Long refundLinkCountForApprovedRefund = jdbcTemplate.queryForObject(
                 """
                 select count(*)
                 from refund_settlement_link
@@ -170,34 +170,61 @@ class SettlementRefundAdjustmentGoIT {
                 newSettlementId
         );
 
-        assertThat(refundLinkCount).isEqualTo(1L);
+        assertThat(refundLinkCountForApprovedRefund).isEqualTo(1L);
 
-        boolean pendingAfterNextBatch =
+        boolean pendingForNewSettlementAfterBatch =
                 refundAdjustmentPolicy.isRefundAdjustmentPending(newSettlementId);
 
-        boolean hasLinkAfterNextBatch =
+        boolean hasLinkForNewSettlementAfterBatch =
                 refundSettlementLinkRepository.existsBySettlementId(newSettlementId);
 
-        assertThat(pendingAfterNextBatch).isFalse();
-        assertThat(hasLinkAfterNextBatch).isTrue();
+        assertThat(pendingForNewSettlementAfterBatch).isFalse();
+        assertThat(hasLinkForNewSettlementAfterBatch).isTrue();
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
         );
 
-        SettlementPayActionResponse payRequestResponse =
+        SettlementPayActionResponse newSettlementPayRequestResponse =
                 settlementAdminCommandService.requestPaid(
                         newSettlementId,
-                        "after next batch",
-                        "req-go-request-paid-001"
+                        "after next batch on newly created settlement",
+                        "req-go-request-paid-new-001"
                 );
 
-        assertThat(payRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(newSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
 
         em.clear();
-        Settlement saved = settlementRepository.findById(newSettlementId).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
-        assertThat(saved.getPaidRequestedAt()).isNotNull();
+        Settlement newSettlementSaved = settlementRepository.findById(newSettlementId).orElseThrow();
+        assertThat(newSettlementSaved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(newSettlementSaved.getPaidRequestedAt()).isNotNull();
+
+        boolean pendingForBlockedSettlementAfterBatch =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(blockedSettlementId);
+
+        boolean hasLinkForBlockedSettlementAfterBatch =
+                refundSettlementLinkRepository.existsBySettlementId(blockedSettlementId);
+
+        assertThat(pendingForBlockedSettlementAfterBatch).isFalse();
+        assertThat(hasLinkForBlockedSettlementAfterBatch).isFalse();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("adminA", "N/A")
+        );
+
+        SettlementPayActionResponse blockedSettlementPayRequestResponse =
+                settlementAdminCommandService.requestPaid(
+                        blockedSettlementId,
+                        "after next batch on originally blocked settlement",
+                        "req-go-request-paid-old-001"
+                );
+
+        assertThat(blockedSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+
+        em.clear();
+        Settlement blockedSettlementSaved = settlementRepository.findById(blockedSettlementId).orElseThrow();
+        assertThat(blockedSettlementSaved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(blockedSettlementSaved.getPaidRequestedAt()).isNotNull();
     }
 
     private String seedReadySettlementWithPaymentLine(
