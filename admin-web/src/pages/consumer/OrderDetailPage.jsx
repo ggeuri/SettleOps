@@ -91,38 +91,45 @@ export default function OrderDetailPage() {
       </SectionCard>
 
       <SectionCard title="응답 예시">
-          <div className="kv-list">
-            <div className="kv-item">
-              <div className="kv-item__label">httpStatus</div>
-              <div className="kv-item__value">
-                <div className="display-field">200</div>
-              </div>
-            </div>
+        <div className="guard-notice" style={{ marginBottom: "16px" }}>
+          <div className="guard-notice__title">응답 헤더</div>
+          <div className="guard-notice__description">
+            pay API의 requestId는 응답 바디가 아니라 <strong>X-Request-Id</strong> 응답 헤더로만 전달됩니다.
+          </div>
+        </div>
 
-            <div className="kv-item">
-              <div className="kv-item__label">requestId</div>
-              <div className="kv-item__value">
-                <div className="display-field">req_20260318_abc123</div>
-              </div>
+        <div className="kv-list">
+          <div className="kv-item">
+            <div className="kv-item__label">httpStatus</div>
+            <div className="kv-item__value">
+              <div className="display-field">200</div>
             </div>
+          </div>
 
-            <div className="kv-item">
-              <div className="kv-item__label">status</div>
-              <div className="kv-item__value">
-                <div className="display-field display-field--badge">
-                  <span className="status-badge status-captured">CAPTURED</span>
-                </div>
-              </div>
+          <div className="kv-item">
+            <div className="kv-item__label">paymentId</div>
+            <div className="kv-item__value">
+              <div className="display-field">PAY-20260318-0001</div>
             </div>
+          </div>
 
-            <div className="kv-item">
-              <div className="kv-item__label">capturedAt</div>
-              <div className="kv-item__value">
-                <div className="display-field">2026-03-18 10:25:00</div>
+          <div className="kv-item">
+            <div className="kv-item__label">status</div>
+            <div className="kv-item__value">
+              <div className="display-field display-field--badge">
+                <span className="status-badge status-captured">CAPTURED</span>
               </div>
             </div>
           </div>
-        </SectionCard>
+
+          <div className="kv-item">
+            <div className="kv-item__label">capturedAt</div>
+            <div className="kv-item__value">
+              <div className="display-field">2026-03-18 10:25:00</div>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
 
       <SectionCard title="예외 / no-op 예시">
         <div className="page-section">
