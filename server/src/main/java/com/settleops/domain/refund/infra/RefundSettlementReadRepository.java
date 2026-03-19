@@ -4,6 +4,7 @@ import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.refund.application.dto.ApprovedRefundAdjustment;
 import com.settleops.domain.refund.domain.RefundStatus;
+import com.settleops.domain.settlement.enums.SettlementLineType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -12,6 +13,7 @@ import java.util.List;
 
 import static com.settleops.domain.refund.domain.QRefund.refund;
 import static com.settleops.domain.refund.domain.QRefundSettlementLink.refundSettlementLink;
+import static com.settleops.domain.settlement.entity.QSettlementLine.settlementLine;
 
 /**
  * READ 전용.
@@ -73,6 +75,32 @@ public class RefundSettlementReadRepository {
                 .selectOne()
                 .from(refundSettlementLink)
                 .where(refundSettlementLink.refundId.eq(refundId))
+                .fetchFirst();
+
+        return one != null;
+    }
+
+    /**
+     * LOCKED 해석:
+     * - settlementId 기준 refund 후보 식별은 settlement_line(PAYMENT) / payment_id 연결로 수행한다.
+     * - 승인 여부는 refund.status=APPROVED 기준으로 판단한다.
+     * - 반영 완료 여부는 refund_settlement_link 존재 여부로만 판단한다.
+     * - settlement_line/payment_id 기반 조인으로 "반영 완료"를 추론하지 않는다.
+     */
+    public boolean existsPendingApprovedRefundBySettlementId(String settlementId) {
+        Integer one = queryFactory
+                .selectOne()
+                .from(settlementLine)
+                .join(refund)
+                .on(refund.paymentId.eq(settlementLine.paymentId))
+                .leftJoin(refundSettlementLink)
+                .on(refundSettlementLink.refundId.eq(refund.refundId))
+                .where(
+                        settlementLine.settlementId.eq(settlementId),
+                        settlementLine.lineType.eq(SettlementLineType.PAYMENT),
+                        refund.status.eq(RefundStatus.APPROVED),
+                        refundSettlementLink.refundId.isNull()
+                )
                 .fetchFirst();
 
         return one != null;
