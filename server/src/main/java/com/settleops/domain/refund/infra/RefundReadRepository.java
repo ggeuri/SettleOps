@@ -1,8 +1,5 @@
 package com.settleops.domain.refund.infra;
 import com.querydsl.core.BooleanBuilder;
-import static com.settleops.domain.settlement.entity.QSettlementLine.settlementLine;
-import static com.settleops.domain.refund.domain.RefundStatus.APPROVED;
-import static com.settleops.domain.settlement.enums.SettlementLineType.PAYMENT;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.api.dto.QAdminRefundListItemDTO;
@@ -22,25 +19,6 @@ public class RefundReadRepository {
     //(QueryDSL projection들)
     //admin 리스트/필터/기간 등
     private final JPAQueryFactory queryFactory;
-
-    /**
-     * 기존 request-paid/A 정책 호환용.
-     * C의 refund_settlement_link SoT 경로에는 사용하지 않는다.
-     */
-    public boolean existsRefundSettlementLinkEvidence(String settlementId) {
-        Integer one = queryFactory
-                .selectOne()
-                .from(settlementLine)
-                .join(refund).on(refund.paymentId.eq(settlementLine.paymentId))
-                .where(
-                        settlementLine.settlementId.eq(settlementId),
-                        settlementLine.lineType.eq(PAYMENT),
-                        refund.status.eq(APPROVED)
-                )
-                .fetchFirst();
-
-        return one != null;
-    }
 
     /**
      * A6 운영 큐 조회(READ).

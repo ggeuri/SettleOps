@@ -19,9 +19,10 @@ import static com.settleops.domain.settlement.entity.QSettlementLine.settlementL
  * READ 전용.
  *
  * LOCKED 해석:
- * 1) approved refund 존재 여부는 refund 테이블에서 판단한다.
- * 2) 반영 완료 증거는 refund_settlement_link 존재 여부로만 판단한다.
- * 3) settlement_line/payment 기반 조인 추론은 사용하지 않는다.
+ * 1) 승인 사실 SoT는 refund(status=APPROVED) 로 판단한다.
+ * 2) 반영 완료 증거 SoT는 refund_settlement_link 존재 여부로 판단한다.
+ * 3) settlementId 기준 refund 후보 식별에는 settlement_line(PAYMENT) / payment_id 연결을 사용할 수 있다.
+ * 4) settlement_line / payment_id 기반 조인으로 "반영 완료"를 추론하는 방식은 사용하지 않는다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -81,11 +82,16 @@ public class RefundSettlementReadRepository {
     }
 
     /**
+     * settlementId 앵커 기준 REFUND_ADJUSTMENT_PENDING 판정용 조회.
+     *
      * LOCKED 해석:
-     * - settlementId 기준 refund 후보 식별은 settlement_line(PAYMENT) / payment_id 연결로 수행한다.
-     * - 승인 여부는 refund.status=APPROVED 기준으로 판단한다.
-     * - 반영 완료 여부는 refund_settlement_link 존재 여부로만 판단한다.
-     * - settlement_line/payment_id 기반 조인으로 "반영 완료"를 추론하지 않는다.
+     * - settlement_line(PAYMENT) / payment_id 연결은 refund 후보 식별(anchor) 용도로만 사용한다.
+     * - 승인 사실 SoT는 refund.status=APPROVED 로 판단한다.
+     * - 반영 완료 증거 판정은 refund_settlement_link 존재 여부로만 수행한다.
+     * - settlement_line / payment_id 기반 조인으로 "이미 반영 완료"를 추론하지 않는다.
+     *
+     * 즉, 특정 settlementId에 연결된 PAYMENT line의 payment_id 기준으로 관련 APPROVED refund 후보를 찾고,
+     * 그 refund_id에 대응하는 refund_settlement_link가 없으면 pending=true 로 본다.
      */
     public boolean existsPendingApprovedRefundBySettlementId(String settlementId) {
         Integer one = queryFactory

@@ -10,7 +10,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
+import com.settleops.domain.settlement.entity.SettlementLine;
+import com.settleops.domain.settlement.enums.SettlementLineType;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -216,5 +219,129 @@ import static org.assertj.core.api.Assertions.assertThat;
                 repository.existsSettlementLinkByRefundId(refundId);
 
         assertThat(result).isFalse();
+    }
+    @Test
+    void settlementId에_연결된_approved_refund가_있고_link가_없으면_true() {
+        String settlementId = "11111111-aaaa-bbbb-cccc-111111111111";
+        String paymentId = "22222222-aaaa-bbbb-cccc-222222222222";
+        String refundId = "33333333-aaaa-bbbb-cccc-333333333333";
+
+        LocalDate baseDate = LocalDate.of(2099, 12, 1);
+        String merchantId = "merchant-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+
+        Long batchId = createBatchId(baseDate.atStartOfDay());
+        persistReadySettlement(
+                settlementId,
+                batchId,
+                merchantId,
+                baseDate
+        );
+
+        em.persist(SettlementLine.of(
+                settlementId,
+                paymentId,
+                SettlementLineType.PAYMENT,
+                10000L
+        ));
+
+        em.persist(Refund.builder()
+                .refundId(refundId)
+                .paymentId(paymentId)
+                .merchantId(merchantId)
+                .buyerId("buyer1")
+                .amount(3000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
+                .build());
+
+        em.flush();
+        em.clear();
+
+        boolean result = repository.existsPendingApprovedRefundBySettlementId(settlementId);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void settlementId에_연결된_approved_refund가_있어도_link가_있으면_false() {
+        String settlementId = "44444444-aaaa-bbbb-cccc-444444444444";
+        String paymentId = "55555555-aaaa-bbbb-cccc-555555555555";
+        String refundId = "66666666-aaaa-bbbb-cccc-666666666666";
+
+        LocalDate baseDate = LocalDate.of(2099, 12, 2);
+        String merchantId = "merchant-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+
+        Long batchId = createBatchId(baseDate.atStartOfDay());
+        persistReadySettlement(
+                settlementId,
+                batchId,
+                merchantId,
+                baseDate
+        );
+
+        em.persist(SettlementLine.of(
+                settlementId,
+                paymentId,
+                SettlementLineType.PAYMENT,
+                10000L
+        ));
+
+        em.persist(Refund.builder()
+                .refundId(refundId)
+                .paymentId(paymentId)
+                .merchantId(merchantId)
+                .buyerId("buyer1")
+                .amount(3000L)
+                .currency("KRW")
+                .status(RefundStatus.APPROVED)
+                .reasonText("approved")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 11, 0))
+                .build());
+
+        em.persist(RefundSettlementLink.of(
+                refundId,
+                "77777777-aaaa-bbbb-cccc-777777777777",
+                LocalDateTime.of(2026, 3, 11, 0, 0)
+        ));
+
+        em.flush();
+        em.clear();
+
+        boolean result = repository.existsPendingApprovedRefundBySettlementId(settlementId);
+
+        assertThat(result).isFalse();
+    }
+
+    private Long createBatchId(LocalDateTime createdAt) {
+        com.settleops.domain.settlement.entity.SettlementBatch batch =
+                com.settleops.domain.settlement.entity.SettlementBatch.started(
+                        createdAt.toLocalDate(),
+                        java.util.UUID.randomUUID().toString(),
+                        "ADMIN:test",
+                        java.util.UUID.randomUUID().toString()
+                );
+        em.persist(batch);
+        em.flush();
+        return batch.getBatchId();
+    }
+
+    private void persistReadySettlement(String settlementId, Long batchId, String merchantId, LocalDate baseDate) {
+        com.settleops.domain.settlement.entity.Settlement settlement =
+                com.settleops.domain.settlement.entity.Settlement.createReady(
+                        settlementId,
+                        "SET-" + settlementId.substring(0, 8),
+                        batchId,
+                        merchantId,
+                        baseDate,
+                        10000L,
+                        0L,
+                        0L,
+                        10000L
+                );
+        em.persist(settlement);
     }
 }

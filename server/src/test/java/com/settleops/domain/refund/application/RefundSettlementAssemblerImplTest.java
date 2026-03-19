@@ -2,7 +2,6 @@ package com.settleops.domain.refund.application;
 
 import com.settleops.domain.refund.application.dto.ApprovedRefundAdjustment;
 import com.settleops.domain.refund.infra.RefundSettlementReadRepository;
-import com.settleops.global.error.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -48,6 +47,22 @@ class RefundSettlementAssemblerImplTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).refundId()).isEqualTo("refund-1");
         assertThat(result.get(0).amount()).isEqualTo(3000L);
+
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
+    }
+    @Test
+    void 조회결과가_없으면_빈리스트를_그대로_반환한다() {
+        LocalDate baseDate = LocalDate.of(2026, 3, 11);
+        LocalDateTime cutoff = baseDate.atStartOfDay();
+
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(cutoff))
+                .thenReturn(List.of());
+
+        List<ApprovedRefundAdjustment> result =
+                assembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+        assertThat(result).isNotNull();
+        assertThat(result).isEmpty();
 
         verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
     }
