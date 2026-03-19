@@ -3,6 +3,8 @@ package com.settleops.domain.settlement.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.refund.application.RefundSettlementAssembler;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
@@ -59,6 +61,9 @@ class SettlementAdminCommandServiceImplTest {
 
     private SettlementAdminCommandServiceImpl service;
 
+    private RefundSettlementAssembler refundSettlementAssembler;
+    private RefundSettlementLinkRepository refundSettlementLinkRepository;
+
     @BeforeEach
     void setUp() {
         settlementRepository = Mockito.mock(SettlementRepository.class);
@@ -70,6 +75,8 @@ class SettlementAdminCommandServiceImplTest {
         refundAdjustmentPolicy = Mockito.mock(RefundAdjustmentPolicy.class);
         settlementBatchRunRecorder = Mockito.mock(SettlementBatchRunRecorder.class);
         entityManager = Mockito.mock(EntityManager.class);
+        refundSettlementAssembler = Mockito.mock(RefundSettlementAssembler.class);
+        refundSettlementLinkRepository = Mockito.mock(RefundSettlementLinkRepository.class);
 
         objectMapper = new ObjectMapper();
 
@@ -82,8 +89,13 @@ class SettlementAdminCommandServiceImplTest {
                 refundAdjustmentPolicy,
                 settlementBatchRunRecorder,
                 objectMapper,
-                entityManager
+                entityManager,
+                refundSettlementAssembler,
+                refundSettlementLinkRepository
         );
+
+        Mockito.when(refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(Mockito.any()))
+                .thenReturn(List.of());
 
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("admin1", "N/A")
