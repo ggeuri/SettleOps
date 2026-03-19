@@ -1,13 +1,10 @@
 package com.settleops.domain.payment.domain;
 
-import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.global.entity.BaseEntity;
-import com.settleops.global.enums.Action;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 /*
@@ -16,7 +13,7 @@ import java.util.UUID;
     | Field            | Type        | Null | Key | Default | Extra |
     +------------------+-------------+------+-----+---------+-------+
     | payment_id       | char(36)    | NO   | PRI | NULL    |       |
-    | order_id         | varchar(64) | NO   | MUL | NULL    |       |
+    | order_id         | char(36)    | NO   | MUL | NULL    |       |
     | merchant_id      | varchar(32) | NO   | MUL | NULL    |       |
     | buyer_id         | varchar(32) | NO   | MUL | NULL    |       |
     | currency         | char(3)     | NO   |     | KRW     |       |
@@ -33,6 +30,9 @@ import java.util.UUID;
 @Entity
 @Table(
         name = "payment",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_payment_order_id", columnNames = "order_id")
+        },
         indexes = {
                 @Index(name = "idx_payment_status", columnList = "status"),
                 @Index(name = "idx_payment_created_at", columnList = "created_at"),
