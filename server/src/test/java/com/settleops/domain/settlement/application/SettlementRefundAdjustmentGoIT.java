@@ -185,19 +185,46 @@ class SettlementRefundAdjustmentGoIT {
                 new UsernamePasswordAuthenticationToken("adminA", "N/A")
         );
 
-        SettlementPayActionResponse payRequestResponse =
+        SettlementPayActionResponse newSettlementPayRequestResponse =
                 settlementAdminCommandService.requestPaid(
                         newSettlementId,
-                        "after next batch",
-                        "req-go-request-paid-001"
+                        "after next batch on newly created settlement",
+                        "req-go-request-paid-new-001"
                 );
 
-        assertThat(payRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(newSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
 
         em.clear();
-        Settlement saved = settlementRepository.findById(newSettlementId).orElseThrow();
-        assertThat(saved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
-        assertThat(saved.getPaidRequestedAt()).isNotNull();
+        Settlement newSettlementSaved = settlementRepository.findById(newSettlementId).orElseThrow();
+        assertThat(newSettlementSaved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(newSettlementSaved.getPaidRequestedAt()).isNotNull();
+
+        boolean pendingForBlockedSettlementAfterBatch =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(blockedSettlementId);
+
+        boolean hasLinkForBlockedSettlementAfterBatch =
+                refundSettlementLinkRepository.existsBySettlementId(blockedSettlementId);
+
+        assertThat(pendingForBlockedSettlementAfterBatch).isFalse();
+        assertThat(hasLinkForBlockedSettlementAfterBatch).isFalse();
+
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("adminA", "N/A")
+        );
+
+        SettlementPayActionResponse blockedSettlementPayRequestResponse =
+                settlementAdminCommandService.requestPaid(
+                        blockedSettlementId,
+                        "after next batch on originally blocked settlement",
+                        "req-go-request-paid-old-001"
+                );
+
+        assertThat(blockedSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+
+        em.clear();
+        Settlement blockedSettlementSaved = settlementRepository.findById(blockedSettlementId).orElseThrow();
+        assertThat(blockedSettlementSaved.getStatus()).isEqualTo(SettlementStatus.PAY_REQUESTED);
+        assertThat(blockedSettlementSaved.getPaidRequestedAt()).isNotNull();
     }
 
     private String seedReadySettlementWithPaymentLine(
