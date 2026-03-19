@@ -60,6 +60,8 @@ public class SettlementDetailQueryRepositoryImplTest {
     void findSettlementLines_ordersByCreatedAtAsc() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId1 = UUID.randomUUID().toString();
+        String paymentId2 = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -71,13 +73,13 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine laterLine = SettlementLine.of(
                 settlementId,
-                "payment-2",
+                paymentId2,
                 SettlementLineType.PAYMENT,
                 3000L
         );
         SettlementLine earlierLine = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId1,
                 SettlementLineType.PAYMENT,
                 7000L
         );
@@ -95,8 +97,8 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         // then
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).paymentId()).isEqualTo("payment-1");
-        assertThat(result.get(1).paymentId()).isEqualTo("payment-2");
+        assertThat(result.get(0).paymentId()).isEqualTo(paymentId1);
+        assertThat(result.get(1).paymentId()).isEqualTo(paymentId2);
     }
 
     @Test
@@ -144,6 +146,8 @@ public class SettlementDetailQueryRepositoryImplTest {
     void hasApprovedRefund_returnsTrueWhenApprovedRefundExists() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId = UUID.randomUUID().toString();
+        String refundId = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -155,15 +159,15 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine line = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId,
                 SettlementLineType.PAYMENT,
                 10000L
         );
         settlementLineRepository.save(line);
 
         Refund refund = createRefund(
-                "refund-1",
-                "payment-1",
+                refundId,
+                paymentId,
                 RefundStatus.APPROVED
         );
         refundRepository.save(refund);
@@ -183,6 +187,7 @@ public class SettlementDetailQueryRepositoryImplTest {
     void hasApprovedRefund_returnsFalseWhenApprovedRefundDoesNotExist() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -194,7 +199,7 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine line = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId,
                 SettlementLineType.PAYMENT,
                 10000L
         );
