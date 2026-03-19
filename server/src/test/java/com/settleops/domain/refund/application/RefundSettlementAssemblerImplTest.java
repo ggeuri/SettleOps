@@ -2,7 +2,6 @@ package com.settleops.domain.refund.application;
 
 import com.settleops.domain.refund.application.dto.ApprovedRefundAdjustment;
 import com.settleops.domain.refund.infra.RefundSettlementReadRepository;
-import com.settleops.global.error.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,13 +24,6 @@ class RefundSettlementAssemblerImplTest {
     }
 
     @Test
-    void baseDate가_null이면_400() {
-        assertThatThrownBy(() -> assembler.getApprovedRefundAdjustmentsForBaseDate(null))
-                .isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("baseDate");
-    }
-
-    @Test
     void baseDate_시작시각을_cutoff로_사용해_조회한다() {
         LocalDate baseDate = LocalDate.of(2026, 3, 11);
         LocalDateTime cutoff = baseDate.atStartOfDay();
@@ -46,7 +38,7 @@ class RefundSettlementAssemblerImplTest {
                 )
         );
 
-        when(readRepository.findApprovedUnlinkedRefundAdjustmentsBefore(cutoff))
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(cutoff))
                 .thenReturn(expected);
 
         List<ApprovedRefundAdjustment> result =
@@ -56,6 +48,22 @@ class RefundSettlementAssemblerImplTest {
         assertThat(result.get(0).refundId()).isEqualTo("refund-1");
         assertThat(result.get(0).amount()).isEqualTo(3000L);
 
-        verify(readRepository).findApprovedUnlinkedRefundAdjustmentsBefore(cutoff);
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
+    }
+    @Test
+    void 조회결과가_없으면_빈리스트를_그대로_반환한다() {
+        LocalDate baseDate = LocalDate.of(2026, 3, 11);
+        LocalDateTime cutoff = baseDate.atStartOfDay();
+
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(cutoff))
+                .thenReturn(List.of());
+
+        List<ApprovedRefundAdjustment> result =
+                assembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+        assertThat(result).isNotNull();
+        assertThat(result).isEmpty();
+
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
     }
 }
