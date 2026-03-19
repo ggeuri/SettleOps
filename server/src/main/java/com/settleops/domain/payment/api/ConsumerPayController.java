@@ -18,15 +18,6 @@ public class ConsumerPayController {
     private final PayService payService;
     private final RequestIdResolver requestIdResolver;
 
-    /** 주문 상세 조회 */
-    @GetMapping("/{orderId}")
-    public ResponseEntity<?> getOrderDetail( // <OrderDetailResponseDTO>
-            @PathVariable String orderId
-    ){
-        // payService.findOrderDetail();
-        return ResponseEntity.status(501).build();
-    }
-
     /**
      * 결제 실행 API
      *
