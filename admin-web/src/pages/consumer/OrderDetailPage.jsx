@@ -58,7 +58,7 @@ export default function OrderDetailPage() {
           <div className="kv-item">
             <div className="kv-item__label">paymentStatus</div>
             <div className="kv-item__value">
-              <StatusBadge status="CREATED" />
+              <StatusBadge status="CAPTURED" />
             </div>
           </div>
         </div>
@@ -110,7 +110,7 @@ export default function OrderDetailPage() {
               <div className="kv-item__label">status</div>
               <div className="kv-item__value">
                 <div className="display-field display-field--badge">
-                  <span className="status-badge status-created">CREATED</span>
+                  <span className="status-badge status-captured">CAPTURED</span>
                 </div>
               </div>
             </div>

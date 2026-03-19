@@ -3,6 +3,7 @@
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
+import { Link } from "react-router-dom";
 
 export default function PaymentListPage() {
   return (
@@ -65,7 +66,11 @@ export default function PaymentListPage() {
             </thead>
             <tbody>
               <tr>
-                <td>PAY-20260318-0001</td>
+                <td>
+                  <Link to="/merchant/payments/PAY-20260318-0001">
+                    PAY-20260318-0001
+                  </Link>
+                </td>
                 <td>ORD-20260318-0001</td>
                 <td>아이폰 14 프로</td>
                 <td><StatusBadge status="CAPTURED" /></td>
