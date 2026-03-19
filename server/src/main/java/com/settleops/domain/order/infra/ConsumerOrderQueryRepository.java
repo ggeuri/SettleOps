@@ -88,18 +88,4 @@ public class ConsumerOrderQueryRepository {
                 .orderBy(paymentEvent.occurredAt.asc(), paymentEvent.paymentEventId.asc())
                 .fetch();
     }
-
-    private record ConsumerOrderFlatRow(
-            String orderId,
-            String merchantId,
-            String buyerId,
-            String itemName,
-            long amount,
-            String orderStatus,
-            String paymentId,
-            String paymentStatus,
-            LocalDateTime capturedAt,
-            LocalDateTime confirmedAt
-    ) {
-    }
 }
