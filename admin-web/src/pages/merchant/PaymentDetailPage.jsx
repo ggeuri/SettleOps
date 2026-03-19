@@ -20,8 +20,13 @@ export default function PaymentDetailPage() {
                 <div className="summary-card__value payment-summary-card__value--id copyable-id__text">
                   PAY-20260318-0001-550e8400-e29b-41d4-a716-446655440000
                 </div>
+              </div>
+            </div>
 
-                <div className="payment-summary-card__meta">
+            <div className="card summary-card payment-summary-card">
+              <div className="card__body">
+                <div className="summary-card__label">status</div>
+                <div className="summary-card__value">
                   <StatusBadge status="CAPTURED" />
                 </div>
               </div>
@@ -30,9 +35,7 @@ export default function PaymentDetailPage() {
             <div className="card summary-card payment-summary-card">
               <div className="card__body">
                 <div className="summary-card__label">amount / currency</div>
-                <div className="summary-card__value">
-                  125,000원 / KRW
-                </div>
+                <div className="summary-card__value">125,000 KRW</div>
               </div>
             </div>
           </div>
@@ -111,44 +114,71 @@ export default function PaymentDetailPage() {
           </SectionCard>
         </div>
 
-        <SectionCard title="이벤트 타임라인">
-          <div className="timeline">
-            <div className="timeline-item">
-              <div className="timeline-item__time">2026-03-18 10:20:00</div>
-              <div className="timeline-item__body">
-                <div className="timeline-item__title">PAYMENT_CREATED</div>
-                <div className="timeline-item__meta">
-                  actor: CONSUMER / entity: PAYMENT / id: PAY-20260318-0001
-                </div>
-              </div>
+        <SectionCard title="결제 이벤트 상세">
+          <div className="table-toolbar">
+            <div>payment_event 목록</div>
+            <div className="action-panel">
+              <span className="badge badge--default">insert-only</span>
+              <span className="badge badge--primary">mock</span>
             </div>
+          </div>
 
-            <div className="timeline-item">
-              <div className="timeline-item__time">2026-03-18 10:25:00</div>
-              <div className="timeline-item__body">
-                <div className="timeline-item__title">PAYMENT_CAPTURED</div>
-                <div className="timeline-item__meta">
-                  actor: CONSUMER / entity: PAYMENT / id: PAY-20260318-0001
-                </div>
-              </div>
-            </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>occurredAt</th>
+                  <th>eventType</th>
+                  <th>before</th>
+                  <th>after</th>
+                  <th>requestId</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>2026-03-18 10:20:00</td>
+                  <td>
+                    <span className="badge badge--default">PAYMENT_CREATED</span>
+                  </td>
+                  <td>-</td>
+                  <td>CREATED</td>
+                  <td>
+                    <span className="copyable-id__text">req_20260318_pay_001</span>
+                  </td>
+                </tr>
 
-            <div className="timeline-item">
-              <div className="timeline-item__time">2026-03-18 13:05:00</div>
-              <div className="timeline-item__body">
-                <div className="timeline-item__title">PAYMENT_CONFIRMED</div>
-                <div className="timeline-item__meta">
-                  actor: CONSUMER / entity: PAYMENT / id: PAY-20260318-0001
-                </div>
-                <div className="audit-meta-block">
-                  {`{
-  "requestId": "req_20260318_confirm_001",
-  "before": { "status": "CAPTURED" },
-  "after": { "status": "CAPTURED" },
-  "eventType": "PAYMENT_CONFIRMED"
-}`}
-                </div>
-              </div>
+                <tr>
+                  <td>2026-03-18 10:25:00</td>
+                  <td>
+                    <span className="badge badge--success">PAYMENT_CAPTURED</span>
+                  </td>
+                  <td>CREATED</td>
+                  <td>CAPTURED</td>
+                  <td>
+                    <span className="copyable-id__text">req_20260318_pay_001</span>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td>2026-03-18 13:05:00</td>
+                  <td>
+                    <span className="badge badge--primary">PAYMENT_CONFIRMED</span>
+                  </td>
+                  <td>CAPTURED</td>
+                  <td>CAPTURED</td>
+                  <td>
+                    <span className="copyable-id__text">req_20260318_confirm_001</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="guard-notice" style={{ marginTop: "16px" }}>
+            <div className="guard-notice__title">표시 규칙</div>
+            <div className="guard-notice__description">
+              payment.status는 CREATED / CAPTURED만 사용하고, CONFIRMED는
+              payment_event의 PAYMENT_CONFIRMED 이벤트로만 표현합니다.
             </div>
           </div>
         </SectionCard>

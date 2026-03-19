@@ -7,7 +7,7 @@
 }
 
 .payment-detail-page .payment-summary-grid {
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 3fr 1fr 1fr;
 }
 
 .payment-detail-page .payment-summary-card {
@@ -35,6 +35,10 @@
 .payment-detail-page .summary-card,
 .payment-detail-page .summary-card__value {
   min-width: 0;
+}
+
+.payment-detail-page .summary-card__value {
+font-size:var(--font-size-md);
 }
 
 @media (max-width: 1024px) {
