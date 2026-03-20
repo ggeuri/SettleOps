@@ -88,7 +88,7 @@ class ConsumerOrderQueryControllerTest {
                 )
         );
 
-        BDDMockito.given(sessionAuthProvider.getRequiredBuyerId(ArgumentMatchers.any(HttpSession.class)))
+        BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))
@@ -112,7 +112,7 @@ class ConsumerOrderQueryControllerTest {
         String orderId = "22222222-2222-2222-2222-222222222222";
         String loginConsumerId = "buyer-1";
 
-        BDDMockito.given(sessionAuthProvider.getRequiredBuyerId(ArgumentMatchers.any(HttpSession.class)))
+        BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))
@@ -129,7 +129,7 @@ class ConsumerOrderQueryControllerTest {
         String orderId = "33333333-3333-3333-3333-333333333333";
         String loginConsumerId = "buyer-2";
 
-        BDDMockito.given(sessionAuthProvider.getRequiredBuyerId(ArgumentMatchers.any(HttpSession.class)))
+        BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))

@@ -33,7 +33,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -94,7 +93,7 @@ class MerchantPaymentQueryControllerTest {
                     )
             );
 
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getMerchantPayments(
                     eq(MERCHANT_ID),
                     eq(MERCHANT_ID),
@@ -145,7 +144,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - 결과 없으면 빈 배열 반환")
         void getMerchantPayments_returns_empty_list() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getMerchantPayments(
                     eq(MERCHANT_ID),
                     eq(MERCHANT_ID),
@@ -171,7 +170,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 status면 400")
         void getMerchantPayments_returns_bad_request_when_status_invalid() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
 
             // when & then
             mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
@@ -188,8 +187,8 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - merchant 불일치면 403")
         void getMerchantPayments_returns_forbidden_when_merchant_mismatch() throws Exception {
             // given
-            doThrow(new ForbiddenException("접근 권한이 없습니다."))
-                    .when(sessionAuthProvider).getRequiredMerchantId(any());
+            when(sessionAuthProvider.getCurrentMerchantId())
+                    .thenThrow(new ForbiddenException("접근 권한이 없습니다."));
 
             // when & then
             mockMvc.perform(get("/api/merchants/{merchantId}/payments", "OTHER_MERCHANT")
@@ -208,7 +207,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 confirmed면 400")
         void getMerchantPayments_returns_bad_request_when_confirmed_invalid() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
 
             // when & then
             mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
@@ -225,7 +224,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - query param 없이 호출 가능")
         void getMerchantPayments_without_query_params_returns_ok() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getMerchantPayments(
                     eq(MERCHANT_ID),
                     eq(MERCHANT_ID),
@@ -261,7 +260,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - status 단독 바인딩")
         void getMerchantPayments_binds_status_only() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getMerchantPayments(
                     eq(MERCHANT_ID),
                     eq(MERCHANT_ID),
@@ -298,7 +297,7 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - from/to 날짜 바인딩")
         void getMerchantPayments_binds_from_and_to_as_local_date() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getMerchantPayments(
                     eq(MERCHANT_ID),
                     eq(MERCHANT_ID),
@@ -333,8 +332,8 @@ class MerchantPaymentQueryControllerTest {
         @DisplayName("GET /api/merchants/{merchantId}/payments - 세션 없으면 401")
         void getMerchantPayments_returns_unauthorized_when_session_missing() throws Exception {
             // given
-            doThrow(new UnauthorizedException("로그인이 필요합니다."))
-                    .when(sessionAuthProvider).getRequiredMerchantId(any());
+            when(sessionAuthProvider.getCurrentMerchantId())
+                    .thenThrow(new UnauthorizedException("로그인이 필요합니다."));
 
             // when & then
             mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID))
