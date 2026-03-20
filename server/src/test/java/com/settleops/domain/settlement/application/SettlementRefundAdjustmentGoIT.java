@@ -16,14 +16,11 @@ import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.ConflictException;
 import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -38,21 +35,34 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class SettlementRefundAdjustmentGoIT {
 
-    @Autowired SettlementAdminCommandService settlementAdminCommandService;
-    @Autowired SettlementRepository settlementRepository;
-    @Autowired SettlementBatchRepository settlementBatchRepository;
-    @Autowired SettlementLineRepository settlementLineRepository;
-    @Autowired EntityManager em;
-    @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired TransactionTemplate tx;
+    private static final String ADMIN_ID = "adminA";
 
-    @Autowired RefundAdjustmentPolicy refundAdjustmentPolicy;
-    @Autowired RefundSettlementLinkRepository refundSettlementLinkRepository;
+    @Autowired
+    SettlementAdminCommandService settlementAdminCommandService;
 
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
+    @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
+    SettlementBatchRepository settlementBatchRepository;
+
+    @Autowired
+    SettlementLineRepository settlementLineRepository;
+
+    @Autowired
+    EntityManager em;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    TransactionTemplate tx;
+
+    @Autowired
+    RefundAdjustmentPolicy refundAdjustmentPolicy;
+
+    @Autowired
+    RefundSettlementLinkRepository refundSettlementLinkRepository;
 
     @Test
     @DisplayName("GO: APPROVED refund 존재 시 request-paid 차단되고, 다음 batch에서 REFUND line/link 반영 후 차단이 해제된다")
@@ -92,15 +102,12 @@ class SettlementRefundAdjustmentGoIT {
         assertThat(pendingForBlockedSettlementBeforeBatch).isTrue();
         assertThat(hasLinkForBlockedSettlementBeforeBatch).isFalse();
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("adminA", "N/A")
-        );
-
         assertThatThrownBy(() ->
                 settlementAdminCommandService.requestPaid(
                         blockedSettlementId,
                         "before next batch",
-                        "req-go-block-001"
+                        "req-go-block-001",
+                        ADMIN_ID
                 )
         ).isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
@@ -118,12 +125,8 @@ class SettlementRefundAdjustmentGoIT {
                 LocalDateTime.of(2026, 3, 12, 14, 0)
         );
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("adminA", "N/A")
-        );
-
         SettlementBatchRunResponse batchResponse =
-                settlementAdminCommandService.runBatch(nextBatchBaseDate, "req-go-batch-001");
+                settlementAdminCommandService.runBatch(nextBatchBaseDate, "req-go-batch-001", ADMIN_ID);
 
         assertThat(batchResponse.result()).isEqualTo(SettlementBatchRunResponse.RunResult.OK);
 
@@ -181,15 +184,12 @@ class SettlementRefundAdjustmentGoIT {
         assertThat(pendingForNewSettlementAfterBatch).isFalse();
         assertThat(hasLinkForNewSettlementAfterBatch).isTrue();
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("adminA", "N/A")
-        );
-
         SettlementPayActionResponse newSettlementPayRequestResponse =
                 settlementAdminCommandService.requestPaid(
                         newSettlementId,
                         "after next batch on newly created settlement",
-                        "req-go-request-paid-new-001"
+                        "req-go-request-paid-new-001",
+                        ADMIN_ID
                 );
 
         assertThat(newSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
@@ -208,15 +208,12 @@ class SettlementRefundAdjustmentGoIT {
         assertThat(pendingForBlockedSettlementAfterBatch).isFalse();
         assertThat(hasLinkForBlockedSettlementAfterBatch).isFalse();
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("adminA", "N/A")
-        );
-
         SettlementPayActionResponse blockedSettlementPayRequestResponse =
                 settlementAdminCommandService.requestPaid(
                         blockedSettlementId,
                         "after next batch on originally blocked settlement",
-                        "req-go-request-paid-old-001"
+                        "req-go-request-paid-old-001",
+                        ADMIN_ID
                 );
 
         assertThat(blockedSettlementPayRequestResponse.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);

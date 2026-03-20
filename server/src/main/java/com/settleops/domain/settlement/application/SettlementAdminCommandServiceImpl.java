@@ -27,12 +27,9 @@ import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.NotFoundException;
-import com.settleops.global.error.UnauthorizedException;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,10 +62,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementBatchRunResponse runBatch(LocalDate baseDate, String requestId) {
+    public SettlementBatchRunResponse runBatch(LocalDate baseDate, String requestId, String adminId) {
         // Trace/Audit SoT: requestId/actorId 스냅샷을 시작 시점에 고정해서 끝까지 동일하게 사용
         validateRequestId(requestId);
-        String actorId = currentActorId();
+        validateAdminId(adminId);
+        String actorId = adminId;
 
         if (baseDate == null) {
             throw new BadRequestException("baseDate must not be null");
@@ -134,7 +132,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             List<ApprovedRefundAdjustment> refundAdjustments =
                     refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
 
-// 5) merchant별 집계
+            // 5) merchant별 집계
             Map<String, Long> grossByMerchant = rows.stream()
                     .collect(Collectors.groupingBy(
                             PaymentEventRepository.ConfirmedPaymentRow::getMerchantId,
@@ -147,7 +145,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                             Collectors.summingLong(ApprovedRefundAdjustment::amount)
                     ));
 
-// payment merchant + refund merchant 모두 settlement 생성 대상
+            // payment merchant + refund merchant 모두 settlement 생성 대상
             Set<String> merchantIds = new LinkedHashSet<>();
             merchantIds.addAll(grossByMerchant.keySet());
             merchantIds.addAll(refundAmountByMerchant.keySet());
@@ -352,9 +350,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementPayActionResponse requestPaid(String settlementId, String comment, String requestId) {
+    public SettlementPayActionResponse requestPaid(String settlementId, String comment, String requestId, String adminId) {
         validateRequestId(requestId);
-        String actorId = currentActorId();
+        validateAdminId(adminId);
+        String actorId = adminId;
 
         if (settlementId == null || settlementId.isBlank()) {
             throw new BadRequestException("settlementId must not be null/blank");
@@ -406,9 +405,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
     @Override
     @Transactional
-    public SettlementPayActionResponse approvePaid(String settlementId, String comment, String requestId) {
+    public SettlementPayActionResponse approvePaid(String settlementId, String comment, String requestId, String adminId) {
         validateRequestId(requestId);
-        String approverId = currentActorId(); // 한번만 스냅샷(끝까지 동일)
+        validateAdminId(adminId);
+        String approverId = adminId; // 한번만 스냅샷(끝까지 동일)
 
         if (settlementId == null || settlementId.isBlank()) {
             throw new BadRequestException("settlementId must not be null/blank");
@@ -519,19 +519,6 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
     }
 
-    /**
-     * Settlement 도메인 공통 예외 계층 정렬:
-     * - 인증 주체 없음/공백은 UnauthorizedException으로 통일한다.
-     * - 통합 스모크 및 GlobalExceptionHandler 계약과 동일한 의미를 유지한다.
-     */
-    private String currentActorId() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new UnauthorizedException("unauthorized");
-        }
-        return auth.getName();
-    }
-
     private void auditSettlementAction(
             String requestId,
             String actorId,
@@ -628,6 +615,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private void validateRequestId(String requestId) {
         if (requestId == null || requestId.isBlank()) {
             throw new BadRequestException("requestId must not be null/blank");
+        }
+    }
+
+    private void validateAdminId(String adminId) {
+        if (adminId == null || adminId.isBlank()) {
+            throw new BadRequestException("adminId must not be null/blank");
         }
     }
 
