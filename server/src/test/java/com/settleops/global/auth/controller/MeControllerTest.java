@@ -11,6 +11,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,8 +48,8 @@ class MeControllerTest {
         mockMvc.perform(get("/api/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("ADMIN"))
-                .andExpect(jsonPath("$.buyerId").doesNotExist())
-                .andExpect(jsonPath("$.merchantId").doesNotExist())
+                .andExpect(jsonPath("$.buyerId").value(nullValue()))
+                .andExpect(jsonPath("$.merchantId").value(nullValue()))
                 .andExpect(jsonPath("$.adminId").value("ADMIN_1001"));
     }
 
@@ -63,7 +64,7 @@ class MeControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("CONSUMER"))
                 .andExpect(jsonPath("$.buyerId").value("BUYER_1001"))
-                .andExpect(jsonPath("$.merchantId").doesNotExist())
-                .andExpect(jsonPath("$.adminId").doesNotExist());
+                .andExpect(jsonPath("$.merchantId").value(nullValue()))
+                .andExpect(jsonPath("$.adminId").value(nullValue()));
     }
 }

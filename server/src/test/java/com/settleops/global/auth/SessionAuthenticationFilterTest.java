@@ -49,7 +49,12 @@ class SessionAuthenticationFilterTest {
                 .extracting("authority")
                 .containsExactly("ROLE_ADMIN");
 
-        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        Authentication authenticationAfterFilter = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(authenticationAfterFilter).isNotNull();
+        assertThat(authenticationAfterFilter.getName()).isEqualTo("ADMIN_1001");
+        assertThat(authenticationAfterFilter.getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_ADMIN");
     }
 
     @Test

@@ -25,29 +25,25 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        try {
-            HttpSession session = request.getSession(false);
+        HttpSession session = request.getSession(false);
 
-            if (session != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                String role = getSessionString(session, MeController.SessionKeys.ROLE);
-                String principal = resolvePrincipal(session, role);
+        if (session != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            String role = getSessionString(session, MeController.SessionKeys.ROLE);
+            String principal = resolvePrincipal(session, role);
 
-                if (role != null && principal != null) {
-                    UsernamePasswordAuthenticationToken authentication =
-                            new UsernamePasswordAuthenticationToken(
-                                    principal,
-                                    null,
-                                    List.of(new SimpleGrantedAuthority("ROLE_" + role))
-                            );
+            if (role != null && principal != null) {
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(
+                                principal,
+                                null,
+                                List.of(new SimpleGrantedAuthority("ROLE_" + role))
+                        );
 
-                    SecurityContextHolder.getContext().setAuthentication(authentication);
-                }
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
-
-            filterChain.doFilter(request, response);
-        } finally {
-            SecurityContextHolder.clearContext();
         }
+
+        filterChain.doFilter(request, response);
     }
 
     private String resolvePrincipal(HttpSession session, String role) {
