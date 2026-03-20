@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.nullValue;
@@ -30,22 +30,18 @@ class MeControllerTest {
     private AuditLogger auditLogger;
 
     @Test
-    @DisplayName("세션에 role이 없으면 /api/me 는 401을 반환한다")
-    void me_shouldReturn401_whenRoleDoesNotExist() throws Exception {
-        MockHttpSession session = new MockHttpSession();
-
-        mockMvc.perform(get("/api/me").session(session))
-                .andExpect(status().isUnauthorized());
+    @DisplayName("인증이 없으면 /api/me 는 401을 반환한다")
+    void me_shouldReturn401_whenAuthenticationDoesNotExist() throws Exception {
+        mockMvc.perform(get("/api/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
-    @DisplayName("admin 세션이면 /api/me 에 role과 adminId를 반환한다")
-    void me_shouldReturnAdminInfo_whenAdminSessionExists() throws Exception {
-        MockHttpSession session = new MockHttpSession();
-        session.setAttribute(MeController.SessionKeys.ROLE, "ADMIN");
-        session.setAttribute(MeController.SessionKeys.ADMIN_ID, "ADMIN_1001");
-
-        mockMvc.perform(get("/api/me").session(session))
+    @WithMockUser(username = "ADMIN_1001", roles = "ADMIN")
+    @DisplayName("admin 인증이면 /api/me 에 role과 adminId를 반환한다")
+    void me_shouldReturnAdminInfo_whenAdminAuthenticationExists() throws Exception {
+        mockMvc.perform(get("/api/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("ADMIN"))
                 .andExpect(jsonPath("$.buyerId").value(nullValue()))
@@ -54,13 +50,10 @@ class MeControllerTest {
     }
 
     @Test
-    @DisplayName("consumer 세션이면 /api/me 에 role과 buyerId를 반환한다")
-    void me_shouldReturnConsumerInfo_whenConsumerSessionExists() throws Exception {
-        MockHttpSession session = new MockHttpSession();
-        session.setAttribute(MeController.SessionKeys.ROLE, "CONSUMER");
-        session.setAttribute(MeController.SessionKeys.BUYER_ID, "BUYER_1001");
-
-        mockMvc.perform(get("/api/me").session(session))
+    @WithMockUser(username = "BUYER_1001", roles = "CONSUMER")
+    @DisplayName("consumer 인증이면 /api/me 에 role과 buyerId를 반환한다")
+    void me_shouldReturnConsumerInfo_whenConsumerAuthenticationExists() throws Exception {
+        mockMvc.perform(get("/api/me"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("CONSUMER"))
                 .andExpect(jsonPath("$.buyerId").value("BUYER_1001"))

@@ -31,7 +31,7 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
             String role = getSessionString(session, MeController.SessionKeys.ROLE);
             String principal = resolvePrincipal(session, role);
 
-            if (role != null && principal != null) {
+            if (isSupportedRole(role) && principal != null) {
                 UsernamePasswordAuthenticationToken authentication =
                         new UsernamePasswordAuthenticationToken(
                                 principal,
@@ -44,6 +44,12 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isSupportedRole(String role) {
+        return "CONSUMER".equals(role)
+                || "MERCHANT".equals(role)
+                || "ADMIN".equals(role);
     }
 
     private String resolvePrincipal(HttpSession session, String role) {

@@ -1,59 +1,50 @@
 package com.settleops.global.auth.controller;
 
-import jakarta.servlet.http.HttpSession;
+import com.settleops.global.error.UnauthorizedException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/**
- * 현재 로그인 주체 정보를 반환하는 공통 인증 가드 API
- *
- * <p>기획서 규칙 (LOCKED)</p>
- * <ul>
- *   <li>라우팅 가드는 <b>/api/me</b> 단일 엔드포인트로만 판정한다.</li>
- *   <li>프론트는 모든 요청에 <b>credentials: include</b> 로 세션 쿠키를 포함한다.</li>
- *   <li>Consumer / Merchant / Admin 화면 라우팅은 role 기반으로 분기한다.</li>
- * </ul>
- *
- * <p>동작 방식</p>
- * <ul>
- *   <li>HttpSession에서 ROLE / BUYER_ID / MERCHANT_ID 를 조회한다.</li>
- *   <li>세션이 존재하지 않으면 401을 반환한다.</li>
- * </ul>
- *
- * <p>응답</p>
- * <pre>
- * {
- *   "role": "CONSUMER | MERCHANT | ADMIN",
- *   "buyerId": "...",
- *   "merchantId": "..."
- * }
- * </pre>
- *
- * <p>주의</p>
- * <ul>
- *   <li>본 API는 인증 상태 확인용이며 도메인 로직을 포함하지 않는다.</li>
- *   <li>프로젝트 전체에서 <b>/api/me 는 반드시 1개만 존재</b>해야 한다.</li>
- * </ul>
- */
 @RestController
 @RequestMapping("/api")
 public class MeController {
 
     @GetMapping("/me")
-    public ResponseEntity<MeResponse> me(HttpSession session) {
+    public ResponseEntity<MeResponse> me() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
-        String role = (String) session.getAttribute(SessionKeys.ROLE);
-        String buyerId = (String) session.getAttribute(SessionKeys.BUYER_ID);
-        String merchantId = (String) session.getAttribute(SessionKeys.MERCHANT_ID);
-        String adminId = (String) session.getAttribute(SessionKeys.ADMIN_ID);
-
-        if (role == null) {
-            return ResponseEntity.status(401).build();
+        if (auth == null
+                || !auth.isAuthenticated()
+                || auth instanceof AnonymousAuthenticationToken
+                || auth.getName() == null
+                || auth.getName().isBlank()) {
+            throw new UnauthorizedException("로그인이 필요합니다.");
         }
 
-        return ResponseEntity.ok(new MeResponse(role, buyerId, merchantId, adminId));
+        String role = extractRole(auth);
+        String principal = auth.getName();
+
+        return ResponseEntity.ok(
+                switch (role) {
+                    case "CONSUMER" -> new MeResponse(role, principal, null, null);
+                    case "MERCHANT" -> new MeResponse(role, null, principal, null);
+                    case "ADMIN" -> new MeResponse(role, null, null, principal);
+                    default -> throw new UnauthorizedException("로그인이 필요합니다.");
+                }
+        );
+    }
+
+    private String extractRole(Authentication auth) {
+        return auth.getAuthorities().stream()
+                .map(grantedAuthority -> grantedAuthority.getAuthority())
+                .filter(authority -> authority.startsWith("ROLE_"))
+                .map(authority -> authority.substring(5))
+                .findFirst()
+                .orElseThrow(() -> new UnauthorizedException("로그인이 필요합니다."));
     }
 
     public record MeResponse(String role, String buyerId, String merchantId, String adminId) {}

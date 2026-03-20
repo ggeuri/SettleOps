@@ -2,6 +2,7 @@ package com.settleops.global.auth;
 
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.UnauthorizedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -19,14 +20,7 @@ public class SessionAuthProvider {
      * @throws UnauthorizedException 인증 정보가 없거나 principal 형식이 올바르지 않은 경우
      */
     public String getCurrentPrincipal() {
-        Authentication authentication = getAuthentication();
-        Object principal = authentication.getPrincipal();
-
-        if (!(principal instanceof String principalId) || principalId.isBlank()) {
-            throw new UnauthorizedException("인증 주체 정보가 올바르지 않습니다.");
-        }
-
-        return principalId;
+        return getAuthentication().getName();
     }
 
     /**
@@ -110,7 +104,11 @@ public class SessionAuthProvider {
     private Authentication getAuthentication() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken
+                || authentication.getName() == null
+                || authentication.getName().isBlank()) {
             throw new UnauthorizedException("인증 정보가 없습니다.");
         }
 
