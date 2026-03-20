@@ -1,3 +1,5 @@
+// /admin-web/src/api/paymentApi.js
+
 import { requestJson } from "./http.js";
 
 // TODO: C2(B 담당)에서 구현
