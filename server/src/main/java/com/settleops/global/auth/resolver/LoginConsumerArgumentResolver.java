@@ -13,7 +13,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 @Component
 @RequiredArgsConstructor
-public class LoginConsumerArgumentResolver extends BaseLoginArgumentResolver
+public class LoginConsumerArgumentResolver
         implements HandlerMethodArgumentResolver {
 
     private final SessionAuthProvider sessionAuthProvider;
@@ -29,7 +29,6 @@ public class LoginConsumerArgumentResolver extends BaseLoginArgumentResolver
                                   ModelAndViewContainer mavContainer,
                                   NativeWebRequest webRequest,
                                   WebDataBinderFactory binderFactory) {
-        HttpSession session = getRequiredSession(webRequest);
-        return sessionAuthProvider.getRequiredBuyerId(session);
+        return sessionAuthProvider.getCurrentConsumerId();
     }
 }
