@@ -6,13 +6,10 @@ import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDate;
@@ -30,11 +27,6 @@ class SettlementBatchRunIT {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
-
     @Test
     void runBatch_sameBaseDate_twice_should_skip_second_time() throws Exception {
         LocalDate baseDate = LocalDate.of(2026, 3, 2);
@@ -44,16 +36,10 @@ class SettlementBatchRunIT {
 
         assertThat(settlementBatchRepository.findByBatchKey(baseDate)).isEmpty();
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(actorId, "N/A")
-        );
-        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate, firstRequestId);
+        SettlementBatchRunResponse r1 = settlementAdminCommandService.runBatch(baseDate, firstRequestId, actorId);
         assertThat(r1.runId()).isNotBlank();
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(actorId, "N/A")
-        );
-        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate, secondRequestId);
+        SettlementBatchRunResponse r2 = settlementAdminCommandService.runBatch(baseDate, secondRequestId, actorId);
         assertThat(r2.runId()).isNotBlank();
 
         String metaJson = jdbcTemplate.queryForObject("""

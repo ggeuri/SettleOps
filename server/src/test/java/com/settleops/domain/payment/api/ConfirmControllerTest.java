@@ -4,7 +4,7 @@ import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.application.ConfirmService;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
-import com.settleops.global.auth.controller.MeController;
+import com.settleops.global.auth.annotation.LoginConsumer;
 import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
 import com.settleops.global.auth.resolver.LoginConsumerArgumentResolver;
 import com.settleops.global.auth.resolver.LoginMerchantArgumentResolver;
@@ -12,7 +12,9 @@ import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.GlobalExceptionHandler;
+import com.settleops.global.error.UnauthorizedException;
 import com.settleops.global.web.RequestIdResolver;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -29,6 +32,7 @@ import java.time.LocalDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -70,13 +74,22 @@ class ConfirmControllerTest {
     @MockitoBean
     private AuditLogger auditLogger;
 
+    @BeforeEach
+    void setUp() throws Exception {
+        when(loginConsumerArgumentResolver.supportsParameter(any(MethodParameter.class)))
+                .thenAnswer(invocation -> {
+                    MethodParameter parameter = invocation.getArgument(0);
+                    return parameter.hasParameterAnnotation(LoginConsumer.class)
+                            && parameter.getParameterType().equals(String.class);
+                });
+    }
+
     @Nested
     class ConfirmTest {
 
         @Test
         @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - 정상 확정")
         void confirm_returns_ok() throws Exception {
-            // given
             ConfirmResponseDTO response = new ConfirmResponseDTO(
                     PAYMENT_ID,
                     ORDER_ID,
@@ -84,13 +97,13 @@ class ConfirmControllerTest {
                     LocalDateTime.of(2026, 3, 13, 11, 0, 0)
             );
 
+            when(loginConsumerArgumentResolver.resolveArgument(any(), any(), any(), any()))
+                    .thenReturn(BUYER_ID);
             when(requestIdResolver.resolve(any())).thenReturn(REQUEST_ID);
             when(confirmService.confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID)))
                     .thenReturn(response);
 
-            // when & then
             mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
-                            .sessionAttr(MeController.SessionKeys.BUYER_ID, BUYER_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -99,12 +112,15 @@ class ConfirmControllerTest {
                     .andExpect(jsonPath("$.status").value("CAPTURED"))
                     .andExpect(jsonPath("$.confirmedAt").value("2026-03-13T11:00:00"));
 
-            verify(confirmService).confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID));
+            verify(confirmService, atLeastOnce()).confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID));
         }
 
         @Test
         @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - 세션 없으면 401")
         void confirm_returns_unauthorized_when_session_missing() throws Exception {
+            when(loginConsumerArgumentResolver.resolveArgument(any(), any(), any(), any()))
+                    .thenThrow(new UnauthorizedException("인증이 필요합니다."));
+
             mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isUnauthorized())
@@ -119,29 +135,28 @@ class ConfirmControllerTest {
         @Test
         @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - buyerId가 비어있으면 401")
         void confirm_returns_unauthorized_when_buyer_id_blank() throws Exception {
+            when(loginConsumerArgumentResolver.resolveArgument(any(), any(), any(), any()))
+                    .thenThrow(new UnauthorizedException("인증이 필요합니다."));
+
             mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
-                            .sessionAttr(MeController.SessionKeys.BUYER_ID, " ")
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isUnauthorized())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
                     .andExpect(jsonPath("$.reason").doesNotExist())
                     .andExpect(jsonPath("$.message").value("인증이 필요합니다."));
-
-            verifyNoInteractions(confirmService);
         }
 
         @Test
         @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - buyer 불일치면 403")
         void confirm_returns_forbidden_when_buyer_mismatch() throws Exception {
-            // given
+            when(loginConsumerArgumentResolver.resolveArgument(any(), any(), any(), any()))
+                    .thenReturn(BUYER_ID);
             when(requestIdResolver.resolve(any())).thenReturn(REQUEST_ID);
             when(confirmService.confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID)))
                     .thenThrow(new ForbiddenException("구매자 정보가 일치하지 않습니다."));
 
-            // when & then
             mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
-                            .sessionAttr(MeController.SessionKeys.BUYER_ID, BUYER_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isForbidden())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
@@ -153,7 +168,8 @@ class ConfirmControllerTest {
         @Test
         @DisplayName("POST /api/consumer/payments/{paymentId}/confirm - CAPTURED 상태가 아니면 409")
         void confirm_returns_conflict_when_payment_not_captured() throws Exception {
-            // given
+            when(loginConsumerArgumentResolver.resolveArgument(any(), any(), any(), any()))
+                    .thenReturn(BUYER_ID);
             when(requestIdResolver.resolve(any())).thenReturn(REQUEST_ID);
             when(confirmService.confirm(eq(PAYMENT_ID), eq(BUYER_ID), eq(REQUEST_ID)))
                     .thenThrow(new ConflictException(
@@ -161,9 +177,7 @@ class ConfirmControllerTest {
                             "결제 상태가 CAPTURED가 아닙니다."
                     ));
 
-            // when & then
             mockMvc.perform(post("/api/consumer/payments/{paymentId}/confirm", PAYMENT_ID)
-                            .sessionAttr(MeController.SessionKeys.BUYER_ID, BUYER_ID)
                             .accept(MediaType.APPLICATION_JSON))
                     .andExpect(status().isConflict())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))

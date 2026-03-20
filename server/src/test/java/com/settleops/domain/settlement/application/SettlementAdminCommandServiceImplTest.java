@@ -23,16 +23,12 @@ import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
 import com.settleops.global.error.NotFoundException;
-import com.settleops.global.error.UnauthorizedException;
 import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -46,6 +42,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 class SettlementAdminCommandServiceImplTest {
+
+    private static final String ADMIN_ID = "admin1";
+    private static final String REQUEST_ID = "req-test-001";
 
     private SettlementRepository settlementRepository;
     private SettlementBatchRepository settlementBatchRepository;
@@ -96,15 +95,6 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(Mockito.any()))
                 .thenReturn(List.of());
-
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("admin1", "N/A")
-        );
-    }
-
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -129,7 +119,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(refundAdjustmentPolicy.isRefundAdjustmentPending("S1")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -144,32 +134,30 @@ class SettlementAdminCommandServiceImplTest {
 
     @Test
     void requestPaid_requestIdMissing_then400_BadRequest() {
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", null))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", null, ADMIN_ID))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("requestId");
+    }
+
+    @Test
+    void requestPaid_adminIdMissing_then400_BadRequest() {
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, null))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("adminId");
     }
 
     @Test
     void requestPaid_settlementNotFound_then404() {
         Mockito.when(settlementRepository.findById("S404")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.requestPaid("S404", null, "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S404", null, REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(NotFoundException.class)
                 .hasMessageContaining("settlement not found");
     }
 
     @Test
-    void requestPaid_actorMissing_then401() {
-        SecurityContextHolder.clearContext();
-
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
-                .isInstanceOf(UnauthorizedException.class)
-                .hasMessageContaining("unauthorized");
-    }
-
-    @Test
     void requestPaid_settlementIdBlank_then400() {
-        assertThatThrownBy(() -> service.requestPaid("   ", null, "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("   ", null, REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(BadRequestException.class);
     }
 
@@ -185,7 +173,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -212,7 +200,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -237,12 +225,14 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        var response = service.requestPaid("S1", "memo", "req-test-001");
+        var response = service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID);
 
         assertThat(response.status()).isEqualTo(SettlementStatus.PAY_REQUESTED);
 
         ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogger).log(captor.capture());
+
+        assertThat(captor.getValue().getActorId()).isEqualTo(ADMIN_ID);
 
         JsonNode meta = objectMapper.readTree(captor.getValue().getMetaJson());
         assertThat(meta.get("noOp").asBoolean()).isTrue();
@@ -262,12 +252,14 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        var response = service.approvePaid("S1", "memo", "req-test-001");
+        var response = service.approvePaid("S1", "memo", REQUEST_ID, ADMIN_ID);
 
         assertThat(response.status()).isEqualTo(SettlementStatus.PAID);
 
         ArgumentCaptor<AuditLogCommand> captor = ArgumentCaptor.forClass(AuditLogCommand.class);
         verify(auditLogger).log(captor.capture());
+
+        assertThat(captor.getValue().getActorId()).isEqualTo(ADMIN_ID);
 
         JsonNode meta = objectMapper.readTree(captor.getValue().getMetaJson());
         assertThat(meta.get("noOp").asBoolean()).isTrue();
@@ -288,7 +280,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlementBatchRunRecorder.startOrThrow(
                 Mockito.eq(baseDate),
                 Mockito.anyString(),
-                Mockito.eq("req-test-001"),
+                Mockito.eq(REQUEST_ID),
                 Mockito.anyString()
         )).thenReturn(startedBatch);
 
@@ -307,7 +299,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(settlementBatchRepository.findByRunId(Mockito.anyString()))
                 .thenReturn(Optional.of(failedBatch));
 
-        SettlementBatchRunResponse response = service.runBatch(baseDate, "req-test-001");
+        SettlementBatchRunResponse response = service.runBatch(baseDate, REQUEST_ID, ADMIN_ID);
 
         assertThat(response.result()).isEqualTo(SettlementBatchRunResponse.RunResult.FAIL);
         assertThat(response.failReason()).isEqualTo("UNEXPECTED_ERROR");
@@ -327,6 +319,8 @@ class SettlementAdminCommandServiceImplTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("BATCH_RUN_COMPLETED audit not found"));
 
+        assertThat(completedAudit.getActorId()).isEqualTo(ADMIN_ID);
+
         JsonNode meta = objectMapper.readTree(completedAudit.getMetaJson());
 
         assertThat(meta.get("result").asText()).isEqualTo("FAIL");
@@ -344,18 +338,18 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlement.isPaid()).thenReturn(false);
         Mockito.when(settlement.isPayRequested()).thenReturn(true);
-        Mockito.when(settlement.violatesFourEyes("admin1")).thenReturn(true);
+        Mockito.when(settlement.violatesFourEyes(ADMIN_ID)).thenReturn(true);
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
         Mockito.when(settlementRepository.findByIdForUpdate("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.approvePaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.approvePaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(AuditableConflictException.class)
                 .satisfies(ex -> {
                     AuditableConflictException ace = (AuditableConflictException) ex;
                     assertThat(ace.getReasonCode()).isEqualTo(ReasonCode.SAME_APPROVER_NOT_ALLOWED);
                     assertThat(ace.getActorType()).isEqualTo(ActorType.ADMIN);
-                    assertThat(ace.getActorId()).isEqualTo("admin1");
+                    assertThat(ace.getActorId()).isEqualTo(ADMIN_ID);
                     assertThat(ace.getAction()).isEqualTo(Action.SETTLEMENT_PAY_APPROVED);
                     assertThat(ace.getEntityType()).isEqualTo(EntityType.SETTLEMENT);
                     assertThat(ace.getEntityId()).isEqualTo("S1");
@@ -389,7 +383,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.FAIL);
         Mockito.when(settlementBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -417,7 +411,7 @@ class SettlementAdminCommandServiceImplTest {
 
         Mockito.when(settlementRepository.findById("S1")).thenReturn(Optional.of(settlement));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;
@@ -450,7 +444,7 @@ class SettlementAdminCommandServiceImplTest {
         Mockito.when(batch.getResult()).thenReturn(SettlementBatchResult.FAIL);
         Mockito.when(settlementBatchRepository.findById(1L)).thenReturn(Optional.of(batch));
 
-        assertThatThrownBy(() -> service.requestPaid("S1", "memo", "req-test-001"))
+        assertThatThrownBy(() -> service.requestPaid("S1", "memo", REQUEST_ID, ADMIN_ID))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
                     ConflictException ce = (ConflictException) ex;

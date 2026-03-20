@@ -4,6 +4,7 @@ import com.settleops.domain.settlement.application.SettlementAdminCommandService
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionRequest;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
+import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -40,10 +41,11 @@ public class AdminSettlementCommandController {
             @RequestParam("baseDate")
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate baseDate,
-            HttpServletRequest request
+            HttpServletRequest request,
+            @LoginAdmin String adminId
     ) {
         String requestId = extractRequestId(request);
-        return ResponseEntity.ok(commandService.runBatch(baseDate, requestId));
+        return ResponseEntity.ok(commandService.runBatch(baseDate, requestId, adminId));
     }
 
     /**
@@ -58,17 +60,18 @@ public class AdminSettlementCommandController {
     public ResponseEntity<SettlementPayActionResponse> requestPaid(
             @PathVariable String settlementId,
             @RequestBody(required = false) @Valid SettlementPayActionRequest body,
-            HttpServletRequest request
+            HttpServletRequest request,
+            @LoginAdmin String adminId
     ) {
         String comment = (body == null) ? null : body.comment();
         String requestId = extractRequestId(request);
-        return ResponseEntity.ok(commandService.requestPaid(settlementId, comment, requestId));
+        return ResponseEntity.ok(commandService.requestPaid(settlementId, comment, requestId, adminId));
     }
 
     /**
      * A4: 지급 승인(4-eyes 2단계)
      * PATCH /api/admin/settlements/{settlementId}/approve-paid
-     
+
      * LOCKED:
      * - 이미 PAID면 no-op 200 + (status=PAID + paidAt) 필수
      * - PAY_REQUESTED가 아니면 409 PAY_REQUESTED_REQUIRED
@@ -79,11 +82,12 @@ public class AdminSettlementCommandController {
     public ResponseEntity<SettlementPayActionResponse> approvePaid(
             @PathVariable String settlementId,
             @RequestBody(required = false) @Valid SettlementPayActionRequest body,
-            HttpServletRequest request
+            HttpServletRequest request,
+            @LoginAdmin String adminId
     ) {
         String comment = (body == null) ? null : body.comment();
         String requestId = extractRequestId(request);
-        return ResponseEntity.ok(commandService.approvePaid(settlementId, comment, requestId));
+        return ResponseEntity.ok(commandService.approvePaid(settlementId, comment, requestId, adminId));
     }
 
     private String extractRequestId(HttpServletRequest request) {
