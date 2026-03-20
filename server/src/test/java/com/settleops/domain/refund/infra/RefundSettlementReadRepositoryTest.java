@@ -16,12 +16,14 @@ import com.settleops.domain.settlement.enums.SettlementLineType;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test-db")
-@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)class RefundSettlementReadRepositoryTest {
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+class RefundSettlementReadRepositoryTest {
 
     @jakarta.annotation.Resource
     private EntityManager em;
@@ -343,5 +345,82 @@ import static org.assertj.core.api.Assertions.assertThat;
                         10000L
                 );
         em.persist(settlement);
+    }
+    @Test
+    void settlementId에_연결된_refund가_REQUESTED면_pending이_아니다() {
+        String settlementId = "aaaa1111-aaaa-bbbb-cccc-111111111111";
+        String paymentId = "bbbb2222-aaaa-bbbb-cccc-222222222222";
+
+        LocalDate baseDate = LocalDate.of(2099, 12, 3);
+        String merchantId = "merchant-" + UUID.randomUUID().toString().substring(0, 8);
+
+        Long batchId = createBatchId(baseDate.atStartOfDay());
+        persistReadySettlement(settlementId, batchId, merchantId, baseDate);
+
+        em.persist(SettlementLine.of(
+                settlementId,
+                paymentId,
+                SettlementLineType.PAYMENT,
+                10000L
+        ));
+
+        em.persist(Refund.builder()
+                .refundId("req-1111-1111-1111-111111111111")
+                .paymentId(paymentId)
+                .merchantId(merchantId)
+                .buyerId("buyer1")
+                .amount(1000L)
+                .currency("KRW")
+                .status(RefundStatus.REQUESTED)
+                .reasonText("requested")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 9, 0))
+                .decidedAt(null)
+                .build());
+
+        em.flush();
+        em.clear();
+
+        boolean result = repository.existsPendingApprovedRefundBySettlementId(settlementId);
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void settlementId에_연결된_refund가_REJECTED면_pending이_아니다() {
+        String settlementId = "cccc1111-aaaa-bbbb-cccc-111111111111";
+        String paymentId = "dddd2222-aaaa-bbbb-cccc-222222222222";
+
+        LocalDate baseDate = LocalDate.of(2099, 12, 4);
+        String merchantId = "merchant-" + UUID.randomUUID().toString().substring(0, 8);
+
+        Long batchId = createBatchId(baseDate.atStartOfDay());
+        persistReadySettlement(settlementId, batchId, merchantId, baseDate);
+
+        em.persist(SettlementLine.of(
+                settlementId,
+                paymentId,
+                SettlementLineType.PAYMENT,
+                10000L
+        ));
+
+        em.persist(Refund.builder()
+                .refundId("rej-2222-2222-2222-222222222222")
+                .paymentId(paymentId)
+                .merchantId(merchantId)
+                .buyerId("buyer1")
+                .amount(2000L)
+                .currency("KRW")
+                .status(RefundStatus.REJECTED)
+                .reasonText("rejected")
+                .requestedAt(LocalDateTime.of(2026, 3, 10, 9, 30))
+                .decidedAt(LocalDateTime.of(2026, 3, 10, 10, 0))
+                .build());
+
+        em.flush();
+        em.clear();
+
+        boolean result = repository.existsPendingApprovedRefundBySettlementId(settlementId);
+
+        assertThat(result).isFalse();
     }
 }

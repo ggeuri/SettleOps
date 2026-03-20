@@ -66,4 +66,51 @@ class RefundSettlementAssemblerImplTest {
 
         verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(cutoff);
     }
+
+    @Test
+    void baseDate_당일_00시_정각을_정확히_cutoff로_전달한다() {
+        LocalDate baseDate = LocalDate.of(2026, 3, 11);
+
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(baseDate.atStartOfDay()))
+                .thenReturn(List.of());
+
+        assembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(
+                LocalDateTime.of(2026, 3, 11, 0, 0)
+        );
+        verifyNoMoreInteractions(readRepository);
+    }
+
+    @Test
+    void repository가_준_approved_unlinked_refund를_가공없이_그대로_반환한다() {
+        LocalDate baseDate = LocalDate.of(2026, 3, 11);
+
+        ApprovedRefundAdjustment first = new ApprovedRefundAdjustment(
+                "refund-1",
+                "payment-1",
+                "merchant-1",
+                3000L,
+                LocalDateTime.of(2026, 3, 10, 23, 59, 59)
+        );
+        ApprovedRefundAdjustment second = new ApprovedRefundAdjustment(
+                "refund-2",
+                "payment-2",
+                "merchant-2",
+                1500L,
+                LocalDateTime.of(2026, 3, 10, 10, 0)
+        );
+
+        when(readRepository.findApprovedRefundsWithoutSettlementLinkBefore(baseDate.atStartOfDay()))
+                .thenReturn(List.of(first, second));
+
+        List<ApprovedRefundAdjustment> result =
+                assembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+        assertThat(result)
+                .hasSize(2)
+                .containsExactly(first, second);
+
+        verify(readRepository).findApprovedRefundsWithoutSettlementLinkBefore(baseDate.atStartOfDay());
+    }
 }
