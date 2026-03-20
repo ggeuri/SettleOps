@@ -3,7 +3,10 @@ import { useLocation } from "react-router-dom";
 
 function resolvePageTitle(pathname) {
   if (pathname === "/consumer/orders/new") return "거래 생성";
-  if (pathname === "/consumer/payments") return "내 주문/결제 내역";
+  if (pathname === "/consumer/orders") return "내 주문/결제 내역";
+  if (pathname.startsWith("/consumer/orders/") && pathname !== "/consumer/orders/new") {
+    return "결제 상세";
+  }
 
   if (pathname === "/merchant/payments") return "결제 조회";
   if (pathname.startsWith("/merchant/payments/")) return "결제 상세";
