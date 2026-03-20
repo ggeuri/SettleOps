@@ -263,16 +263,20 @@ class SettlementAdminApprovePaidConcurrencyIT {
 
     private Long createBatchAndReturnId(LocalDate baseDate) {
         return tx.execute(status -> {
-            SettlementBatch batch = SettlementBatch.started(
-                    baseDate,
-                    UUID.randomUUID().toString(), // runId
-                    "ADMIN:test",                 // triggeredBy
-                    UUID.randomUUID().toString()  // requestId
-            );
-            SettlementBatch saved = settlementBatchRepository.save(batch);
-            em.flush();
-            em.clear();
-            return saved.getBatchId();
+            return settlementBatchRepository.findByBatchKey(baseDate)
+                    .map(SettlementBatch::getBatchId)
+                    .orElseGet(() -> {
+                        SettlementBatch batch = SettlementBatch.started(
+                                baseDate,
+                                UUID.randomUUID().toString(),
+                                "ADMIN:test",
+                                UUID.randomUUID().toString()
+                        );
+                        SettlementBatch saved = settlementBatchRepository.save(batch);
+                        em.flush();
+                        em.clear();
+                        return saved.getBatchId();
+                    });
         });
     }
 
