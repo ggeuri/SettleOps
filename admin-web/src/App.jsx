@@ -3,6 +3,7 @@ import AppLayout from "./layouts/AppLayout";
 import AdminRoutes from "./app/router/AdminRoutes.jsx";
 import MerchantRoutes from "./app/router/MerchantRoutes.jsx";
 import ConsumerRoutes from "./app/router/ConsumerRoutes.jsx";
+import DevLoginPage from "./pages/auth/DevLoginPage.jsx";
 import CommonUiSamplePage from "./pages/_sample/CommonUiSamplePage.jsx";
 
 export default function App() {
@@ -23,6 +24,9 @@ export default function App() {
 
         {/* 공통 UI 샘플 미리보기 */}
         <Route path="/sample/ui" element={<CommonUiSamplePage />} />
+
+        {/* 개발용 로그인 페이지 이동 */}
+        <Route path="/auth/dev-login" element={<DevLoginPage />} />
       </Route>
 
       {/* 404 */}
