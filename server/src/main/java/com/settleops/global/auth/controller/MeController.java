@@ -47,15 +47,16 @@ public class MeController {
         String role = (String) session.getAttribute(SessionKeys.ROLE);
         String buyerId = (String) session.getAttribute(SessionKeys.BUYER_ID);
         String merchantId = (String) session.getAttribute(SessionKeys.MERCHANT_ID);
+        String adminId = (String) session.getAttribute(SessionKeys.ADMIN_ID);
 
         if (role == null) {
             return ResponseEntity.status(401).build();
         }
 
-        return ResponseEntity.ok(new MeResponse(role, buyerId, merchantId));
+        return ResponseEntity.ok(new MeResponse(role, buyerId, merchantId, adminId));
     }
 
-    public record MeResponse(String role, String buyerId, String merchantId) {}
+    public record MeResponse(String role, String buyerId, String merchantId, String adminId) {}
 
     /** 세션 키 하드코딩 방지 */
     public static final class SessionKeys {
@@ -63,5 +64,6 @@ public class MeController {
         public static final String ROLE = "ROLE";
         public static final String BUYER_ID = "BUYER_ID";
         public static final String MERCHANT_ID = "MERCHANT_ID";
+        public static final String ADMIN_ID = "ADMIN_ID";
     }
 }
