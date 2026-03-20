@@ -1,0 +1,48 @@
+/* /admin-web/src/style/payment-detail.css */
+
+.payment-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.payment-detail-page .payment-summary-grid {
+  grid-template-columns: 3fr 1fr 1fr;
+}
+
+.payment-detail-page .payment-summary-card {
+  min-width: 0;
+}
+
+.payment-detail-page .payment-summary-card--wide {
+  min-width: 0;
+}
+
+.payment-detail-page .payment-summary-card__value--id {
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.payment-detail-page .payment-summary-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.payment-detail-page .card,
+.payment-detail-page .card__body,
+.payment-detail-page .summary-card,
+.payment-detail-page .summary-card__value {
+  min-width: 0;
+}
+
+.payment-detail-page .summary-card__value {
+font-size:var(--font-size-md);
+}
+
+@media (max-width: 1024px) {
+  .payment-detail-page .payment-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

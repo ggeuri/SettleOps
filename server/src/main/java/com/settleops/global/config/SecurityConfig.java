@@ -1,16 +1,18 @@
 package com.settleops.global.config;
 
+import com.settleops.global.auth.SessionAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.core.env.Environment;
 
 import java.util.Arrays;
 import java.util.List;
@@ -19,8 +21,14 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
+    private final SessionAuthenticationFilter sessionAuthenticationFilter;
+
+    public SecurityConfig(SessionAuthenticationFilter sessionAuthenticationFilter) {
+        this.sessionAuthenticationFilter = sessionAuthenticationFilter;
+    }
+
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http,Environment env) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, Environment env) throws Exception {
 
         http.csrf(csrf -> csrf.disable());
         http.formLogin(form -> form.disable());
@@ -66,6 +74,8 @@ public class SecurityConfig {
             auth.requestMatchers("/api/auth/**", "/api/me").permitAll();
             auth.anyRequest().authenticated();
         });
+
+        http.addFilterBefore(sessionAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

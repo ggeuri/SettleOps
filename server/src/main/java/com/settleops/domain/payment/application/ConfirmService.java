@@ -4,16 +4,10 @@ import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.domain.Payment;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.PaymentRepository;
-import com.settleops.global.audit.ActorType;
-import com.settleops.global.audit.AuditLogCommand;
-import com.settleops.global.audit.AuditLogger;
-import com.settleops.global.audit.EntityType;
+import com.settleops.global.audit.*;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
-import com.settleops.global.error.BadRequestException;
-import com.settleops.global.error.ConflictException;
-import com.settleops.global.error.ForbiddenException;
-import com.settleops.global.error.UnauthorizedException;
+import com.settleops.global.error.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,7 +45,7 @@ public class ConfirmService {
 
         // 1) 결제 조회
         Payment payment = paymentRepository.findById(paymentId)
-                .orElseThrow(() -> new BadRequestException("존재하지 않는 결제입니다."));
+                .orElseThrow(() -> new NotFoundException("존재하지 않는 결제입니다."));
 
         // 2) 선행조건 및 권한 검증
         validateConfirmable(payment, currentBuyerId);
@@ -65,7 +59,7 @@ public class ConfirmService {
                     requestId,
                     existingConfirmedAt,
                     true,
-                    "ALREADY_CONFIRMED"
+                    NoOpReason.ALREADY_CONFIRMED
             );
             return ConfirmResponseDTO.from(payment, existingConfirmedAt);
         }
@@ -85,7 +79,7 @@ public class ConfirmService {
                 requestId,
                 confirmedAt,
                 !inserted,
-                inserted ? null : "ALREADY_CONFIRMED"
+                inserted ? null : NoOpReason.ALREADY_CONFIRMED
         );
 
         return ConfirmResponseDTO.from(payment, confirmedAt);
@@ -102,7 +96,7 @@ public class ConfirmService {
     }
 
     /**
-     * confirm 가능 여부 및 호출 주체를 검증합니다.
+     * confirm 가능 여부 및 호출 주체 검증
      */
     private void validateConfirmable(Payment payment, String currentBuyerId) {
 
@@ -133,15 +127,11 @@ public class ConfirmService {
     }
 
     /**
-     * confirm 감사 로그
+     * confirm 감사 로그 기록
      *
-     * <p> @param idempotentReplay 멱등 재시도/no-op 여부
-     * <br> @param noOpReason       no-op 사유. 최초 성공이면 null
-     * </p>
-     *
-     * <p>주의
-     * <br>- confirm의 SoT는 PAYMENT_CONFIRMED 이벤트이며,
-     * <br>- payment.status는 변경되지 않으므로 before/after 모두 CAPTURED입니다.
+     * <p>- confirm SoT는 PAYMENT_CONFIRMED 이벤트입니다.
+     * <br>- payment.status는 변경되지 않으므로 before/after는 모두 CAPTURED입니다.
+     * <br>- 최초 성공은 noOp=false, 재시도/중복 확정은 noOp=true로 기록합니다.
      * </p>
      */
     private void logConfirm(
@@ -150,7 +140,7 @@ public class ConfirmService {
             String requestId,
             LocalDateTime confirmedAt,
             boolean idempotentReplay,
-            String noOpReason
+            NoOpReason noOpReason
     ) {
         auditLogger.log(
                 AuditLogCommand.builder()
@@ -169,13 +159,11 @@ public class ConfirmService {
         );
     }
 
-    private String buildConfirmMetaJson(boolean idempotentReplay, String noOpReason) {
-        boolean noOp = noOpReason != null && !noOpReason.isBlank();
-
-        if (!noOp) {
-            return "{\"noOp\":false,\"idempotent\":" + idempotentReplay + "}";
+    private String buildConfirmMetaJson(boolean idempotentReplay, NoOpReason noOpReason) {
+        if (noOpReason == null) {
+            return AuditMetaFactory.success().put("idempotent", idempotentReplay).toString();
         }
 
-        return "{\"noOp\":true,\"noOpReason\":\"" + noOpReason + "\",\"idempotent\":" + idempotentReplay + "}";
+        return AuditMetaFactory.noOp(noOpReason, idempotentReplay).toString();
     }
 }

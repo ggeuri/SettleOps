@@ -2,12 +2,14 @@ package com.settleops.global.enums;
 
 /**
  * MVP 고정 ReasonCode 목록 (LOCKED)
- *
  * - 409 Conflict 응답의 reason 코드로 사용
  * - 문서 / 로그 / 예외 응답과 동일 문자열 유지 (SoT)
  * - BUYER_MISMATCH는 403 전용이므로 본 ENUM에 포함하지 않음
  */
 public enum ReasonCode {
+
+    /** 주문이 이미 결제 완료된 상태 */
+    ORDER_ALREADY_PAID,
 
     /** 결제가 capture 되지 않은 상태 */
     PAYMENT_NOT_CAPTURED,
@@ -20,6 +22,9 @@ public enum ReasonCode {
 
     /** Hold가 비활성 상태 */
     HOLD_NOT_ACTIVE,
+
+    /** 이미 Hold가 존재하는 경우 */
+    HOLD_ALREADY_EXISTS,
 
     /** 환불 가능 금액이 부족함 */
     INSUFFICIENT_REFUNDABLE,

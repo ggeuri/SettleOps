@@ -25,6 +25,7 @@ public record ErrorResponse(
     private static final String UNAUTHORIZED = "UNAUTHORIZED";
     private static final String RULE_VIOLATION = "RULE_VIOLATION";
     private static final String FORBIDDEN = "FORBIDDEN";
+    private static final String NOT_FOUND = "NOT_FOUND";
     private static final String BAD_REQUEST = "BAD_REQUEST";
     private static final String INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR";
 
@@ -40,6 +41,11 @@ public record ErrorResponse(
     // 403 Forbidden용 (reason은 무조건 null)
     public static ErrorResponse ofForbidden(String message) {
         return new ErrorResponse(FORBIDDEN, null, message);
+    }
+
+    // 404 Notfound용 (reason은 무조건 null)
+    public static ErrorResponse ofNotFound(String message) {
+        return new ErrorResponse(NOT_FOUND, null, message);
     }
 
     // 400 Bad Request 또는 기타 4xx용

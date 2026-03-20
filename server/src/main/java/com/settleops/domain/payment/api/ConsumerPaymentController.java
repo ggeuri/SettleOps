@@ -2,13 +2,10 @@ package com.settleops.domain.payment.api;
 
 import com.settleops.domain.payment.api.dto.ConfirmResponseDTO;
 import com.settleops.domain.payment.application.ConfirmService;
-import com.settleops.global.auth.controller.MeController;
-import com.settleops.global.error.BadRequestException;
+import com.settleops.global.auth.annotation.LoginConsumer;
 import com.settleops.global.error.UnauthorizedException;
-import com.settleops.global.logging.RequestIdKeys;
 import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -68,17 +65,11 @@ public class ConsumerPaymentController {
     @PostMapping("/{paymentId}/confirm")
     public ConfirmResponseDTO confirm(
             @PathVariable String paymentId,
-            HttpSession session,
-            HttpServletRequest request
+            HttpServletRequest request,
+            @LoginConsumer String loginConsumerId
     ) {
-        String buyerId = (String) session.getAttribute(MeController.SessionKeys.BUYER_ID);
-        if (buyerId == null||buyerId.isBlank()) {
-            throw new UnauthorizedException("인증이 필요합니다.");
-        }
-
         String requestId = requestIdResolver.resolve(request);
-
-        return confirmService.confirm(paymentId, buyerId, requestId);
+        return confirmService.confirm(paymentId, loginConsumerId, requestId);
     }
 
 }

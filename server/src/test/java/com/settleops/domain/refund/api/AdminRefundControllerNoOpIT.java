@@ -3,10 +3,12 @@ package com.settleops.domain.refund.api;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -17,6 +19,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+@ActiveProfiles("test-db")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @SpringBootTest
 @AutoConfigureMockMvc
 class AdminRefundControllerNoOpIT {
@@ -121,6 +125,34 @@ class AdminRefundControllerNoOpIT {
                                 .content("""
                                         { "comment": "   " }
                                         """)
+                )
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(username = "admin01", roles = "ADMIN")
+    void reject_requiresComment_blank_returns400() throws Exception {
+        String refundId = uuid();
+        String paymentId = uuid();
+        String merchantId = "MRC_0001";
+        String buyerId = "BUY_0001";
+        long amount = 1000L;
+
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 3, 5, 10, 0, 0, 0);
+        LocalDateTime decidedAt = LocalDateTime.of(2026, 3, 5, 11, 0, 0, 0);
+
+        insertRefund(refundId, paymentId, merchantId, buyerId, amount,
+                "REJECTED", requestedAt, decidedAt);
+
+        String requestId = uuid();
+
+        mockMvc.perform(
+                        patch("/api/admin/refunds/{refundId}/reject", refundId)
+                                .header("X-Request-Id", requestId)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                    { "comment": "   " }
+                                    """)
                 )
                 .andExpect(status().isBadRequest());
     }

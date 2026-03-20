@@ -1,5 +1,7 @@
 package com.settleops.domain.settlement.application;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementBatch;
 import com.settleops.domain.settlement.enums.SettlementStatus;
@@ -48,7 +50,6 @@ class SettlementAdminApprovePaidConcurrencyIT {
     void approvePaid_concurrent_two_requests_should_write_two_audits_and_return_paid_for_both() throws Exception {
         String settlementId = UUID.randomUUID().toString(); // CHAR(36) 맞춤
         LocalDate baseDate = LocalDate.now();
-
 
         Long batchId = createBatchAndReturnId(baseDate);
         seedPayRequestedCommitted(settlementId, "M1", batchId, baseDate); // 커밋된 상태 보장
@@ -111,6 +112,7 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     settlementId,
                     Action.SETTLEMENT_PAY_APPROVED.name()
             );
+            assertThat(actorIds).hasSize(2);
             assertThat(actorIds).containsExactlyInAnyOrder("approverA", "approverB");
 
             List<String> requestIds = jdbcTemplate.queryForList(
@@ -127,6 +129,49 @@ class SettlementAdminApprovePaidConcurrencyIT {
                     Action.SETTLEMENT_PAY_APPROVED.name()
             );
             assertThat(requestIds).doesNotHaveDuplicates();
+
+            List<String> metaJsons = jdbcTemplate.queryForList(
+                    """
+                    select meta_json
+                    from audit_log
+                    where entity_type = ?
+                      and entity_id = ?
+                      and action = ?
+                    """,
+                    String.class,
+                    EntityType.SETTLEMENT.name(),
+                    settlementId,
+                    Action.SETTLEMENT_PAY_APPROVED.name()
+            );
+
+            assertThat(metaJsons).hasSize(2);
+            assertThat(metaJsons).allMatch(json -> json != null && !json.isBlank());
+
+            ObjectMapper mapper = new ObjectMapper();
+            List<JsonNode> metaNodes = metaJsons.stream()
+                    .map(json -> parseMetaJson(mapper, json))
+                    .toList();
+
+            assertThat(metaNodes).hasSize(2);
+            assertThat(metaNodes).allMatch(node -> node.has("noOp"));
+
+            long noOpTrueCount = metaNodes.stream()
+                    .filter(node -> node.get("noOp").asBoolean())
+                    .count();
+
+            long noOpFalseCount = metaNodes.stream()
+                    .filter(node -> !node.get("noOp").asBoolean())
+                    .count();
+
+            long alreadyPaidCount = metaNodes.stream()
+                    .filter(node -> node.get("noOp").asBoolean())
+                    .filter(node -> node.has("noOpReason"))
+                    .filter(node -> "ALREADY_PAID".equals(node.get("noOpReason").asText()))
+                    .count();
+
+            assertThat(noOpTrueCount).isEqualTo(1L);
+            assertThat(noOpFalseCount).isEqualTo(1L);
+            assertThat(alreadyPaidCount).isEqualTo(1L);
 
         } finally {
             pool.shutdown();
@@ -155,7 +200,7 @@ class SettlementAdminApprovePaidConcurrencyIT {
                         UUID.randomUUID().toString()
                 )
         ).isInstanceOf(BadRequestException.class)
-                        .hasMessageContaining("actorId");
+                .hasMessageContaining("actorId");
     }
 
     private SettlementStatus callApprovePaid(
@@ -218,16 +263,35 @@ class SettlementAdminApprovePaidConcurrencyIT {
 
     private Long createBatchAndReturnId(LocalDate baseDate) {
         return tx.execute(status -> {
-            SettlementBatch batch = SettlementBatch.started(
-                    baseDate,
-                    UUID.randomUUID().toString(), // runId
-                    "ADMIN:test",                 // triggeredBy
-                    UUID.randomUUID().toString()  // requestId
-            );
-            SettlementBatch saved = settlementBatchRepository.save(batch);
-            em.flush();
-            em.clear();
-            return saved.getBatchId();
+            return settlementBatchRepository.findByBatchKey(baseDate)
+                    .map(SettlementBatch::getBatchId)
+                    .orElseGet(() -> {
+                        SettlementBatch batch = SettlementBatch.started(
+                                baseDate,
+                                UUID.randomUUID().toString(),
+                                "ADMIN:test",
+                                UUID.randomUUID().toString()
+                        );
+                        SettlementBatch saved = settlementBatchRepository.save(batch);
+                        em.flush();
+                        em.clear();
+                        return saved.getBatchId();
+                    });
         });
+    }
+
+    private JsonNode parseMetaJson(ObjectMapper mapper, String json) {
+        try {
+            JsonNode node = mapper.readTree(json);
+
+            // audit_log.meta_json 이 JSON 문자열로 한 번 더 감싸진 경우까지 흡수
+            if (node.isTextual()) {
+                node = mapper.readTree(node.asText());
+            }
+
+            return node;
+        } catch (Exception e) {
+            throw new RuntimeException("failed to parse meta_json: " + json, e);
+        }
     }
 }

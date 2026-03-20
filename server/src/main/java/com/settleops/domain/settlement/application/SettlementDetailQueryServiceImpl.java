@@ -7,11 +7,10 @@ import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
 import com.settleops.domain.settlement.infra.SettlementDetailQueryRepository;
 import com.settleops.global.error.BadRequestException;
+import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -21,6 +20,7 @@ import java.util.List;
 public class SettlementDetailQueryServiceImpl implements SettlementDetailQueryService {
 
     private final SettlementDetailQueryRepository settlementDetailQueryRepository;
+    private final RefundAdjustmentPolicy refundAdjustmentPolicy;
 
     @Override
     public AdminSettlementDetailResponse getAdminSettlementDetail(String settlementId) {
@@ -32,7 +32,7 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
                 settlementDetailQueryRepository.findSettlementBase(settlementId);
 
         if (base == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found");
+            throw new NotFoundException("settlement not found");
         }
 
         List<AdminSettlementLineItemResponse> lines =
@@ -41,8 +41,17 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
         AdminSettlementHoldSummaryResponse hold =
                 settlementDetailQueryRepository.findHoldSummary(settlementId);
 
+        boolean hasApprovedRefund =
+                settlementDetailQueryRepository.hasApprovedRefund(settlementId);
+
+        boolean refundAdjustmentPending =
+                refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId);
+
         AdminSettlementRefundSummaryResponse refund =
-                settlementDetailQueryRepository.findRefundSummary(settlementId);
+                new AdminSettlementRefundSummaryResponse(
+                        hasApprovedRefund,
+                        refundAdjustmentPending
+                );
 
         return new AdminSettlementDetailResponse(
                 base.settlementId(),

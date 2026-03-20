@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabas
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.UUID;
@@ -19,16 +20,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
+@ActiveProfiles("test-db")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(RefundEventRepositoryTest.QuerydslTestConfig.class)
-@TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:mysql://127.0.0.1:3307/settleops?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul",
-        "spring.datasource.username=root",
-        "spring.datasource.password=1234",
-        "spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver",
-        "spring.flyway.enabled=false",
-        "spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect"
-})
 class RefundEventRepositoryTest {
 
     //“refund_event는 insert-only 이벤트로, request_id와 occurredAt이 항상 채워져 저장된다”

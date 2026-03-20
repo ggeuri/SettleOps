@@ -7,13 +7,13 @@ import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementLineRepository;
 import com.settleops.domain.settlement.infra.SettlementRepository;
+import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -36,12 +36,9 @@ public class SettlementDetailQueryServiceImplTest {
     @Test
     @DisplayName("관리자 정산 상세 조회 시 존재하지 않는 settlementId면 404를 반환한다")
     void getAdminSettlementDetail_notFound_then404() {
-        assertThatThrownBy(() -> settlementDetailQueryService.getAdminSettlementDetail("not-exists-id"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> {
-                    ResponseStatusException rse = (ResponseStatusException) ex;
-                    assertThat(rse.getStatusCode().value()).isEqualTo(404);
-                });
+        assertThatThrownBy(() -> settlementDetailQueryService.getAdminSettlementDetail(UUID.randomUUID().toString()))
+                .isInstanceOf(NotFoundException.class)
+                .hasMessageContaining("settlement not found");
     }
 
     @Test
@@ -49,6 +46,8 @@ public class SettlementDetailQueryServiceImplTest {
     void getAdminSettlementDetail_success() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId1 = UUID.randomUUID().toString();
+        String paymentId2 = UUID.randomUUID().toString();
 
         Settlement settlement = Settlement.createReady(
                 settlementId,
@@ -65,21 +64,22 @@ public class SettlementDetailQueryServiceImplTest {
 
         SettlementLine line1 = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId1,
                 SettlementLineType.PAYMENT,
                 7000L
         );
         SettlementLine line2 = SettlementLine.of(
                 settlementId,
-                "payment-2",
+                paymentId2,
                 SettlementLineType.PAYMENT,
                 3000L
         );
         settlementLineRepository.saveAll(List.of(line1, line2));
 
-        //when
+        // when
         AdminSettlementDetailResponse response =
                 settlementDetailQueryService.getAdminSettlementDetail(settlementId);
+
         // then
         assertThat(response).isNotNull();
         assertThat(response.settlementId()).isEqualTo(settlementId);
@@ -94,7 +94,7 @@ public class SettlementDetailQueryServiceImplTest {
         assertThat(response.lines()).hasSize(2);
         assertThat(response.lines())
                 .extracting(line -> line.paymentId())
-                .containsExactly("payment-1", "payment-2");
+                .containsExactly(paymentId1, paymentId2);
 
         assertThat(response.lines())
                 .extracting(line -> line.type())

@@ -1,17 +1,16 @@
 package com.settleops.domain.settlement.infra;
 
 import com.settleops.domain.refund.domain.Refund;
-import com.settleops.domain.refund.domain.RefundSettlementLink;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.refund.infra.RefundRepository;
-import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
-import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
-import com.settleops.domain.settlement.entity.Hold;
+import com.settleops.domain.hold.domain.Hold;
+import com.settleops.domain.hold.domain.HoldReasonCode;
+import com.settleops.domain.hold.domain.HoldStatus;
+import com.settleops.domain.hold.infra.HoldRepository;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementLine;
-import com.settleops.domain.settlement.enums.HoldStatus;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
@@ -51,9 +50,6 @@ public class SettlementDetailQueryRepositoryImplTest {
     private RefundRepository refundRepository;
 
     @Autowired
-    private RefundSettlementLinkRepository refundSettlementLinkRepository;
-
-    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -64,6 +60,8 @@ public class SettlementDetailQueryRepositoryImplTest {
     void findSettlementLines_ordersByCreatedAtAsc() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId1 = UUID.randomUUID().toString();
+        String paymentId2 = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -75,13 +73,13 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine laterLine = SettlementLine.of(
                 settlementId,
-                "payment-2",
+                paymentId2,
                 SettlementLineType.PAYMENT,
                 3000L
         );
         SettlementLine earlierLine = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId1,
                 SettlementLineType.PAYMENT,
                 7000L
         );
@@ -99,8 +97,8 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         // then
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).paymentId()).isEqualTo("payment-1");
-        assertThat(result.get(1).paymentId()).isEqualTo("payment-2");
+        assertThat(result.get(0).paymentId()).isEqualTo(paymentId1);
+        assertThat(result.get(1).paymentId()).isEqualTo(paymentId2);
     }
 
     @Test
@@ -117,14 +115,13 @@ public class SettlementDetailQueryRepositoryImplTest {
         );
         settlementRepository.save(settlement);
 
-        Hold hold = Hold.builder()
-                .holdId(UUID.randomUUID().toString())
-                .settlementId(settlementId)
-                .status(HoldStatus.HOLD_ACTIVE)
-                .requestedReasonCode("SUSPECTED_FRAUD")
-                .requestedComment("운영 확인 필요")
-                .createdBy("admin1")
-                .build();
+        Hold hold = Hold.requested(
+                settlementId,
+                HoldReasonCode.RISK_SUSPECTED,
+                "운영 확인 필요",
+                "admin1"
+        );
+        hold.approve();
 
         holdRepository.save(hold);
         entityManager.flush();
@@ -138,17 +135,19 @@ public class SettlementDetailQueryRepositoryImplTest {
         assertThat(result.exists()).isTrue();
         assertThat(result.holdId()).isEqualTo(hold.getHoldId());
         assertThat(result.status()).isEqualTo(HoldStatus.HOLD_ACTIVE.name());
-        assertThat(result.reasonCode()).isEqualTo("SUSPECTED_FRAUD");
+        assertThat(result.reasonCode()).isEqualTo(HoldReasonCode.RISK_SUSPECTED.name());
         assertThat(result.comment()).isEqualTo("운영 확인 필요");
         assertThat(result.createdBy()).isEqualTo("admin1");
         assertThat(result.createdAt()).isNotNull();
     }
 
     @Test
-    @DisplayName("A4 상세 조회용 refund summary는 approved refund가 있고 link가 없으면 반영 대기 상태를 반환한다")
-    void findRefundSummary_returnsPendingTrueWhenApprovedRefundExistsWithoutLink() {
+    @DisplayName("A4 상세 조회용 refund 조회는 approved refund가 있으면 true를 반환한다")
+    void hasApprovedRefund_returnsTrueWhenApprovedRefundExists() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId = UUID.randomUUID().toString();
+        String refundId = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -160,15 +159,15 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine line = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId,
                 SettlementLineType.PAYMENT,
                 10000L
         );
         settlementLineRepository.save(line);
 
         Refund refund = createRefund(
-                "refund-1",
-                "payment-1",
+                refundId,
+                paymentId,
                 RefundStatus.APPROVED
         );
         refundRepository.save(refund);
@@ -177,19 +176,18 @@ public class SettlementDetailQueryRepositoryImplTest {
         entityManager.clear();
 
         // when
-        AdminSettlementRefundSummaryResponse result =
-                settlementDetailQueryRepository.findRefundSummary(settlementId);
+        boolean result = settlementDetailQueryRepository.hasApprovedRefund(settlementId);
 
         // then
-        assertThat(result.hasApprovedRefund()).isTrue();
-        assertThat(result.refundAdjustmentPending()).isTrue();
+        assertThat(result).isTrue();
     }
 
     @Test
-    @DisplayName("A4 상세 조회용 refund summary는 approved refund가 link로 반영되었으면 반영 대기 상태가 아니다")
-    void findRefundSummary_returnsPendingFalseWhenApprovedRefundLinkExists() {
+    @DisplayName("A4 상세 조회용 refund 조회는 approved refund가 없으면 false를 반환한다")
+    void hasApprovedRefund_returnsFalseWhenApprovedRefundDoesNotExist() {
         // given
         String settlementId = UUID.randomUUID().toString();
+        String paymentId = UUID.randomUUID().toString();
 
         Settlement settlement = createSettlement(
                 settlementId,
@@ -201,36 +199,20 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         SettlementLine line = SettlementLine.of(
                 settlementId,
-                "payment-1",
+                paymentId,
                 SettlementLineType.PAYMENT,
                 10000L
         );
         settlementLineRepository.save(line);
 
-        Refund refund = createRefund(
-                "refund-1",
-                "payment-1",
-                RefundStatus.APPROVED
-        );
-        refundRepository.save(refund);
-
-        RefundSettlementLink link = RefundSettlementLink.of(
-                "refund-1",
-                settlementId,
-                LocalDateTime.of(2026, 3, 11, 12, 0)
-        );
-        refundSettlementLinkRepository.save(link);
-
         entityManager.flush();
         entityManager.clear();
 
         // when
-        AdminSettlementRefundSummaryResponse result =
-                settlementDetailQueryRepository.findRefundSummary(settlementId);
+        boolean result = settlementDetailQueryRepository.hasApprovedRefund(settlementId);
 
         // then
-        assertThat(result.hasApprovedRefund()).isTrue();
-        assertThat(result.refundAdjustmentPending()).isFalse();
+        assertThat(result).isFalse();
     }
 
     private Settlement createSettlement(
@@ -279,62 +261,5 @@ public class SettlementDetailQueryRepositoryImplTest {
                 Timestamp.valueOf(createdAt),
                 settlementLineId
         );
-    }
-
-    @Test
-    @DisplayName("A4 상세 조회용 refund summary는 approved refund가 다른 settlement에 반영되어 있어도 pending이 아니다")
-    void findRefundSummary_returnsPendingFalseWhenApprovedRefundAlreadyLinkedToAnotherSettlement() {
-        // given
-        String settlementId = UUID.randomUUID().toString();
-        String anotherSettlementId = UUID.randomUUID().toString();
-
-        Settlement settlement = createSettlement(
-                settlementId,
-                "merchant-1",
-                LocalDate.of(2026, 3, 10),
-                10000L
-        );
-        settlementRepository.save(settlement);
-
-        Settlement anotherSettlement = createSettlement(
-                anotherSettlementId,
-                "merchant-1",
-                LocalDate.of(2026, 3, 11),
-                9000L
-        );
-        settlementRepository.save(anotherSettlement);
-
-        SettlementLine line = SettlementLine.of(
-                settlementId,
-                "payment-1",
-                SettlementLineType.PAYMENT,
-                10000L
-        );
-        settlementLineRepository.save(line);
-
-        Refund refund = createRefund(
-                "refund-1",
-                "payment-1",
-                RefundStatus.APPROVED
-        );
-        refundRepository.save(refund);
-
-        RefundSettlementLink link = RefundSettlementLink.of(
-                "refund-1",
-                anotherSettlementId,
-                LocalDateTime.of(2026, 3, 11, 12, 0)
-        );
-        refundSettlementLinkRepository.save(link);
-
-        entityManager.flush();
-        entityManager.clear();
-
-        // when
-        AdminSettlementRefundSummaryResponse result =
-                settlementDetailQueryRepository.findRefundSummary(settlementId);
-
-        // then
-        assertThat(result.hasApprovedRefund()).isTrue();
-        assertThat(result.refundAdjustmentPending()).isFalse();
     }
 }

@@ -132,6 +132,20 @@ public class Settlement extends BaseEntity {
         return this.paidRequestedBy.equals(approverId);
     }
 
+    public void markHoldActive() {
+        if (!isReady()) {
+            throw new IllegalStateException("cannot mark hold active in the current state");
+        }
+        this.status = SettlementStatus.HOLD_ACTIVE;
+    }
+
+    public void restoreReady() {
+        if (!isHoldActive()) {
+            throw new IllegalStateException("cannot restore ready in the current state");
+        }
+        this.status = SettlementStatus.READY;
+    }
+
     public void requestPaid(String requesterId, LocalDateTime at) {
         if (requesterId == null || requesterId.isBlank()) {
             throw new IllegalStateException("requesterId must not be null/blank");

@@ -3,6 +3,10 @@ package com.settleops.domain.settlement.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
+import com.settleops.domain.refund.application.RefundSettlementAssembler;
+import com.settleops.domain.refund.application.dto.ApprovedRefundAdjustment;
+import com.settleops.domain.refund.domain.RefundSettlementLink;
+import com.settleops.domain.refund.infra.RefundSettlementLinkRepository;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.dto.SettlementPayActionResponse;
 import com.settleops.domain.settlement.entity.Settlement;
@@ -19,16 +23,18 @@ import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.enums.ReasonCode;
+import com.settleops.global.error.AuditableConflictException;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.error.NotFoundException;
+import com.settleops.global.error.UnauthorizedException;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -52,6 +58,10 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
     private final RefundAdjustmentPolicy refundAdjustmentPolicy;
     private final SettlementBatchRunRecorder settlementBatchRunRecorder;
     private final ObjectMapper objectMapper;
+    private final EntityManager entityManager;
+
+    private final RefundSettlementAssembler refundSettlementAssembler;
+    private final RefundSettlementLinkRepository refundSettlementLinkRepository;
 
     @Override
     @Transactional
@@ -120,25 +130,41 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             List<PaymentEventRepository.ConfirmedPaymentRow> rows =
                     paymentEventRepository.findConfirmedPaymentsByOccurredAtRange(from, to);
 
-            // 4) merchant별 집계 (gross=ΣcapturedAmount)
+            // 4) APPROVED refund 반영 대상 조회 (C 오너 입력 집합 소비)
+            List<ApprovedRefundAdjustment> refundAdjustments =
+                    refundSettlementAssembler.getApprovedRefundAdjustmentsForBaseDate(baseDate);
+
+// 5) merchant별 집계
             Map<String, Long> grossByMerchant = rows.stream()
                     .collect(Collectors.groupingBy(
                             PaymentEventRepository.ConfirmedPaymentRow::getMerchantId,
                             Collectors.summingLong(PaymentEventRepository.ConfirmedPaymentRow::getCapturedAmount)
                     ));
 
-            // 5) settlement 생성 (SoT)
+            Map<String, Long> refundAmountByMerchant = refundAdjustments.stream()
+                    .collect(Collectors.groupingBy(
+                            ApprovedRefundAdjustment::merchantId,
+                            Collectors.summingLong(ApprovedRefundAdjustment::amount)
+                    ));
+
+// payment merchant + refund merchant 모두 settlement 생성 대상
+            Set<String> merchantIds = new LinkedHashSet<>();
+            merchantIds.addAll(grossByMerchant.keySet());
+            merchantIds.addAll(refundAmountByMerchant.keySet());
+
+            // 6) settlement 생성 (SoT)
             // settlementNo 결정적 규칙(LOCKED): SET-{yyyyMMdd}-{merchantId}
             String yyyyMMdd = baseDate.toString().replace("-", "");
 
-            List<Settlement> settlements = grossByMerchant.entrySet().stream()
-                    .map(e -> {
-                        String merchantId = e.getKey();
-                        long gross = e.getValue();
+            List<Settlement> settlements = merchantIds.stream()
+                    .sorted()
+                    .map(merchantId -> {
+                        long gross = grossByMerchant.getOrDefault(merchantId, 0L);
+                        long refundAmount = refundAmountByMerchant.getOrDefault(merchantId, 0L);
 
                         long fee = 0L;
                         long vat = 0L;
-                        long net = gross - fee - vat;
+                        long net = gross - fee - vat - refundAmount;
 
                         String settlementNo = "SET-" + yyyyMMdd + "-" + merchantId;
 
@@ -173,8 +199,53 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             settlementLineRepository.saveAll(paymentLines);
 
+            List<SettlementLine> refundLines = refundAdjustments.stream()
+                    .map(refund -> {
+                        String settlementId = settlementIdByMerchant.get(refund.merchantId());
+
+                        if (settlementId == null) {
+                            throw new IllegalStateException(
+                                    "settlement not found for merchantId=" + refund.merchantId() + ", baseDate=" + baseDate
+                            );
+                        }
+
+                        return SettlementLine.of(
+                                settlementId,
+                                refund.paymentId(),
+                                SettlementLineType.REFUND,
+                                refund.amount()
+                        );
+                    })
+                    .toList();
+
+            settlementLineRepository.saveAll(refundLines);
+
+            List<RefundSettlementLink> refundLinks = refundAdjustments.stream()
+                    .map(refund -> {
+                        String settlementId = settlementIdByMerchant.get(refund.merchantId());
+
+                        if (settlementId == null) {
+                            throw new IllegalStateException(
+                                    "settlement not found for merchantId=" + refund.merchantId() + ", baseDate=" + baseDate
+                            );
+                        }
+
+                        return RefundSettlementLink.of(
+                                refund.refundId(),
+                                settlementId,
+                                LocalDateTime.now()
+                        );
+                    })
+                    .toList();
+
+            refundSettlementLinkRepository.saveAll(refundLinks);
+
             // 7) 정합성 검증(LOCKED): settlement.net == Σ(line.amount × sign)
-            Map<String, Long> sumSignedBySettlementId = paymentLines.stream()
+            List<SettlementLine> allLines = new ArrayList<>();
+            allLines.addAll(paymentLines);
+            allLines.addAll(refundLines);
+
+            Map<String, Long> sumSignedBySettlementId = allLines.stream()
                     .collect(Collectors.groupingBy(
                             SettlementLine::getSettlementId,
                             Collectors.summingLong(SettlementLine::signedAmount)
@@ -195,6 +266,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 );
                 completedMeta.put("settlementCount", settlements.size());
                 completedMeta.put("paymentLineCount", paymentLines.size());
+                completedMeta.put("refundLineCount", refundLines.size());
 
                 auditBatchAction(
                         requestId,
@@ -289,7 +361,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         }
 
         Settlement settlement = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
         // 1) no-op 200: 이미 PAY_REQUESTED면 현재 상태 반환 (+ audit)
         if (settlement.isPayRequested()) {
@@ -298,7 +370,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             auditSettlementAction(
                     requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
-                    settlement, before, after, comment
+                    settlement, before, after, comment,
+                    true, "ALREADY_PAY_REQUESTED"
             );
             return toPayActionResponse(settlement, requestId);
         }
@@ -324,7 +397,8 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
         auditSettlementAction(
                 requestId, actorId, Action.SETTLEMENT_PAY_REQUESTED,
-                settlement, before, after, comment
+                settlement, before, after, comment,
+                false, null
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -340,17 +414,19 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new BadRequestException("settlementId must not be null/blank");
         }
 
+        // 1) no-op 200: 이미 PAID면 현재 상태 반환 (+ audit)
         Settlement current = settlementRepository.findById(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
-        // 1) no-op 200: 이미 PAID (+ audit)
+        // LOCKED: 이미 PAID면 no-op 200을 먼저 반환하고, PAY_REQUESTED일 때만 락을 시도한다.
         if (current.isPaid()) {
             String before = current.getStatus().name();
             String after = current.getStatus().name();
 
             auditSettlementAction(
                     requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                    current, before, after, comment
+                    current, before, after, comment,
+                    true, "ALREADY_PAID"
             );
             return toPayActionResponse(current, requestId);
         }
@@ -360,9 +436,12 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
         }
 
+        // 비락 조회 엔티티가 영속성 컨텍스트에 남아 stale 상태로 재사용되지 않도록 분리한다.
+        entityManager.detach(current);
+
         // 3) PAY_REQUESTED일 때만 락 조회(PESSIMISTIC_WRITE)
         Settlement settlement = settlementRepository.findByIdForUpdate(settlementId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "settlement not found"));
+                .orElseThrow(() -> new NotFoundException("settlement not found"));
 
         // 락 후 재확인(no-op) (+ audit)
         if (settlement.isPaid()) {
@@ -371,26 +450,42 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             auditSettlementAction(
                     requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                    settlement, before, after, comment
+                    settlement, before, after, comment,
+                    true, "ALREADY_PAID"
             );
             return toPayActionResponse(settlement, requestId);
         }
 
+        if (!settlement.isPayRequested()) {
+            throw new ConflictException(ReasonCode.PAY_REQUESTED_REQUIRED, "PAY_REQUESTED status required");
+        }
+
         // 4-eyes 검사
         if (settlement.violatesFourEyes(approverId)) {
-            throw new ConflictException(
+            throw new AuditableConflictException(
                     ReasonCode.SAME_APPROVER_NOT_ALLOWED,
-                    "requester and approver must be different"
+                    "requester and approver must be different",
+                    ActorType.ADMIN,
+                    approverId,
+                    Action.SETTLEMENT_PAY_APPROVED,
+                    EntityType.SETTLEMENT,
+                    settlement.getSettlementId(),
+                    settlement.getMerchantId(),
+                    settlement.getStatus().name(),
+                    settlement.getStatus().name(),
+                    comment
             );
         }
 
+        // 4) 실제 PAID 전이는 1회만 발생
         String before = settlement.getStatus().name();
         settlement.approvePaid(approverId, LocalDateTime.now());
         String after = settlement.getStatus().name();
 
         auditSettlementAction(
                 requestId, approverId, Action.SETTLEMENT_PAY_APPROVED,
-                settlement, before, after, comment
+                settlement, before, after, comment,
+                false, null
         );
 
         return toPayActionResponse(settlement, requestId);
@@ -424,10 +519,15 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         );
     }
 
+    /**
+     * Settlement 도메인 공통 예외 계층 정렬:
+     * - 인증 주체 없음/공백은 UnauthorizedException으로 통일한다.
+     * - 통합 스모크 및 GlobalExceptionHandler 계약과 동일한 의미를 유지한다.
+     */
     private String currentActorId() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
+            throw new UnauthorizedException("unauthorized");
         }
         return auth.getName();
     }
@@ -439,7 +539,9 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             Settlement settlement,
             String before,
             String after,
-            String comment
+            String comment,
+            boolean noOp,
+            String noOpReason
     ) {
         AuditLogCommand cmd = AuditLogCommand.builder()
                 .requestId(requestId)
@@ -452,7 +554,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
                 .action(action)
                 .statusBefore(before)
                 .statusAfter(after)
-                .metaJson(buildMetaJson(comment))
+                .metaJson(buildMetaJson(comment, noOp, noOpReason))
                 .build();
 
         auditLogger.log(cmd);
@@ -464,7 +566,7 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
             Action action,
             LocalDate baseDate,
             String runId,
-           Map<String, Object> extraMeta
+            Map<String, Object> extraMeta
     ) {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("baseDate", baseDate.toString());
@@ -507,10 +609,16 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
         auditLogger.log(cmd);
     }
 
-    private String buildMetaJson(String comment) {
+    private String buildMetaJson(String comment, boolean noOp, String noOpReason) {
         try {
             Map<String, Object> meta = new LinkedHashMap<>();
             meta.put("comment", (comment == null || comment.isBlank()) ? null : comment);
+            meta.put("noOp", noOp);
+
+            if (noOp) {
+                meta.put("noOpReason", noOpReason);
+            }
+
             return objectMapper.writeValueAsString(meta);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("failed to serialize audit metaJson", e);
