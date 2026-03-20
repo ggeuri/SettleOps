@@ -68,12 +68,7 @@ public class ConsumerPaymentController {
             HttpServletRequest request,
             @LoginConsumer String loginConsumerId
     ) {
-        if (loginConsumerId == null||loginConsumerId.isBlank()) {
-            throw new UnauthorizedException("인증이 필요합니다.");
-        }
-
         String requestId = requestIdResolver.resolve(request);
-
         return confirmService.confirm(paymentId, loginConsumerId, requestId);
     }
 
