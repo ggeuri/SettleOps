@@ -58,7 +58,7 @@ const menuGroups = [
     title: "Admin",
     items: [
       groupItem("Trace / Audit", "/admin/audit"),
-      groupItem("배치 실행", "/admin/batches"),
+      groupItem("배치 실행", "/admin/settlement-batches"),
       groupItem("정산 관리", "/admin/settlements"),
       groupItem("Hold 큐", "/admin/holds"),
       groupItem("환불 큐", "/admin/refunds"),
