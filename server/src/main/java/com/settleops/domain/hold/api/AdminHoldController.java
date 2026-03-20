@@ -21,10 +21,6 @@ public class AdminHoldController {
 
     private final HoldService holdService;
 
-    /**
-     * 현재는 MVP 스켈레톤 검증용으로 adminId를 고정값("ADMIN")으로 주입한다.
-     * 추후 세션 식별자 정책 확정 후 실제 adminId/username 주입으로 교체한다.
-     */
     @PostMapping("/holds")
     public ResponseEntity<HoldCreateResponse> createHold(
             @RequestHeader(value = "X-Request-Id", required = false) String requestId,
