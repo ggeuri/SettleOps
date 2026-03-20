@@ -64,4 +64,18 @@ class DevSessionControllerTest {
                         .param("adminId", " "))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("logout 호출 시 세션을 무효화한다")
+    void logout_shouldInvalidateSession() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+        session.setAttribute(MeController.SessionKeys.ROLE, "ADMIN");
+        session.setAttribute(MeController.SessionKeys.ADMIN_ID, "ADMIN_1001");
+
+        MvcResult result = mockMvc.perform(post("/api/dev/logout").session(session))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(result.getRequest().getSession(false)).isNull();
+    }
 }
