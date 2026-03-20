@@ -121,7 +121,7 @@ class PaymentQueryControllerTest {
                     )
             ));
 
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenReturn(response);
 
@@ -153,7 +153,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId} - 미존재 paymentId 조회 시 404")
         void getPaymentDetail_returns_not_found() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID)))
                     .thenThrow(new NotFoundException("payment not found"));
 
@@ -175,7 +175,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId} - 세션 없으면 401")
         void getPaymentDetail_returns_unauthorized_when_session_missing() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any()))
+            when(sessionAuthProvider.getCurrentMerchantId())
                     .thenThrow(new UnauthorizedException("로그인이 필요합니다."));
 
             // when & then
@@ -192,7 +192,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId} - 다른 merchant 소유면 403")
         void getPaymentDetail_returns_forbidden_when_merchant_mismatch() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getPaymentDetail(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenThrow(new ForbiddenException("다른 상점의 데이터는 조회할 수 없습니다."));
 
@@ -232,7 +232,7 @@ class PaymentQueryControllerTest {
                     LocalDateTime.of(2026, 3, 13, 11, 3, 0)
             );
 
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenReturn(response);
 
@@ -257,7 +257,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId}/refund-context - 미존재 paymentId 조회 시 404")
         void getRefundContext_returns_not_found() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getRefundContext(eq(PAYMENT_ID_MISSING), eq(MERCHANT_ID)))
                     .thenThrow(new NotFoundException("payment not found"));
 
@@ -279,7 +279,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId}/refund-context - 세션 없으면 401")
         void getRefundContext_returns_unauthorized_when_session_missing() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any()))
+            when(sessionAuthProvider.getCurrentMerchantId())
                     .thenThrow(new UnauthorizedException("로그인이 필요합니다."));
 
             // when & then
@@ -296,7 +296,7 @@ class PaymentQueryControllerTest {
         @DisplayName("GET /api/payments/{paymentId}/refund-context - 다른 merchant 소유면 403")
         void getRefundContext_returns_forbidden_when_merchant_mismatch() throws Exception {
             // given
-            when(sessionAuthProvider.getRequiredMerchantId(any())).thenReturn(MERCHANT_ID);
+            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
             when(paymentQueryService.getRefundContext(eq(PAYMENT_ID), eq(MERCHANT_ID)))
                     .thenThrow(new ForbiddenException("다른 상점의 데이터는 조회할 수 없습니다."));
 

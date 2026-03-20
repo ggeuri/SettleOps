@@ -2,7 +2,6 @@ package com.settleops.global.auth.resolver;
 
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.annotation.LoginMerchant;
-import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.stereotype.Component;
@@ -13,7 +12,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 @Component
 @RequiredArgsConstructor
-public class LoginMerchantArgumentResolver extends BaseLoginArgumentResolver
+public class LoginMerchantArgumentResolver
         implements HandlerMethodArgumentResolver {
 
     private final SessionAuthProvider sessionAuthProvider;
@@ -29,7 +28,6 @@ public class LoginMerchantArgumentResolver extends BaseLoginArgumentResolver
                                   ModelAndViewContainer mavContainer,
                                   NativeWebRequest webRequest,
                                   WebDataBinderFactory binderFactory) {
-        HttpSession session = getRequiredSession(webRequest);
-        return sessionAuthProvider.getRequiredMerchantId(session);
+        return sessionAuthProvider.getCurrentMerchantId();
     }
 }
