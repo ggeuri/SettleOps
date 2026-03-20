@@ -2,10 +2,12 @@ package com.settleops.global.auth.controller;
 
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ForbiddenException;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <pre>
  * POST /api/dev/login-consumer?buyerId=BUYER_1
  * POST /api/dev/login-merchant?merchantId=MERCHANT_1
+ * POST /api/dev/logout
  * </pre>
  */
 @Profile({"local","dev"})
@@ -105,6 +108,20 @@ public class DevSessionController {
         return ResponseEntity.ok().build();
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest request) {
+        assertDevSessionEnabled();
+
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+
+        SecurityContextHolder.clearContext();
+
+        return ResponseEntity.ok().build();
+    }
+
     private void assertDevSessionEnabled() {
         if (!devSessionEnabled) {
             throw new ForbiddenException("dev session disabled");
@@ -113,7 +130,6 @@ public class DevSessionController {
 
     // [필수] 길이 제한(정책 충돌 방지)
     private String normalizeId(String rawValue, String fieldName) {
-
         if (!StringUtils.hasText(rawValue)) {
             throw new BadRequestException(fieldName + "는 필수입니다.");
         }
