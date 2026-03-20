@@ -46,7 +46,7 @@ public class SettlementBatchHistoryMetaJsonToleranceIT {
     @DisplayName("A2: SKIP audit_log meta_json이 깨져도 history 조회는 깨지지 않고(운영 안정) OK/FAIL SoT는 보장된다")
     void history_should_not_fail_when_skip_meta_json_is_invalid() {
         // given
-        LocalDate baseDate = LocalDate.now(clock).minusDays(10);
+        LocalDate baseDate = LocalDate.now(clock).minusDays(137);
         String actorId = "adminA-" + UUID.randomUUID().toString().substring(0, 8);
 
         SecurityContextHolder.getContext().setAuthentication(
