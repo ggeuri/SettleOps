@@ -68,7 +68,7 @@ class AuditTraceControllerTest {
                 .andExpect(jsonPath("$.message").value("requestId 또는 merchantId는 필수입니다."));
     }
 
-    //둘 다 오면 requestId 우선 (merchantId 무시)a
+    //둘 다 오면 requestId 우선 (merchantId 무시)
     @Test
     @WithMockUser(roles = "ADMIN")
     void requestId_and_merchantId_both_given_should_prioritize_requestId() throws Exception {
@@ -152,6 +152,7 @@ class AuditTraceControllerTest {
 
                 // Then: 200 , items 반환
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestId").value("R1"))
                 .andExpect(jsonPath("$.items[0].requestId").value("R1"))
                 .andExpect(jsonPath("$.items").isArray())
                 .andExpect(jsonPath("$.items.length()").value(1))
