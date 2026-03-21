@@ -39,14 +39,15 @@ class AuditTraceServiceTest {
                 "M1",   // merchantId
                 null,   // entityType
                 null,   // from
-                null    // to
+                null ,   // to
+                false  // includeNoOp
         );
 
         var pageable = PageRequest.of(0, 20);
 
         // queryService가 호출되면 빈 페이지 반환(서비스가 끝까지 진행되게)
         Page<AuditLog> emptyPage = new PageImpl<>(List.of(), pageable, 0);
-        when(auditTraceQueryService.findByMerchantInRange(eq("M1"), any(), any(), eq(pageable)))
+        when(auditTraceQueryService.findByMerchantInRange(eq("M1"), any(), any(), eq(false), eq(pageable)))
                 .thenReturn(emptyPage);
 
         // When
@@ -57,7 +58,7 @@ class AuditTraceServiceTest {
         ArgumentCaptor<LocalDateTime> toCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
 
         verify(auditTraceQueryService, times(1))
-                .findByMerchantInRange(eq("M1"), fromCaptor.capture(), toCaptor.capture(), eq(pageable));
+                .findByMerchantInRange(eq("M1"), fromCaptor.capture(), toCaptor.capture(), eq(false), eq(pageable));
 
         LocalDateTime from = fromCaptor.getValue();
         LocalDateTime to = toCaptor.getValue();
@@ -80,7 +81,8 @@ class AuditTraceServiceTest {
                 "M1",                       // merchantId
                 null,                       // entityType
                 LocalDateTime.parse("2026-02-01T00:00:00"), // from
-                null // to
+                null, // to
+                false
         );
 
         var pageable = PageRequest.of(0, 20);
@@ -100,7 +102,8 @@ class AuditTraceServiceTest {
                 "M1",                       // merchantId
                 null,                       // entityType
                 null,                       // from
-                LocalDateTime.parse("2026-02-08T00:00:00")  // to
+                LocalDateTime.parse("2026-02-08T00:00:00"),  // to
+                false
         );
 
         var pageable = PageRequest.of(0, 20);
@@ -118,7 +121,8 @@ class AuditTraceServiceTest {
                 "M1",                       // merchantId
                 null,                       // entityType
                 LocalDateTime.parse("2026-02-08T00:00:00"),  // from
-                LocalDateTime.parse("2026-02-08T00:00:00")  // to
+                LocalDateTime.parse("2026-02-08T00:00:00"),  // to
+                false
         );
 
         var pageable = PageRequest.of(0, 20);
@@ -127,6 +131,39 @@ class AuditTraceServiceTest {
                 () -> auditTraceService.searchAuditTraces(rq, pageable));
 
         assertEquals("to는 from 이후여야 합니다.", ex.getMessage());
+    }
+
+    @Test
+    void merchantId_only_with_includeNoOp_true_should_pass_true_to_query_service() {
+        // Given
+        AuditTraceSearchRequestDto rq = new AuditTraceSearchRequestDto(
+                null,   // requestId
+                "M1",   // merchantId
+                null,   // entityType
+                null,   // from
+                null,   // to
+                true    // includeNoOp
+        );
+
+        var pageable = PageRequest.of(0, 20);
+
+        Page<AuditLog> emptyPage = new PageImpl<>(List.of(), pageable, 0);
+        when(auditTraceQueryService.findByMerchantInRange(eq("M1"), any(), any(), eq(true), eq(pageable)))
+                .thenReturn(emptyPage);
+
+        // When
+        auditTraceService.searchAuditTraces(rq, pageable);
+
+        // Then
+        ArgumentCaptor<LocalDateTime> fromCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+        ArgumentCaptor<LocalDateTime> toCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
+
+        verify(auditTraceQueryService, times(1))
+                .findByMerchantInRange(eq("M1"), fromCaptor.capture(), toCaptor.capture(), eq(true), eq(pageable));
+
+        assertNotNull(fromCaptor.getValue());
+        assertNotNull(toCaptor.getValue());
+        assertTrue(toCaptor.getValue().isAfter(fromCaptor.getValue()));
     }
 
 }

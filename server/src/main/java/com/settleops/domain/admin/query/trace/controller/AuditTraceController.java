@@ -28,10 +28,11 @@ public class AuditTraceController {
             @RequestParam(required = false) EntityType entityType,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)  LocalDateTime to,
+            @RequestParam(required = false) boolean includeNoOp,
             @PageableDefault(size = 20) Pageable pageable
     ){
 
-        AuditTraceSearchRequestDto rq = new AuditTraceSearchRequestDto(requestId,merchantId,entityType,from,to);
+        AuditTraceSearchRequestDto rq = new AuditTraceSearchRequestDto(requestId,merchantId,entityType,from,to,includeNoOp);
 
         return auditTraceService.searchAuditTraces(rq,pageable);
 
