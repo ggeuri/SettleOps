@@ -6,15 +6,12 @@ import com.settleops.domain.settlement.infra.SettlementBatchRepository;
 import com.settleops.global.audit.ActorType;
 import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,16 +28,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Transactional
 public class SettlementBatchHistoryMetaJsonToleranceIT {
 
-    @Autowired SettlementAdminCommandService settlementAdminCommandService;
-    @Autowired SettlementBatchQueryService settlementBatchQueryService;
-    @Autowired SettlementBatchRepository settlementBatchRepository;
-    @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired Clock clock;
+    @Autowired
+    SettlementAdminCommandService settlementAdminCommandService;
 
-    @AfterEach
-    void tearDown(){
-        SecurityContextHolder.clearContext();
-    }
+    @Autowired
+    SettlementBatchQueryService settlementBatchQueryService;
+
+    @Autowired
+    SettlementBatchRepository settlementBatchRepository;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    Clock clock;
 
     @Test
     @DisplayName("A2: SKIP audit_log meta_json이 깨져도 history 조회는 깨지지 않고(운영 안정) OK/FAIL SoT는 보장된다")
@@ -49,11 +50,7 @@ public class SettlementBatchHistoryMetaJsonToleranceIT {
         LocalDate baseDate = LocalDate.now(clock).minusDays(137);
         String actorId = "adminA-" + UUID.randomUUID().toString().substring(0, 8);
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(actorId, "N/A")
-        );
-
-        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
+        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001", actorId);
         assertThat(first.result()).isIn(SettlementBatchRunResponse.RunResult.OK, SettlementBatchRunResponse.RunResult.FAIL);
         assertThat(first.runId()).isNotBlank();
 

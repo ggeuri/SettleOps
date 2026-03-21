@@ -4,16 +4,12 @@ import com.settleops.domain.settlement.dto.SettlementBatchHistoryResponse;
 import com.settleops.domain.settlement.dto.SettlementBatchHistoryRowResponse;
 import com.settleops.domain.settlement.dto.SettlementBatchRunResponse;
 import com.settleops.domain.settlement.infra.SettlementBatchRepository;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,11 +46,6 @@ class SettlementBatchHistoryIT {
     @Autowired
     MockMvc mockMvc;
 
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
-
     @Test
     @DisplayName("A2: 배치 이력 통합조회(OK/FAIL + SKIP) - 같은 baseDate 재실행 시 SKIP가 함께 노출되고 occurredAt desc로 정렬된다")
     void history_should_include_okFail_and_skip_and_sort_by_occurredAt_desc() {
@@ -62,15 +53,8 @@ class SettlementBatchHistoryIT {
         LocalDate baseDate = nextAvailableBaseDateWithin30Days();
         String actorId = "adminA-" + UUID.randomUUID().toString().substring(0, 8);
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(actorId, "N/A")
-        );
-        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001");
-
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(actorId, "N/A")
-        );
-        SettlementBatchRunResponse second = settlementAdminCommandService.runBatch(baseDate, "req-test-002");
+        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001", actorId);
+        SettlementBatchRunResponse second = settlementAdminCommandService.runBatch(baseDate, "req-test-002", actorId);
 
         // sanity
         assertThat(first.result()).isIn(
@@ -122,10 +106,11 @@ class SettlementBatchHistoryIT {
     }
 
     @Test
-    @WithMockUser(username = "adminA", roles = "ADMIN")
     @DisplayName("A2 history 응답에는 no-store 헤더가 적용된다")
     void getHistory_appliesNoStoreHeaders() throws Exception {
         mockMvc.perform(get("/api/admin/settlement-batches/history")
+                        .sessionAttr("ROLE", "ADMIN")
+                        .sessionAttr("ADMIN_ID", "adminA")
                         .param("from", LocalDate.now(clock).minusDays(6).toString())
                         .param("to", LocalDate.now(clock).toString())
                         .param("page", "0")

@@ -11,13 +11,10 @@ import com.settleops.global.audit.EntityType;
 import com.settleops.global.enums.Action;
 import com.settleops.global.error.BadRequestException;
 import jakarta.persistence.EntityManager;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -34,17 +31,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class SettlementAdminApprovePaidConcurrencyIT {
 
-    @Autowired SettlementAdminCommandService settlementAdminCommandService;
-    @Autowired SettlementRepository settlementRepository;
-    @Autowired EntityManager em;
-    @Autowired JdbcTemplate jdbcTemplate;
-    @Autowired TransactionTemplate tx; // seed를 "커밋"시키기 위해 필요
-    @Autowired SettlementBatchRepository settlementBatchRepository;
+    @Autowired
+    SettlementAdminCommandService settlementAdminCommandService;
 
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
+    @Autowired
+    SettlementRepository settlementRepository;
+
+    @Autowired
+    EntityManager em;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    TransactionTemplate tx; // seed를 "커밋"시키기 위해 필요
+
+    @Autowired
+    SettlementBatchRepository settlementBatchRepository;
 
     @Test
     void approvePaid_concurrent_two_requests_should_write_two_audits_and_return_paid_for_both() throws Exception {
@@ -182,25 +185,21 @@ class SettlementAdminApprovePaidConcurrencyIT {
     }
 
     @Test
-    void approvePaid_invalidActorId_should_throw_400_BadRequestException_from_AuditLogger_validation() {
+    void approvePaid_invalidAdminId_should_throw_400_BadRequestException() {
         String settlementId = UUID.randomUUID().toString();
         LocalDate baseDate = LocalDate.now().minusDays(1);
 
         Long batchId = createBatchAndReturnId(baseDate);
         seedPayRequestedCommitted(settlementId, "M1", batchId, baseDate);
 
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken("bad actor", "N/A")
-        );
-
         assertThatThrownBy(() ->
                 settlementAdminCommandService.approvePaid(
                         settlementId,
                         "ok",
-                        UUID.randomUUID().toString()
+                        UUID.randomUUID().toString(),
+                        "bad actor"
                 )
-        ).isInstanceOf(BadRequestException.class)
-                .hasMessageContaining("actorId");
+        ).isInstanceOf(BadRequestException.class);
     }
 
     private SettlementStatus callApprovePaid(
@@ -209,21 +208,13 @@ class SettlementAdminApprovePaidConcurrencyIT {
             String settlementId,
             String approverId
     ) throws Exception {
-        try {
-            SecurityContextHolder.getContext().setAuthentication(
-                    new UsernamePasswordAuthenticationToken(approverId, "N/A")
-            );
-
-            readyGate.countDown();
-            if (!startGate.await(5, TimeUnit.SECONDS)) {
-                throw new AssertionError("START_LATCH_TIMEOUT");
-            }
-
-            String requestId = UUID.randomUUID().toString();
-            return settlementAdminCommandService.approvePaid(settlementId, "ok", requestId).status();
-        } finally {
-            SecurityContextHolder.clearContext();
+        readyGate.countDown();
+        if (!startGate.await(5, TimeUnit.SECONDS)) {
+            throw new AssertionError("START_LATCH_TIMEOUT");
         }
+
+        String requestId = UUID.randomUUID().toString();
+        return settlementAdminCommandService.approvePaid(settlementId, "ok", requestId, approverId).status();
     }
 
     private SettlementStatus getOrFailFast(Future<SettlementStatus> f) throws Exception {
@@ -262,22 +253,20 @@ class SettlementAdminApprovePaidConcurrencyIT {
     }
 
     private Long createBatchAndReturnId(LocalDate baseDate) {
-        return tx.execute(status -> {
-            return settlementBatchRepository.findByBatchKey(baseDate)
-                    .map(SettlementBatch::getBatchId)
-                    .orElseGet(() -> {
-                        SettlementBatch batch = SettlementBatch.started(
-                                baseDate,
-                                UUID.randomUUID().toString(),
-                                "ADMIN:test",
-                                UUID.randomUUID().toString()
-                        );
-                        SettlementBatch saved = settlementBatchRepository.save(batch);
-                        em.flush();
-                        em.clear();
-                        return saved.getBatchId();
-                    });
-        });
+        return tx.execute(status -> settlementBatchRepository.findByBatchKey(baseDate)
+                .map(SettlementBatch::getBatchId)
+                .orElseGet(() -> {
+                    SettlementBatch batch = SettlementBatch.started(
+                            baseDate,
+                            UUID.randomUUID().toString(),
+                            "ADMIN:test",
+                            UUID.randomUUID().toString()
+                    );
+                    SettlementBatch saved = settlementBatchRepository.save(batch);
+                    em.flush();
+                    em.clear();
+                    return saved.getBatchId();
+                }));
     }
 
     private JsonNode parseMetaJson(ObjectMapper mapper, String json) {
