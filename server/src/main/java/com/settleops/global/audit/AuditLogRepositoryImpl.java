@@ -99,10 +99,12 @@ public class AuditLogRepositoryImpl implements  AuditLogQuery{
             return null;
         }
 
-        return Expressions.booleanTemplate(
-                "coalesce(json_extract({0}, '$.noOp') = true, false) = false",
+        var noOpValue = Expressions.stringTemplate(
+                "json_unquote(json_extract({0}, '$.noOp'))",
                 auditLog.metaJson
         );
+
+        return noOpValue.isNull().or(noOpValue.ne("true"));
     }
 
     // A2(SKIP) 전용: actionCond 포함
