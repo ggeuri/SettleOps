@@ -4,8 +4,17 @@ import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import "../../style/payment-detail.css";
+import { useNavigate, useParams } from "react-router-dom";
 
 export default function PaymentDetailPage() {
+  const navigate = useNavigate();
+  const { paymentId } = useParams();
+
+  function moveToRefundPage() {
+    if (!paymentId) return;
+    navigate(`/merchant/refunds?paymentId=${encodeURIComponent(paymentId)}`);
+  }
+
   return (
     <PageLayout
       title="결제 상세"
@@ -107,7 +116,7 @@ export default function PaymentDetailPage() {
               </div>
 
               <div className="action-panel">
-                <button type="button" className="btn btn--primary">환불 요청하기</button>
+                <button type="button" className="btn btn--primary" onClick={moveToRefundPage}>환불 요청하기</button>
                 <button type="button" className="btn btn--secondary">refund-context 확인</button>
               </div>
             </div>

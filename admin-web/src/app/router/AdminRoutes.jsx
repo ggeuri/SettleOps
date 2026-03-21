@@ -4,6 +4,7 @@ import BatchPage from "../../pages/admin/BatchPage.jsx"
 import SettlementManagePage from "../../pages/admin/SettlementManagePage.jsx"
 import SettlementDetailAdminPage from "../../pages/admin/SettlementDetailAdminPage.jsx"
 import HoldQueuePage from "../../pages/admin/HoldQueuePage.jsx";
+import RefundQueuePage from "../../pages/admin/RefundQueuePage.jsx";
 
 export default function AdminRoutes() {
   return (
@@ -12,6 +13,7 @@ export default function AdminRoutes() {
       <Route path="settlement-batches" element={<BatchPage />}/>
       <Route path="settlements" element={<SettlementManagePage />}/>
       <Route path="holds" element={<HoldQueuePage />} />
+      <Route path="refunds" element={<RefundQueuePage />} />
       <Route
         path="settlements/:settlementId"
         element={<SettlementDetailAdminPage />}

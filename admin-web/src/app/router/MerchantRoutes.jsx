@@ -5,6 +5,7 @@ import PaymentListPage from "../../pages/merchant/PaymentListPage.jsx";
 import PaymentDetailPage from "../../pages/merchant/PaymentDetailPage.jsx";
 import SettlementListPage from "../../pages/merchant/SettlementListPage.jsx";
 import SettlementDetailPage from "../../pages/merchant/SettlementDetailPage.jsx";
+import RefundPage from "../../pages/merchant/RefundPage.jsx";
 
 function MerchantPaymentListPage() {
   return <div>결제 조회 페이지</div>;
@@ -26,7 +27,7 @@ export default function MerchantRoutes() {
       <Route path="payments/:paymentId" element={<PaymentDetailPage />} />
       <Route path="settlements" element={<SettlementListPage />} />
       <Route path="settlements/:settlementId" element={<SettlementDetailPage />} />
-      <Route path="refunds" element={<MerchantRefundPage />} />
+      <Route path="refunds" element={<RefundPage />} />
     </Routes>
   );
 }

@@ -8,7 +8,7 @@ export default function ActionButton({
     return (
         <button
             type={type}
-            className={`btn btn-${variant}`}
+            className={`btn btn--${variant}`}
             disabled={disabled}
             onClick={onClick}
         >
