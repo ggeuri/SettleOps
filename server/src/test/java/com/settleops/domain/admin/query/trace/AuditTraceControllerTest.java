@@ -68,7 +68,7 @@ class AuditTraceControllerTest {
                 .andExpect(jsonPath("$.message").value("requestId 또는 merchantId는 필수입니다."));
     }
 
-    //둘 다 오면 requestId 우선 (merchantId 무시)
+    //둘 다 오면 requestId 우선 (merchantId 무시)a
     @Test
     @WithMockUser(roles = "ADMIN")
     void requestId_and_merchantId_both_given_should_prioritize_requestId() throws Exception {
@@ -119,6 +119,7 @@ class AuditTraceControllerTest {
 
 //        (requestId="R1", items=List.of(…dummy 1개…), page/size/total…)
         AuditLog log = AuditLog.builder()
+                .requestId("R1")
                 .occurredAt(LocalDateTime.parse("2026-02-25T00:00:00"))
                 .actorType(ActorType.ADMIN)
                 .actorId("admin1")
@@ -151,7 +152,7 @@ class AuditTraceControllerTest {
 
                 // Then: 200 , items 반환
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.requestId").value("R1"))
+                .andExpect(jsonPath("$.items[0].requestId").value("R1"))
                 .andExpect(jsonPath("$.items").isArray())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].actorId").value("admin1"))
@@ -253,6 +254,7 @@ class AuditTraceControllerTest {
                 .andExpect(jsonPath("$.items[0].action").exists())
                 .andExpect(jsonPath("$.items[0].entityType").exists())
                 .andExpect(jsonPath("$.items[0].entityId").exists())
+                .andExpect(jsonPath("$.items[0].requestId").value("R1"))
                 // metaJson은 null 금지 + 빈 값은 "{}"
                 .andExpect(jsonPath("$.items[0].metaJson").value("{}"))
                 // 확장필드 존재

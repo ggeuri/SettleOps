@@ -14,18 +14,18 @@ import java.time.LocalDateTime;
 public class AuditTraceQueryService {
     private final AuditLogRepository auditLogRepository;
 
-    public Page<AuditLog> findByRequestId(String requestId, Pageable pageable){
-      return auditLogRepository.findByRequestIdOrderByOccurredAtDesc(requestId,pageable) ;
+    public Page<AuditLog> findByRequestId(String requestId, boolean includeNoOp, Pageable pageable){
+      return auditLogRepository.findByRequestIdOrderByOccurredAtDesc(requestId,includeNoOp,pageable) ;
     }
 
-    public Page<AuditLog> findByRequestIdAndEntityType(String requestId, EntityType entityType, Pageable pageable){
-        return auditLogRepository.findByRequestIdAndEntityTypeOrderByOccurredAtDesc(requestId,entityType,pageable);
+    public Page<AuditLog> findByRequestIdAndEntityType(String requestId, EntityType entityType, boolean includeNoOp,  Pageable pageable){
+        return auditLogRepository.findByRequestIdAndEntityTypeOrderByOccurredAtDesc(requestId,entityType,includeNoOp,pageable);
     }
-    public Page<AuditLog> findByMerchantInRange(String merchantId, LocalDateTime from, LocalDateTime to, Pageable pageable){
-        return auditLogRepository.findByMerchantIdAndOccurredAtBetweenOrderByOccurredAtDesc(merchantId,from,to,pageable);
+    public Page<AuditLog> findByMerchantInRange(String merchantId, LocalDateTime from, LocalDateTime to, boolean includeNoOp,  Pageable pageable){
+        return auditLogRepository.findByMerchantIdAndOccurredAtBetweenOrderByOccurredAtDesc(merchantId,from,to,includeNoOp,pageable);
     }
-    public Page<AuditLog> findByMerchantInRangeAndEntityType(String merchantId, EntityType entityType, LocalDateTime from, LocalDateTime to, Pageable pageable){
-        return auditLogRepository.findByMerchantIdAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(merchantId,entityType,from,to,pageable);
+    public Page<AuditLog> findByMerchantInRangeAndEntityType(String merchantId, EntityType entityType, LocalDateTime from, LocalDateTime to, boolean includeNoOp, Pageable pageable){
+        return auditLogRepository.findByMerchantIdAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(merchantId,entityType,from,to,includeNoOp,pageable);
     }
 
 }
