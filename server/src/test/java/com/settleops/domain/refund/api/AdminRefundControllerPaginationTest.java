@@ -46,7 +46,7 @@ class AdminRefundControllerPaginationTest {
                 .thenReturn(new PageImpl<>(List.of(item), pageable, 1));
 
         ResponseEntity<PageResponse<AdminRefundListItemDTO>> response =
-                controller.list(null, null, null, pageable);
+                controller.list(null, null, null, 0, 20);
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();

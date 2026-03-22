@@ -14,7 +14,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -43,12 +42,13 @@ public class AdminRefundController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @PageableDefault(size = 20) Pageable pageable
+            @RequestParam(required = false, defaultValue = "0") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size
     ) {
-        Pageable normalized = PageableUtils.normalize(pageable);
+        Pageable pageable = PageableUtils.validateAndCreate(page, size);
 
         Page<AdminRefundListItemDTO> result =
-                refundAdminQueryService.list(status, from, to, normalized);
+                refundAdminQueryService.list(status, from, to, pageable);
 
         return ResponseEntity.ok(PageResponse.from(result));
     }
