@@ -5,8 +5,11 @@ import axios from "axios";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
+import CopyableId from "../../components/display/CopyableId.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
-import CopyableId from "../../components/common/CopyableId.jsx";
+import EmptyState from "../../components/feedback/EmptyState.jsx";
+import ErrorState from "../../components/feedback/ErrorState.jsx";
+import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -87,7 +90,12 @@ function extractRunBaseDate(runResponse, fallbackBaseDate) {
 }
 
 function extractRunId(runResponse) {
-  return runResponse?.runId || runResponse?.batchRunId || runResponse?.batchId || "-";
+  return (
+    runResponse?.runId ||
+    runResponse?.batchRunId ||
+    runResponse?.batchId ||
+    "-"
+  );
 }
 
 export default function BatchPage() {
@@ -101,30 +109,39 @@ export default function BatchPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [runResult, setRunResult] = useState(null);
 
-  const fetchHistory = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage("");
+  const fetchHistory = useCallback(
+    async (nextFromDate, nextToDate) => {
+      const queryFrom = nextFromDate ?? fromDate;
+      const queryTo = nextToDate ?? toDate;
 
-    try {
-      const response = await axios.get("/api/admin/settlement-batches/history", {
-        withCredentials: true,
-        params: {
-          from: fromDate,
-          to: toDate,
-          page: 0,
-          size: 20,
-        },
-      });
+      setLoading(true);
+      setErrorMessage("");
 
-      setHistoryRows(normalizeHistoryRows(response.data));
-    } catch (error) {
-      console.error("A2 배치 이력 조회 실패", error);
-      setHistoryRows([]);
-      setErrorMessage(buildErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }, [fromDate, toDate]);
+      try {
+        const response = await axios.get(
+          "/api/admin/settlement-batches/history",
+          {
+            withCredentials: true,
+            params: {
+              from: queryFrom,
+              to: queryTo,
+              page: 0,
+              size: 20,
+            },
+          }
+        );
+
+        setHistoryRows(normalizeHistoryRows(response.data));
+      } catch (error) {
+        console.error("A2 배치 이력 조회 실패", error);
+        setHistoryRows([]);
+        setErrorMessage(buildErrorMessage(error));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [fromDate, toDate]
+  );
 
   useEffect(() => {
     fetchHistory();
@@ -142,10 +159,9 @@ export default function BatchPage() {
     setFromDate(nextFrom);
     setToDate(nextTo);
     setBaseDate(nextTo);
+    setRunResult(null);
 
-    setTimeout(() => {
-      fetchHistory();
-    }, 0);
+    await fetchHistory(nextFrom, nextTo);
   };
 
   const handleRunBatch = async () => {
@@ -165,7 +181,7 @@ export default function BatchPage() {
         }
       );
 
-      setRunResult(response.data);
+      setRunResult(response.data || null);
       await fetchHistory();
     } catch (error) {
       console.error("A2 배치 실행 실패", error);
@@ -177,9 +193,15 @@ export default function BatchPage() {
 
   const summary = useMemo(() => {
     const total = historyRows.length;
-    const okCount = historyRows.filter((row) => String(row?.result || row?.status || "").toUpperCase() === "OK").length;
-    const failCount = historyRows.filter((row) => String(row?.result || row?.status || "").toUpperCase() === "FAIL").length;
-    const skipCount = historyRows.filter((row) => String(row?.result || row?.status || "").toUpperCase() === "SKIP").length;
+    const okCount = historyRows.filter(
+      (row) => String(row?.result || row?.status || "").toUpperCase() === "OK"
+    ).length;
+    const failCount = historyRows.filter(
+      (row) => String(row?.result || row?.status || "").toUpperCase() === "FAIL"
+    ).length;
+    const skipCount = historyRows.filter(
+      (row) => String(row?.result || row?.status || "").toUpperCase() === "SKIP"
+    ).length;
 
     return { total, okCount, failCount, skipCount };
   }, [historyRows]);
@@ -190,23 +212,39 @@ export default function BatchPage() {
       description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
     >
       <SectionCard title="배치 실행">
-        <div className="page-section">
-          <div className="filter-bar">
-            <div className="form-field">
-              <label className="form-field__label" htmlFor="baseDate">
-                baseDate
-              </label>
-              <input
-                id="baseDate"
-                className="input"
-                type="date"
-                value={baseDate}
-                onChange={(event) => setBaseDate(event.target.value)}
-              />
-            </div>
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+            gap: "16px",
+          }}
+        >
+          <div
+            className="form-field"
+            style={{ minWidth: "220px", flex: "0 0 220px" }}
+          >
+            <label className="form-field__label" htmlFor="baseDate">
+              baseDate
+            </label>
+            <input
+              id="baseDate"
+              className="input"
+              type="date"
+              value={baseDate}
+              onChange={(event) => setBaseDate(event.target.value)}
+            />
           </div>
 
-          <div className="action-panel">
+          <div
+            className="button-row"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
             <button
               type="button"
               className="btn btn--primary"
@@ -230,10 +268,12 @@ export default function BatchPage() {
           message={
             <div className="info-list">
               <div>
-                <strong>result</strong> <StatusBadge status={extractRunResult(runResult)} />
+                <strong>result</strong>{" "}
+                <StatusBadge status={extractRunResult(runResult)} />
               </div>
               <div>
-                <strong>baseDate</strong> {extractRunBaseDate(runResult, baseDate)}
+                <strong>baseDate</strong>{" "}
+                {extractRunBaseDate(runResult, baseDate)}
               </div>
               <div>
                 <strong>runId</strong> {extractRunId(runResult)}
@@ -252,44 +292,80 @@ export default function BatchPage() {
       ) : null}
 
       {errorMessage ? (
-        <GuardNotice title="처리 실패" message={errorMessage} tone="danger" />
+        <>
+          <GuardNotice title="처리 실패" message={errorMessage} tone="danger" />
+          <ErrorState title="배치 콘솔 처리 실패" description={errorMessage} />
+        </>
       ) : null}
 
       <SectionCard title="이력 검색 조건">
-        <form className="filter-bar" onSubmit={handleSearch}>
-          <div className="form-field">
-            <label className="form-field__label" htmlFor="fromDate">
-              from
-            </label>
-            <input
-              id="fromDate"
-              className="input"
-              type="date"
-              value={fromDate}
-              onChange={(event) => setFromDate(event.target.value)}
-            />
-          </div>
+        <form onSubmit={handleSearch}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-end",
+              gap: "16px",
+            }}
+          >
+            <div
+              className="form-field"
+              style={{ minWidth: "220px", flex: "0 0 220px" }}
+            >
+              <label className="form-field__label" htmlFor="fromDate">
+                from
+              </label>
+              <input
+                id="fromDate"
+                className="input"
+                type="date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+              />
+            </div>
 
-          <div className="form-field">
-            <label className="form-field__label" htmlFor="toDate">
-              to
-            </label>
-            <input
-              id="toDate"
-              className="input"
-              type="date"
-              value={toDate}
-              onChange={(event) => setToDate(event.target.value)}
-            />
-          </div>
+            <div
+              className="form-field"
+              style={{ minWidth: "220px", flex: "0 0 220px" }}
+            >
+              <label className="form-field__label" htmlFor="toDate">
+                to
+              </label>
+              <input
+                id="toDate"
+                className="input"
+                type="date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
+              />
+            </div>
 
-          <div className="button-row action-panel">
-            <button type="submit" className="btn btn--primary" disabled={loading}>
-              {loading ? "조회 중..." : "조회"}
-            </button>
-            <button type="button" className="btn btn--secondary" onClick={handleReset} disabled={loading}>
-              초기화
-            </button>
+            <div
+              className="button-row"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={loading}
+              >
+                {loading ? "조회 중..." : "조회"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleReset}
+                disabled={loading}
+              >
+                초기화
+              </button>
+            </div>
           </div>
         </form>
       </SectionCard>
@@ -326,30 +402,32 @@ export default function BatchPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="배치 이력">
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>runId</th>
-                <th>baseDate</th>
-                <th>result</th>
-                <th>requestId</th>
-                <th>triggeredBy</th>
-                <th>occurredAt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
+      <SectionCard title="배치 이력" description={`총 ${historyRows.length}건`}>
+        {loading ? (
+          <LoadingBlock
+            title="로딩 중"
+            description="배치 이력을 불러오고 있습니다."
+          />
+        ) : historyRows.length === 0 ? (
+          <EmptyState
+            title="조회 결과가 없습니다"
+            description="기간 조건을 다시 확인하거나 기본 기간으로 초기화해 주세요."
+          />
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan={6}>불러오는 중...</td>
+                  <th>runId</th>
+                  <th>baseDate</th>
+                  <th>result</th>
+                  <th>requestId</th>
+                  <th>triggeredBy</th>
+                  <th>occurredAt</th>
                 </tr>
-              ) : historyRows.length === 0 ? (
-                <tr>
-                  <td colSpan={6}>조회 결과가 없습니다.</td>
-                </tr>
-              ) : (
-                historyRows.map((row, index) => {
+              </thead>
+              <tbody>
+                {historyRows.map((row, index) => {
                   const runId =
                     row?.runId ||
                     row?.batchRunId ||
@@ -376,17 +454,21 @@ export default function BatchPage() {
                         <StatusBadge status={result} />
                       </td>
                       <td>
-                        {requestId ? <CopyableId value={requestId} short /> : "-"}
+                        {requestId ? (
+                          <CopyableId value={requestId} short />
+                        ) : (
+                          "-"
+                        )}
                       </td>
                       <td>{row?.triggeredBy || row?.actorId || "-"}</td>
                       <td>{formatDateTime(occurredAt)}</td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </SectionCard>
     </PageLayout>
   );

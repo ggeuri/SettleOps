@@ -5,8 +5,11 @@ import axios from "axios";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
+import CopyableId from "../../components/display/CopyableId.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
-import CopyableId from "../../components/common/CopyableId.jsx";
+import EmptyState from "../../components/feedback/EmptyState.jsx";
+import ErrorState from "../../components/feedback/ErrorState.jsx";
+import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -50,7 +53,29 @@ function buildErrorMessage(error) {
     return "정산 리스트 API 경로를 찾을 수 없습니다. 백엔드 라우팅을 확인해 주세요.";
   }
 
-  return message || "정산 리스트를 불러오지 못했습니다. 백엔드 연결 상태와 API 응답 구조를 확인해 주세요.";
+  return (
+    message ||
+    "정산 리스트를 불러오지 못했습니다. 백엔드 연결 상태와 API 응답 구조를 확인해 주세요."
+  );
+}
+
+function CopyableCell({ value }) {
+  if (!value || value === "-") {
+    return <span>-</span>;
+  }
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        maxWidth: "100%",
+        verticalAlign: "middle",
+      }}
+    >
+      <CopyableId value={value} short />
+    </div>
+  );
 }
 
 export default function SettlementManagePage() {
@@ -62,12 +87,14 @@ export default function SettlementManagePage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   const [status, setStatus] = useState(searchParams.get("status") ?? "");
-  const [merchantId, setMerchantId] = useState(searchParams.get("merchantId") ?? "");
+  const [merchantId, setMerchantId] = useState(
+    searchParams.get("merchantId") ?? ""
+  );
 
   const pageTitle = useMemo(() => "A3 정산 관리", []);
 
   const fetchSettlements = useCallback(
-    async (nextStatus = status, nextMerchantId = merchantId) => {
+    async (nextStatus = "", nextMerchantId = "") => {
       setLoading(true);
       setErrorMessage("");
 
@@ -90,7 +117,7 @@ export default function SettlementManagePage() {
         setLoading(false);
       }
     },
-    [status, merchantId]
+    []
   );
 
   useEffect(() => {
@@ -102,7 +129,7 @@ export default function SettlementManagePage() {
     fetchSettlements(nextStatus, nextMerchantId);
   }, [searchParams, fetchSettlements]);
 
-  const handleSearch = async (event) => {
+  const handleSearch = (event) => {
     event.preventDefault();
 
     const nextParams = {};
@@ -112,11 +139,10 @@ export default function SettlementManagePage() {
     setSearchParams(nextParams);
   };
 
-  const handleReset = async () => {
+  const handleReset = () => {
     setStatus("");
     setMerchantId("");
     setSearchParams({});
-    await fetchSettlements("", "");
   };
 
   const handleRowClick = (settlementId) => {
@@ -130,79 +156,112 @@ export default function SettlementManagePage() {
       description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
     >
       <SectionCard title="조회 조건">
-        <form className="filter-bar" onSubmit={handleSearch}>
-          <div className="form-field">
-            <label className="form-field__label" htmlFor="status">
-              상태
-            </label>
-            <select
-              id="status"
-              className="select"
-              value={status}
-              onChange={(event) => setStatus(event.target.value)}
+        <form onSubmit={handleSearch}>
+          <div
+            className="filter-bar"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-end",
+              gap: "16px",
+            }}
+          >
+            <div
+              className="form-field"
+              style={{ minWidth: "220px", flex: "0 0 220px" }}
             >
-              {STATUS_OPTIONS.map((option) => (
-                <option key={option.value || "ALL"} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+              <label className="form-field__label" htmlFor="status">
+                상태
+              </label>
+              <select
+                id="status"
+                className="select"
+                value={status}
+                onChange={(event) => setStatus(event.target.value)}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.value || "ALL"} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="form-field">
-            <label className="form-field__label" htmlFor="merchantId">
-              merchantId
-            </label>
-            <input
-              id="merchantId"
-              className="input"
-              type="text"
-              value={merchantId}
-              onChange={(event) => setMerchantId(event.target.value)}
-              placeholder="merchantId 입력"
-            />
-          </div>
-
-          <div className="button-row action-panel">
-            <button type="submit" className="btn btn--primary" disabled={loading}>
-              {loading ? "조회 중..." : "조회"}
-            </button>
-
-            <button
-              type="button"
-              className="btn btn--secondary"
-              onClick={handleReset}
-              disabled={loading}
+            <div
+              className="form-field"
+              style={{ minWidth: "240px", flex: "0 0 240px" }}
             >
-              초기화
-            </button>
+              <label className="form-field__label" htmlFor="merchantId">
+                merchantId
+              </label>
+              <input
+                id="merchantId"
+                className="input"
+                type="text"
+                value={merchantId}
+                onChange={(event) => setMerchantId(event.target.value)}
+                placeholder="merchantId 입력"
+              />
+            </div>
 
-            <Link to="/admin/settlement-batches" className="btn btn--secondary">
-              배치 콘솔(A2)
-            </Link>
+            <div
+              className="button-row action-panel"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={loading}
+              >
+                {loading ? "조회 중..." : "조회"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleReset}
+                disabled={loading}
+              >
+                초기화
+              </button>
+
+              <Link
+                to="/admin/settlement-batches"
+                className="btn btn--secondary"
+              >
+                배치 콘솔(A2)
+              </Link>
+            </div>
           </div>
         </form>
       </SectionCard>
 
       {errorMessage ? (
-        <GuardNotice title="조회 실패" message={errorMessage} tone="danger" />
+        <>
+          <GuardNotice title="조회 실패" message={errorMessage} tone="danger" />
+          <ErrorState
+            title="정산 리스트 조회 실패"
+            description={errorMessage}
+          />
+        </>
       ) : null}
 
       <SectionCard title="정산 리스트" description={`총 ${rows.length}건`}>
         {loading ? (
-          <div className="state-block">
-            <div className="state-block__title">로딩 중</div>
-            <div className="state-block__description">
-              정산 리스트를 불러오고 있습니다.
-            </div>
-          </div>
+          <LoadingBlock
+            title="로딩 중"
+            description="정산 리스트를 불러오고 있습니다."
+          />
         ) : rows.length === 0 ? (
-          <div className="state-block">
-            <div className="state-block__title">조회 결과가 없습니다</div>
-            <div className="state-block__description">
-              검색 조건을 다시 확인하거나 필터를 초기화해 주세요.
-            </div>
-          </div>
+          <EmptyState
+            title="조회 결과가 없습니다"
+            description="검색 조건을 다시 확인하거나 필터를 초기화해 주세요."
+          />
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -221,7 +280,9 @@ export default function SettlementManagePage() {
               </thead>
               <tbody>
                 {rows.map((row, index) => {
-                  const settlementId = row?.settlementId ?? row?.id ?? `row-${index}`;
+                  const settlementId =
+                    row?.settlementId ?? row?.id ?? `row-${index}`;
+                  const rowMerchantId = row?.merchantId ?? "-";
 
                   return (
                     <tr
@@ -229,27 +290,51 @@ export default function SettlementManagePage() {
                       onClick={() => handleRowClick(settlementId)}
                       style={{ cursor: settlementId ? "pointer" : "default" }}
                     >
-                      <td onClick={(event) => event.stopPropagation()}>
-                        <CopyableId value={settlementId} short />
+                      <td
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ verticalAlign: "middle" }}
+                      >
+                        <CopyableCell value={settlementId} />
                       </td>
-                      <td>
+
+                      <td style={{ verticalAlign: "middle" }}>
                         <StatusBadge status={row?.status || "UNKNOWN"} />
                       </td>
-                      <td>{row?.baseDate ?? "-"}</td>
-                      <td>{row?.merchantId ?? "-"}</td>
-                      <td>{formatAmount(row?.gross)}</td>
-                      <td>{formatAmount(row?.fee)}</td>
-                      <td>{formatAmount(row?.vat)}</td>
-                      <td>{formatAmount(row?.net)}</td>
-                      <td>
+
+                      <td style={{ verticalAlign: "middle" }}>
+                        {row?.baseDate ?? "-"}
+                      </td>
+
+                      <td
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ verticalAlign: "middle" }}
+                      >
+                        <CopyableCell value={rowMerchantId} />
+                      </td>
+
+                      <td style={{ verticalAlign: "middle" }}>
+                        {formatAmount(row?.gross)}
+                      </td>
+                      <td style={{ verticalAlign: "middle" }}>
+                        {formatAmount(row?.fee)}
+                      </td>
+                      <td style={{ verticalAlign: "middle" }}>
+                        {formatAmount(row?.vat)}
+                      </td>
+                      <td style={{ verticalAlign: "middle" }}>
+                        {formatAmount(row?.net)}
+                      </td>
+
+                      <td
+                        onClick={(event) => event.stopPropagation()}
+                        style={{ verticalAlign: "middle" }}
+                      >
                         <button
                           type="button"
                           className="btn btn--secondary"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleRowClick(settlementId);
-                          }}
+                          onClick={() => handleRowClick(settlementId)}
                           disabled={!settlementId}
+                          style={{ whiteSpace: "nowrap" }}
                         >
                           상세조회
                         </button>
