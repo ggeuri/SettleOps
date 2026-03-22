@@ -1,10 +1,14 @@
 import { requestJson } from "./http.js";
 
-export function createConsumerOrder(payload) {
-    return requestJson("/api/consumer/orders", {
-        method: "POST",
-        body: JSON.stringify(payload),
-    });
+export function createConsumerOrder({ merchantId, itemName, amount }) {
+  return requestJson("/api/consumer/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      merchantId,
+      itemName,
+      amount,
+    }),
+  });
 }
 
 // order detail page load TODO: (C3페이지 에서 C2페이지 호출)
