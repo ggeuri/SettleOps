@@ -1,112 +1,51 @@
-// /admin-web/src/pages/merchant/PaymentListPage.jsx
+// /admin-web/src/pages/consumer/OrderListPage.jsx
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { getConsumerOrders } from "../../api/consumerOrderApi.js";
 import { formatDateTime, formatKrw } from "../../util/format.js";
-import { getMe } from "../../api/meApi.js";
-import { getMerchantPayments } from "../../api/merchantPaymentApi.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
 
-const PAGE_TITLE = "결제 조회";
-const PAGE_DESCRIPTION =
-  "U2 결제 조회/검색. row 클릭 시 U3 결제 상세로 이동하는 리스트형 페이지입니다.";
-
-function isMerchantRole(me) {
-  if (!me) {
-    return false;
-  }
-
-  if (me.role === "MERCHANT" || me.role === "ROLE_MERCHANT") {
-    return true;
-  }
-
-  if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_MERCHANT")) {
-    return true;
-  }
-
-  return false;
-}
-
-function buildErrorInfo(error, fallbackMessage) {
-  return {
-    status: error?.status ?? null,
-    message:
-      error?.body?.message ||
-      error?.body?.reason ||
-      fallbackMessage,
-  };
-}
-
-export default function PaymentListPage() {
+export default function OrderListPage() {
   const navigate = useNavigate();
 
-  const [me, setMe] = useState(null);
   const [filters, setFilters] = useState({
+    status: "ALL",
     confirmed: "ALL",
-    from: "",
-    to: "",
     keyword: "",
   });
 
-  const [payments, setPayments] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorInfo, setErrorInfo] = useState(null);
 
-  async function loadPayments(nextFilters = filters, merchantIdParam = me?.merchantId) {
-    if (!merchantIdParam) {
-      setPayments([]);
-      return;
-    }
-
-    const data = await getMerchantPayments({
-      merchantId: merchantIdParam,
+  async function loadOrders(nextFilters = filters) {
+    const data = await getConsumerOrders({
+      status: nextFilters.status,
       confirmed: nextFilters.confirmed,
-      from: nextFilters.from,
-      to: nextFilters.to,
       keyword: nextFilters.keyword,
     });
 
-    setPayments(Array.isArray(data) ? data : []);
-  }
-
-  async function runPaymentsLoad(nextFilters = filters) {
-    try {
-      setLoading(true);
-      setErrorInfo(null);
-      await loadPayments(nextFilters, me?.merchantId);
-    } catch (error) {
-      setPayments([]);
-      setErrorInfo(buildErrorInfo(error, "결제 목록을 불러오지 못했습니다."));
-    } finally {
-      setLoading(false);
-    }
+    setOrders(Array.isArray(data) ? data : []);
   }
 
   async function loadPage() {
     try {
       setLoading(true);
       setErrorInfo(null);
-
-      const meData = await getMe();
-      setMe(meData);
-
-      if (!isMerchantRole(meData)) {
-        setPayments([]);
-        setErrorInfo({
-          status: 403,
-          message: "Merchant 권한이 필요한 페이지입니다.",
-        });
-        return;
-      }
-
-      await loadPayments(filters, meData?.merchantId);
+      await loadOrders(filters);
     } catch (error) {
-      setMe(null);
-      setPayments([]);
-      setErrorInfo(buildErrorInfo(error, "페이지 정보를 불러오지 못했습니다."));
+      setOrders([]);
+      setErrorInfo({
+        status: error?.status ?? null,
+        message:
+          error?.body?.message ||
+          error?.body?.reason ||
+          "주문 / 결제 내역을 불러오지 못했습니다.",
+      });
     } finally {
       setLoading(false);
     }
@@ -116,14 +55,14 @@ export default function PaymentListPage() {
     loadPage();
   }, []);
 
-  function handleRowClick(paymentId) {
-    navigate(`/merchant/payments/${paymentId}`);
+  function handleRowClick(orderId) {
+    navigate(`/consumer/orders/${orderId}`);
   }
 
-  function handleRowKeyDown(event, paymentId) {
+  function handleRowKeyDown(event, orderId) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      navigate(`/merchant/payments/${paymentId}`);
+      navigate(`/consumer/orders/${orderId}`);
     }
   }
 
@@ -136,32 +75,79 @@ export default function PaymentListPage() {
   }
 
   async function handleSearch() {
-    await runPaymentsLoad(filters);
+    try {
+      setLoading(true);
+      setErrorInfo(null);
+      await loadOrders(filters);
+    } catch (error) {
+      setOrders([]);
+      setErrorInfo({
+        status: error?.status ?? null,
+        message:
+          error?.body?.message ||
+          error?.body?.reason ||
+          "주문 / 결제 내역을 불러오지 못했습니다.",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleReset() {
     const initialFilters = {
+      status: "ALL",
       confirmed: "ALL",
-      from: "",
-      to: "",
       keyword: "",
     };
 
-    setFilters(initialFilters);
-    await runPaymentsLoad(initialFilters);
+    try {
+      setFilters(initialFilters);
+      setLoading(true);
+      setErrorInfo(null);
+      await loadOrders(initialFilters);
+    } catch (error) {
+      setOrders([]);
+      setErrorInfo({
+        status: error?.status ?? null,
+        message:
+          error?.body?.message ||
+          error?.body?.reason ||
+          "주문 / 결제 내역을 불러오지 못했습니다.",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRefresh() {
-    await runPaymentsLoad(filters);
+    try {
+      setLoading(true);
+      setErrorInfo(null);
+      await loadOrders(filters);
+    } catch (error) {
+      setOrders([]);
+      setErrorInfo({
+        status: error?.status ?? null,
+        message:
+          error?.body?.message ||
+          error?.body?.reason ||
+          "주문 / 결제 내역을 불러오지 못했습니다.",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (loading) {
     return (
-      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
+      <PageLayout
+        title="내 주문/결제 내역"
+        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
+      >
         <div className="guard-notice">
           <div className="guard-notice__title">로딩 중</div>
           <div className="guard-notice__description">
-            merchant 결제 목록을 불러오는 중입니다.
+            주문 / 결제 내역을 불러오는 중입니다.
           </div>
         </div>
       </PageLayout>
@@ -170,7 +156,10 @@ export default function PaymentListPage() {
 
   if (errorInfo?.status === 401) {
     return (
-      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
+      <PageLayout
+        title="내 주문/결제 내역"
+        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
+      >
         <RequireLoginNotice />
       </PageLayout>
     );
@@ -178,7 +167,10 @@ export default function PaymentListPage() {
 
   if (errorInfo?.status === 403) {
     return (
-      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
+      <PageLayout
+        title="내 주문/결제 내역"
+        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
+      >
         <div className="guard-notice">
           <div className="guard-notice__title">접근 불가</div>
           <div className="guard-notice__description">
@@ -191,7 +183,10 @@ export default function PaymentListPage() {
 
   if (errorInfo) {
     return (
-      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
+      <PageLayout
+        title="내 주문/결제 내역"
+        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
+      >
         <div className="guard-notice">
           <div className="guard-notice__title">조회 실패</div>
           <div className="guard-notice__description">
@@ -203,9 +198,26 @@ export default function PaymentListPage() {
   }
 
   return (
-    <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
+    <PageLayout
+      title="내 주문/결제 내역"
+      description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
+    >
       <SectionCard title="검색 조건">
         <div className="filter-bar">
+          <div className="form-field">
+            <label className="form-field__label">orderStatus</label>
+            <select
+              className="select"
+              name="status"
+              value={filters.status}
+              onChange={handleFilterChange}
+            >
+              <option value="ALL">전체</option>
+              <option value="CREATED">CREATED</option>
+              <option value="PAID">PAID</option>
+            </select>
+          </div>
+
           <div className="form-field">
             <label className="form-field__label">confirmed</label>
             <select
@@ -220,28 +232,6 @@ export default function PaymentListPage() {
             </select>
           </div>
 
-          <div className="form-field">
-            <label className="form-field__label">from</label>
-            <input
-              className="input"
-              type="date"
-              name="from"
-              value={filters.from}
-              onChange={handleFilterChange}
-            />
-          </div>
-
-          <div className="form-field">
-            <label className="form-field__label">to</label>
-            <input
-              className="input"
-              type="date"
-              name="to"
-              value={filters.to}
-              onChange={handleFilterChange}
-            />
-          </div>
-
           <div className="form-field search-field">
             <label className="form-field__label">keyword</label>
             <input
@@ -249,7 +239,7 @@ export default function PaymentListPage() {
               name="keyword"
               value={filters.keyword}
               onChange={handleFilterChange}
-              placeholder="paymentId / orderId / itemName"
+              placeholder="orderId / paymentId / itemName"
             />
           </div>
         </div>
@@ -264,9 +254,9 @@ export default function PaymentListPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="결제 목록">
+      <SectionCard title="주문 / 결제 목록">
         <div className="table-toolbar">
-          <div>merchant 결제 목록</div>
+          <div>내 주문/결제 내역</div>
           <div className="action-panel">
             <button type="button" className="btn btn--secondary" onClick={handleRefresh}>
               새로고침
@@ -278,61 +268,62 @@ export default function PaymentListPage() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>paymentId</th>
                 <th>orderId</th>
+                <th>paymentId</th>
                 <th>itemName</th>
-                <th>buyerId</th>
-                <th>status</th>
+                <th>amount</th>
+                <th>orderStatus</th>
+                <th>paymentStatus</th>
                 <th>confirmed</th>
-                <th>requestedAmount</th>
-                <th>capturedAmount</th>
-                <th>capturedAt</th>
                 <th>confirmedAt</th>
               </tr>
             </thead>
             <tbody>
-              {payments.length === 0 ? (
+              {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={8}>
                     <div className="empty-state">조회 결과가 없습니다.</div>
                   </td>
                 </tr>
               ) : (
-                payments.map((payment) => (
+                orders.map((order) => (
                   <tr
-                    key={payment.paymentId}
-                    style={{ cursor: "pointer" }}
-                    onClick={() => handleRowClick(payment.paymentId)}
-                    onKeyDown={(e) => handleRowKeyDown(e, payment.paymentId)}
+                    key={order.orderId}
+                    onClick={() => handleRowClick(order.orderId)}
+                    onKeyDown={(e) => handleRowKeyDown(e, order.orderId)}
                     tabIndex={0}
                     role="button"
                     className="clickable-row"
                   >
                     <td>
                       <Link
-                        to={`/merchant/payments/${payment.paymentId}`}
+                        to={`/consumer/orders/${order.orderId}`}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {payment.paymentId}
+                        {order.orderId}
                       </Link>
                     </td>
-                    <td>{payment.orderId}</td>
-                    <td>{payment.itemName}</td>
-                    <td>{payment.buyerId}</td>
+                    <td>{order.paymentId ?? "-"}</td>
+                    <td>{order.itemName}</td>
+                    <td>{formatKrw(order.amount)}</td>
                     <td>
-                      <StatusBadge status={payment.status} />
+                      <StatusBadge status={order.orderStatus} />
                     </td>
                     <td>
-                      {payment.confirmed ? (
+                      {order.paymentStatus ? (
+                        <StatusBadge status={order.paymentStatus} />
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                    <td>
+                      {order.confirmed ? (
                         <span className="status-text status-text--done">CONFIRMED</span>
                       ) : (
                         <span className="status-text">-</span>
                       )}
                     </td>
-                    <td>{formatKrw(payment.requestedAmount)}</td>
-                    <td>{formatKrw(payment.capturedAmount)}</td>
-                    <td>{formatDateTime(payment.capturedAt)}</td>
-                    <td>{formatDateTime(payment.confirmedAt)}</td>
+                    <td>{formatDateTime(order.confirmedAt)}</td>
                   </tr>
                 ))
               )}
@@ -343,12 +334,11 @@ export default function PaymentListPage() {
 
       <SectionCard title="페이지 규칙">
         <div className="info-list">
-          <div><strong>역할</strong> Merchant</div>
-          <div><strong>핵심 이동</strong> U2 row 클릭 → U3 결제 상세(paymentId 전달)</div>
-          <div><strong>표시 기준</strong> payment.status는 CREATED / CAPTURED만 사용</div>
+          <div><strong>역할</strong> Consumer</div>
+          <div><strong>핵심 이동</strong> C3 row 클릭 → C2 결제 상세(orderId 전달)</div>
+          <div><strong>주문 상태</strong> order.status는 CREATED / PAID 사용</div>
+          <div><strong>결제 상태</strong> payment.status는 CREATED / CAPTURED 사용</div>
           <div><strong>확정 여부</strong> confirmed / confirmedAt 파생값으로 표시</div>
-          <div><strong>검색 기준</strong> confirmed는 PAYMENT_CONFIRMED 이벤트 존재 여부 기반 파생 필터</div>
-          <div><strong>로그인 주체</strong> {me?.merchantId ?? "-"}</div>
         </div>
       </SectionCard>
     </PageLayout>
