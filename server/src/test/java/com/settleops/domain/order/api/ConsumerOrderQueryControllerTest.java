@@ -15,7 +15,9 @@ import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.BDDMockito;
+
 import static org.mockito.BDDMockito.then;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -175,7 +177,7 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
-        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, null))
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, null, null))
                 .willReturn(response);
 
         mockMvc.perform(get("/api/consumer/orders")
@@ -195,7 +197,7 @@ class ConsumerOrderQueryControllerTest {
 
         then(consumerOrderQueryService)
                 .should()
-                .getOrders(loginConsumerId, null, null);
+                .getOrders(loginConsumerId, null, null, null);
     }
 
     @Test
@@ -220,7 +222,7 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
-        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, OrderStatus.PAID, null))
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, OrderStatus.PAID, null, null))
                 .willReturn(response);
 
         mockMvc.perform(get("/api/consumer/orders")
@@ -232,7 +234,44 @@ class ConsumerOrderQueryControllerTest {
 
         then(consumerOrderQueryService)
                 .should()
-                .getOrders(loginConsumerId, OrderStatus.PAID, null);
+                .getOrders(loginConsumerId, OrderStatus.PAID, null, null);
+    }
+
+    @Test
+    @DisplayName("주문 목록 조회 시 confirmed 파라미터를 서비스로 전달한다")
+    void getOrders_withConfirmedFilter() throws Exception {
+        String loginConsumerId = "buyer-1";
+
+        ConsumerOrderListResponse response = new ConsumerOrderListResponse(
+                List.of(
+                        new ConsumerOrderListItemResponse(
+                                "22222222-2222-2222-2222-222222222222",
+                                "에어팟 프로",
+                                35000L,
+                                OrderStatus.PAID,
+                                true,
+                                true,
+                                LocalDateTime.of(2026, 3, 19, 13, 0, 0)
+                        )
+                )
+        );
+
+        BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
+                .willReturn(loginConsumerId);
+
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, "CONFIRMED", null))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/consumer/orders")
+                        .param("confirmed", "CONFIRMED")
+                        .sessionAttr("LOGIN_CONSUMER", "dummy"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].orderId").value("22222222-2222-2222-2222-222222222222"))
+                .andExpect(jsonPath("$.items[0].confirmed").value(true));
+
+        then(consumerOrderQueryService)
+                .should()
+                .getOrders(loginConsumerId, null, "CONFIRMED", null);
     }
 
     @Test
@@ -271,7 +310,7 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
-        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, "에어팟"))
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, null, "에어팟"))
                 .willReturn(response);
 
         mockMvc.perform(get("/api/consumer/orders")
@@ -283,7 +322,7 @@ class ConsumerOrderQueryControllerTest {
 
         then(consumerOrderQueryService)
                 .should()
-                .getOrders(loginConsumerId, null, "에어팟");
+                .getOrders(loginConsumerId, null, null, "에어팟");
     }
 
     @Test
@@ -294,7 +333,7 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
-        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, null))
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, null, null, null))
                 .willReturn(new ConsumerOrderListResponse(List.of()));
 
         mockMvc.perform(get("/api/consumer/orders")
@@ -305,6 +344,6 @@ class ConsumerOrderQueryControllerTest {
 
         then(consumerOrderQueryService)
                 .should()
-                .getOrders(loginConsumerId, null, null);
+                .getOrders(loginConsumerId, null, null, null);
     }
 }
