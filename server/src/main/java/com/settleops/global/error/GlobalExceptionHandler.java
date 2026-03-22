@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -94,6 +95,19 @@ public class GlobalExceptionHandler {
                 );
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.ofBadRequest(errorMessage));
+    }
+
+    /**
+     * [POLICY] 필수 RequestParam 누락 처리
+     * - Spring binding 단계에서 발생하는 누락 오류는 400 Bad Request로 변환한다.
+     * - 메시지는 단일 정책으로 "<parameterName>는 필수입니다." 형태를 사용한다.
+     */
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingServletRequestParameter(
+            MissingServletRequestParameterException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.ofBadRequest(e.getParameterName() + "는 필수입니다."));
     }
 
     /**
