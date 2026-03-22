@@ -1,6 +1,8 @@
 package com.settleops.domain.order.application;
 
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.order.infra.ConsumerOrderQueryRepository;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.NotFoundException;
@@ -33,6 +35,22 @@ public class ConsumerOrderQueryService {
 
         validateConsumerAccess(detail.buyerId(), loginConsumer);
         return detail;
+    }
+
+    /**
+     * Consumer 주문/결제 목록 조회
+     *
+     * - status 필터는 orders.status SoT 기준을 그대로 사용한다.
+     * - paid/confirmed 같은 파생 필드는 응답 조립부에서 별도 기준을 따른다.
+     */
+    public ConsumerOrderListResponse getOrders(
+            String loginConsumer,
+            OrderStatus status,
+            String keyword
+    ) {
+        return new ConsumerOrderListResponse(
+                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, keyword)
+        );
     }
 
     private void validateConsumerAccess(String buyerId, String loginConsumer) {
