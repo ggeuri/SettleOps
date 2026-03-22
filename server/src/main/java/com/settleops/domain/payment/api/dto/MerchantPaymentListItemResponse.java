@@ -10,6 +10,7 @@ public class MerchantPaymentListItemResponse {
     private final String paymentId;
     private final String orderId;
     private final String status;
+    private final String itemName;
     private final long requestedAmount;
     private final long capturedAmount;
     private final String currency;
@@ -22,6 +23,7 @@ public class MerchantPaymentListItemResponse {
             String paymentId,
             String orderId,
             String status,
+            String itemName,
             long requestedAmount,
             long capturedAmount,
             String currency,
@@ -33,6 +35,7 @@ public class MerchantPaymentListItemResponse {
         this.paymentId = paymentId;
         this.orderId = orderId;
         this.status = status;
+        this.itemName = itemName;
         this.requestedAmount = requestedAmount;
         this.capturedAmount = capturedAmount;
         this.currency = currency;

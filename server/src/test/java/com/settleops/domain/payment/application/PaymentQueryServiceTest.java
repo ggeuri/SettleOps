@@ -55,6 +55,7 @@ class PaymentQueryServiceTest {
                             PAYMENT_ID,
                             "11111111-1111-1111-1111-111111111111",
                             "CAPTURED",
+                            "에어팟 프로",
                             100_000L,
                             100_000L,
                             "KRW",
