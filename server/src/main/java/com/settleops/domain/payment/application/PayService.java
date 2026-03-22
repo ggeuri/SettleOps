@@ -41,15 +41,19 @@ public class PayService {
      *
      * <p>동일 (orderId, X-Idempotency-Key) 재시도만 no-op 200으로 허용한다.</p>
      * <p>capturedAt의 SoT는 PAYMENT_CAPTURED 이벤트의 occurred_at이다.</p>
-     * <p>pay 성공 시 order.status는 PAID로 전이된다.</p>
+     * <p>pay 성공 시 order.status는 CREATED → PAID 로 전이된다.</p>
+     *
+     * <p>현재 구조에서 payment는 order 생성 시점에 CREATED 상태로 미리 생성된다.</p>
+     * <p>따라서 pay는 신규 payment를 생성하지 않고, 기존 payment를 조회해
+     * CREATED → CAPTURED 상태 전이만 수행한다.</p>
      *
      * <p>멱등 처리 정책:
      * <br>- 본 구현은 요청 시작 시 멱등 row를 선점하는 claim 방식이 아니다.
      * <br>- 먼저 성공 이력(idempotency_record)을 조회하고, 이미 성공 결과가 있으면 no-op 200으로 반환한다.
-     * <br>- 최초 성공 요청은 payment.order_id UNIQUE 제약과 후행 성공 결과 저장(idempotency_record)으로 수렴한다.
-     * <br>- 따라서 현재 구조는 선점형 멱등이 아니라 성공 결과 저장형 + payment.order_id UNIQUE 수렴 방식이다.
+     * <br>- 최초 성공 요청은 기존 payment의 상태 전이(CREATED → CAPTURED)와
+     *     후행 성공 결과 저장(idempotency_record)으로 수렴한다.
      * <br>- 동일 요청이 동시 처리 중인 구간에서 write 충돌이 발생하면 기존 성공 결과로 즉시 수습하지 않고
-     *     409 IN_PROGRESS + "잠시 후 다시 시도해주세요." 정책으로 수렴한다.
+     *     409 IN_PROGRESS 정책으로 수렴한다.
      * </p>
      */
     @Transactional
@@ -79,48 +83,34 @@ public class PayService {
             return PayResponseDTO.from(idempotent, capturedAt);
         }
 
-        // 3. 주문 조회
+        // 3. 주문 조회 및 상태 검증
         Orders orders = orderService.getByOrderId(orderId);
         assertOrderNotPaid(orders);
 
-        // 4. 신규 Payment 엔티티 생성
-        Payment newPayment = Payment.create(
-                orders.getOrderId(),
-                orders.getMerchantId(),
-                orders.getBuyerId(),
-                orders.getAmount()
-        );
+        // 4. order 생성 시 미리 만들어둔 payment 조회
+        Payment payment = payQueryService.findPaymentByOrderIdOrThrow(orderId);
 
-        // 5. payment 생성
-        // - payment.order_id UNIQUE 충돌 등 write 시점 경합이 발생하면
-        //   기존 성공 결과를 즉시 재사용하지 않고 동시 처리 중으로 간주한다.
-        // - 이 경우 409 IN_PROGRESS + "잠시 후 다시 시도해주세요." 정책으로 수렴한다.
-        Payment payment = payPaymentWriter.create(newPayment, orderId);
-
-        // 6. PAYMENT_EVENT :: CREATED
-        // - duplicate 발생 시 409 IN_PROGRESS
-        payEventWriter.saveCreated(payment.getPaymentId(), requestId);
+        // 5. pay는 CREATED 상태 payment에 대해서만 허용
+        assertPaymentCreated(payment);
 
         PaymentStatus paymentStatusBefore = payment.getStatus();
 
-        // 7. CAPTURE 수행
+        // 6. CAPTURE 수행
         payment.capture();
 
-        // 8. payment 상태 저장
+        // 7. payment 상태 저장
         // payment.capture() 이후 상태 반영 시점을 명시적으로 확정한다.
         // 현재 구조에서는 Dirty Checking만에 의존하지 않고 saveAndFlush로 DB 반영 시점을 고정한다.
-        // 이후 CAPTURED 이벤트 적재 전에 payment.status=CAPTURED 정합을 분명히 맞추기 위함.
-
+        // 이후 CAPTURED 이벤트 적재 전에 payment.status=CAPTURED 정합을 분명히 맞추기 위함이다.
         payment = payPaymentWriter.saveCapturedState(payment);
 
-        // 9. PAYMENT_EVENT :: CAPTURED
-        // - duplicate 발생 시 409 IN_PROGRESS
+        // 8. PAYMENT_EVENT :: CAPTURED
         payEventWriter.saveCaptured(payment.getPaymentId(), requestId);
 
-        // 10. capturedAt 확정
+        // 9. capturedAt 확정
         LocalDateTime capturedAt = payQueryService.getCapturedAtOrThrow(payment);
 
-        // 11. audit_log 적재
+        // 10. audit_log 적재
         logPay(
                 payment,
                 requestId,
@@ -131,15 +121,15 @@ public class PayService {
                 null
         );
 
-        // 12. 주문 상태 PAID 전이
+        // 11. 주문 상태 PAID 전이
         orderService.markPaid(orderId);
 
         log.info("PAY 성공. orderId={}, paymentId={}, amount={}",
                 orderId, payment.getPaymentId(), payment.getRequestedAmount());
 
-        // 13. 성공 결과를 idempotency_record에 저장
-        // - 이 단계에서 duplicate가 발생하더라도 기존 성공 응답으로 재수습하지 않는다.
-        // - 동일 요청에 대한 동시 처리 경합 상황으로 간주하고 409 IN_PROGRESS로 수렴한다.
+        // 12. 성공 결과를 idempotency_record에 저장
+        // 동일 요청에 대한 동시 처리 경합 상황에서는 이 단계에서 write 충돌이 발생할 수 있으며,
+        // 해당 경우 409 IN_PROGRESS 정책으로 수렴한다.
         payIdempotencyWriter.saveSuccess(
                 targetType,
                 orderId,
@@ -148,7 +138,7 @@ public class PayService {
                 requestId
         );
 
-        // 14. 최종 응답 반환
+        // 13. 최종 응답 반환
         return PayResponseDTO.from(payment, capturedAt);
     }
 
@@ -170,7 +160,7 @@ public class PayService {
     /**
      * PAYMENT_CAPTURED 감사 로그를 기록한다.
      *
-     * <p>최초 성공은 CREATED → CAPTURED로 기록한다.</p>
+     * <p>최초 성공은 CREATED → CAPTURED 로 기록한다.</p>
      * <p>동일 멱등키 재시도는 CAPTURED → CAPTURED + noOp=true 로 기록한다.</p>
      * <p>occurredAt은 PAYMENT_CAPTURED 이벤트의 occurred_at을 사용한다.</p>
      */
@@ -216,11 +206,23 @@ public class PayService {
      * 주문이 이미 PAID 상태인지 검증한다.
      *
      * <p>pay는 order.status가 CREATED인 경우에만 허용한다.</p>
-     * <p>이미 PAID이면 새로운 결제 요청으로 간주하고 409를 반환한다.</p>
+     * <p>이미 PAID이면 409 ORDER_ALREADY_PAID 를 반환한다.</p>
      */
     private static void assertOrderNotPaid(Orders orders) {
         if (orders.getStatus() == OrderStatus.PAID) {
             throw new ConflictException(ReasonCode.ORDER_ALREADY_PAID, "이미 PAID 상태입니다.");
+        }
+    }
+
+    /**
+     * pay 대상 payment가 CREATED 상태인지 검증한다.
+     *
+     * <p>현재 구조에서 pay는 order 생성 시 선생성된 payment를 대상으로 수행한다.</p>
+     * <p>이미 CAPTURED 상태이면 중복 승인 시도로 간주하고 409를 반환한다.</p>
+     */
+    private static void assertPaymentCreated(Payment payment) {
+        if (payment.getStatus() != PaymentStatus.CREATED) {
+            throw new ConflictException(ReasonCode.PAYMENT_ALREADY_CAPTURED, "이미 CAPTURED 상태입니다.");
         }
     }
 }

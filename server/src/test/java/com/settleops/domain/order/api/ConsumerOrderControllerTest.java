@@ -1,10 +1,13 @@
 package com.settleops.domain.order.api;
 
-import com.settleops.domain.order.application.OrderService;
+import com.settleops.domain.order.api.dto.OrderCreateRequestDTO;
+import com.settleops.domain.order.api.dto.OrderCreateResponseDTO;
+import com.settleops.domain.order.application.ConsumerOrderFacade;
 import com.settleops.domain.order.domain.Orders;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
+import com.settleops.global.web.RequestIdResolver;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.BDDMockito;
@@ -17,9 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.mockito.BDDMockito.then;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ConsumerOrderController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -32,7 +33,10 @@ class ConsumerOrderControllerTest {
     private MockMvc mockMvc;
 
     @MockitoBean
-    private OrderService orderService;
+    private ConsumerOrderFacade consumerOrderFacade;
+
+    @MockitoBean
+    private RequestIdResolver requestIdResolver;
 
     @MockitoBean
     private SessionAuthProvider sessionAuthProvider;
@@ -50,8 +54,18 @@ class ConsumerOrderControllerTest {
                 1000L
         );
 
-        BDDMockito.given(orderService.createSeedOrder("merchant-1", "buyer-1", "아이템", 1000L))
-                .willReturn(order);
+        BDDMockito.given(requestIdResolver.resolve(BDDMockito.any()))
+                .willReturn("req-123");
+
+        BDDMockito.given(
+                consumerOrderFacade.createOrderWithPaymentCreated(
+                        "merchant-1",
+                        "buyer-1",
+                        "아이템",
+                        1000L,
+                        "req-123"
+                )
+        ).willReturn(order);
 
         String requestBody = """
                 {
@@ -171,8 +185,18 @@ class ConsumerOrderControllerTest {
                 1000L
         );
 
-        BDDMockito.given(orderService.createSeedOrder("merchant-1", "buyer-1", "아이템", 1000L))
-                .willReturn(order);
+        BDDMockito.given(requestIdResolver.resolve(BDDMockito.any()))
+                .willReturn("req-123");
+
+        BDDMockito.given(
+                consumerOrderFacade.createOrderWithPaymentCreated(
+                        "merchant-1",
+                        "buyer-1",
+                        "아이템",
+                        1000L,
+                        "req-123"
+                )
+        ).willReturn(order);
 
         String requestBody = """
                 {

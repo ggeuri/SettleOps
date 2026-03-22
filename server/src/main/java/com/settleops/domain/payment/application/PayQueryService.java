@@ -8,6 +8,7 @@ import com.settleops.domain.payment.infra.IdempotencyRecordRepository;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
 import com.settleops.global.enums.IdempotencyTargetType;
+import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +24,12 @@ public class PayQueryService {
     private final PaymentRepository paymentRepository;
     private final PaymentEventRepository paymentEventRepository;
     private final IdempotencyRecordRepository idempotencyRecordRepository;
+
+    @Transactional(readOnly = true)
+    public Payment findPaymentByOrderIdOrThrow(String orderId) {
+        return paymentRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new NotFoundException("payment가 존재하지 않습니다."));
+    }
 
     /**
      * 멱등키 기준으로 "성공 완료된" 기존 결제를 조회한다.

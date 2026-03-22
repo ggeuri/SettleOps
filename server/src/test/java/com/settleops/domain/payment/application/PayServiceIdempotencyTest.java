@@ -65,12 +65,22 @@ class PayServiceIdempotencyTest {
 
         String orderId = order.getOrderId();
 
+        // order 생성 시 payment.CREATED 선생성
+        Payment createdPayment = Payment.create(
+                order.getOrderId(),
+                order.getMerchantId(),
+                order.getBuyerId(),
+                order.getAmount()
+        );
+        createdPayment = paymentRepository.saveAndFlush(createdPayment);
+
         // when: 첫 번째 결제
         PayResponseDTO first = payService.pay(orderId, idempotencyKey, requestId1);
 
         // then: 첫 번째 결제 결과 확인
         assertThat(first).isNotNull();
         assertThat(first.paymentId()).isNotBlank();
+        assertThat(first.paymentId()).isEqualTo(createdPayment.getPaymentId());
         assertThat(first.status()).isEqualTo("CAPTURED");
         assertThat(first.capturedAt()).isNotNull();
 
@@ -157,6 +167,15 @@ class PayServiceIdempotencyTest {
 
         String orderId = order.getOrderId();
 
+        // order 생성 시 payment.CREATED 선생성
+        Payment createdPayment = Payment.create(
+                order.getOrderId(),
+                order.getMerchantId(),
+                order.getBuyerId(),
+                order.getAmount()
+        );
+        createdPayment = paymentRepository.saveAndFlush(createdPayment);
+
         // 첫 번째 결제 성공
         PayResponseDTO first = payService.pay(orderId, firstIdempotencyKey, requestId1);
 
@@ -175,6 +194,7 @@ class PayServiceIdempotencyTest {
         long idempotencyCountAfter = idempotencyRecordRepository.count();
 
         assertThat(first).isNotNull();
+        assertThat(first.paymentId()).isEqualTo(createdPayment.getPaymentId());
         assertThat(paymentCountAfter).isEqualTo(paymentCountBefore);
         assertThat(idempotencyCountAfter).isEqualTo(idempotencyCountBefore);
 
