@@ -30,14 +30,19 @@ public class ConsumerOrderQueryController {
      * Consumer 주문/결제 목록 조회
      *
      * - status는 orders.status SoT 기준(CREATED, PAID)만 허용한다.
+     * - confirmed는 PAYMENT_CONFIRMED 이벤트 존재 여부 기준으로 필터링한다.
+     *   - CONFIRMED   : PAYMENT_CONFIRMED 이벤트 존재
+     *   - UNCONFIRMED : PAYMENT_CONFIRMED 이벤트 미존재
+     *   - ALL/null    : 조건 미적용
      * - 잘못된 status 입력은 400(BAD_REQUEST)로 처리된다.
      */
     @GetMapping
     public ConsumerOrderListResponse getOrders(
             @LoginConsumer String loginConsumerId,
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String confirmed,
             @RequestParam(required = false) String keyword
     ) {
-        return consumerOrderQueryService.getOrders(loginConsumerId, status, keyword);
+        return consumerOrderQueryService.getOrders(loginConsumerId, status, confirmed, keyword);
     }
 }
