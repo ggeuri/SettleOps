@@ -43,7 +43,7 @@ export default function PaymentListPage() {
   const [me, setMe] = useState(null);
   const [filters, setFilters] = useState({
     status: "ALL",
-    confirmed: "ALL",
+    // confirmed: "ALL", // 확장 검색 조건. 기획서 고정 U2 계약(status/from/to/keyword) 확정 전까지 미사용
     from: "",
     to: "",
     keyword: "",
@@ -62,7 +62,6 @@ export default function PaymentListPage() {
     const data = await getMerchantPayments({
       merchantId: merchantIdParam,
       status: nextFilters.status,
-      confirmed: nextFilters.confirmed,
       from: nextFilters.from,
       to: nextFilters.to,
       keyword: nextFilters.keyword,
@@ -141,7 +140,7 @@ export default function PaymentListPage() {
   async function handleReset() {
     const initialFilters = {
       status: "ALL",
-      confirmed: "ALL",
+      // confirmed: "ALL", // 확장 검색 조건. 기획서 고정 계약 확정 전까지 미사용
       from: "",
       to: "",
       keyword: "",
@@ -216,6 +215,7 @@ export default function PaymentListPage() {
             </select>
           </div>
 
+          {/*
           <div className="form-field">
             <label className="form-field__label">confirmed</label>
             <select
@@ -229,6 +229,7 @@ export default function PaymentListPage() {
               <option value="UNCONFIRMED">UNCONFIRMED</option>
             </select>
           </div>
+          */}
 
           <div className="form-field">
             <label className="form-field__label">from</label>
@@ -357,7 +358,7 @@ export default function PaymentListPage() {
           <div><strong>핵심 이동</strong> U2 row 클릭 → U3 결제 상세(paymentId 전달)</div>
           <div><strong>표시 기준</strong> payment.status는 CREATED / CAPTURED만 사용</div>
           <div><strong>확정 여부</strong> confirmed / confirmedAt 파생값으로 표시</div>
-          <div><strong>검색 기준</strong> status + confirmed + from + to + keyword</div>
+          <div><strong>검색 기준</strong> status + from + to + keyword</div>
           <div><strong>로그인 주체</strong> {me?.merchantId ?? "-"}</div>
         </div>
       </SectionCard>
