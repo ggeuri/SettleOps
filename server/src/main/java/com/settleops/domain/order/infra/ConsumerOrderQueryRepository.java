@@ -8,12 +8,15 @@ import com.settleops.domain.payment.domain.PaymentEventType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static com.settleops.domain.order.domain.QOrders.orders;
 import static com.settleops.domain.payment.domain.QPayment.payment;
 import static com.settleops.domain.payment.domain.QPaymentEvent.paymentEvent;
+
+import com.querydsl.core.BooleanBuilder;
+import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
+import org.springframework.util.StringUtils;
 
 @Repository
 @RequiredArgsConstructor
@@ -87,5 +90,61 @@ public class ConsumerOrderQueryRepository {
                 .where(paymentEvent.paymentId.eq(paymentId))
                 .orderBy(paymentEvent.occurredAt.asc(), paymentEvent.paymentEventId.asc())
                 .fetch();
+    }
+
+    public List<ConsumerOrderListItemResponse> findConsumerOrders(
+            String buyerId,
+            String status,
+            String keyword
+    ) {
+        QPaymentEvent confirmedEvent = new QPaymentEvent("confirmedEvent");
+
+        BooleanBuilder condition = new BooleanBuilder()
+                .and(orders.buyerId.eq(buyerId));
+
+        if (StringUtils.hasText(status)) {
+            condition.and(orders.status.stringValue().eq(status));
+        }
+
+        if (StringUtils.hasText(keyword)) {
+            condition.and(
+                    orders.orderId.containsIgnoreCase(keyword)
+                            .or(orders.itemName.containsIgnoreCase(keyword))
+            );
+        }
+
+        List<ConsumerOrderListFlatRow> rows = queryFactory
+                .select(Projections.constructor(
+                        ConsumerOrderListFlatRow.class,
+                        orders.orderId,
+                        orders.buyerId,
+                        orders.itemName,
+                        orders.amount,
+                        orders.status.stringValue(),
+                        payment.paymentId,
+                        confirmedEvent.occurredAt,
+                        orders.createdAt
+                ))
+                .from(orders)
+                .leftJoin(payment).on(payment.orderId.eq(orders.orderId))
+                .leftJoin(confirmedEvent).on(
+                        confirmedEvent.paymentId.eq(payment.paymentId)
+                                .and(confirmedEvent.eventType.eq(PaymentEventType.PAYMENT_CONFIRMED))
+                )
+                .where(condition)
+                .orderBy(orders.createdAt.desc())
+                .fetch();
+
+        return rows.stream()
+                .map(row -> new ConsumerOrderListItemResponse(
+                        row.orderId(),
+                        row.itemName(),
+                        row.amount(),
+                        row.orderStatus(),
+                        row.paymentId() != null,
+                        row.confirmedAt() != null,
+                        row.createdAt()
+                ))
+                .toList();
     }
 }

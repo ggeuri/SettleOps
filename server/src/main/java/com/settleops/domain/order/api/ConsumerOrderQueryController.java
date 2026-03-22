@@ -5,6 +5,7 @@ import com.settleops.domain.order.application.ConsumerOrderQueryService;
 import com.settleops.global.auth.annotation.LoginConsumer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 
 @RequiredArgsConstructor
 @RestController
@@ -22,5 +23,14 @@ public class ConsumerOrderQueryController {
             @LoginConsumer String loginConsumerId
     ) {
         return consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId);
+    }
+
+    @GetMapping
+    public ConsumerOrderListResponse getOrders(
+            @LoginConsumer String loginConsumerId,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword
+    ) {
+        return consumerOrderQueryService.getOrders(loginConsumerId, status, keyword);
     }
 }

@@ -7,6 +7,7 @@ import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -39,5 +40,11 @@ public class ConsumerOrderQueryService {
         if (!buyerId.equals(loginConsumer)) {
             throw new ForbiddenException("다른 구매자의 주문은 조회할 수 없습니다.");
         }
+    }
+
+    public ConsumerOrderListResponse getOrders(String loginConsumer, String status, String keyword) {
+        return new ConsumerOrderListResponse(
+                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, keyword)
+        );
     }
 }
