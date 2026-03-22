@@ -5,14 +5,13 @@ import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -48,26 +47,26 @@ public class AdminRefundController {
     public ResponseEntity<AdminRefundDecisionResponseDTO> approve(
             @PathVariable String refundId,
             @RequestBody @Valid AdminRefundDecisionRequestDTO req,
-            Authentication authentication,
+            @LoginAdmin String adminId,
             HttpServletRequest request
     ) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        String adminId = userDetails.getUsername();
         String requestId = requestIdResolver.resolve(request);
-        return ResponseEntity.ok(refundAdminService.approve(refundId, adminId, req.getComment(), requestId));
+        return ResponseEntity.ok(
+                refundAdminService.approve(refundId, adminId, req.getComment(), requestId)
+        );
     }
 
     @PatchMapping("/{refundId}/reject")
     public ResponseEntity<AdminRefundDecisionResponseDTO> reject(
             @PathVariable String refundId,
             @RequestBody @Valid AdminRefundDecisionRequestDTO req,
-            Authentication authentication,
-            HttpServletRequest request
+            HttpServletRequest request,
+            @LoginAdmin String adminId
     ) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        String adminId = userDetails.getUsername();
         String requestId = requestIdResolver.resolve(request);
-        return ResponseEntity.ok(refundAdminService.reject(refundId, adminId, req.getComment(), requestId));
+        return ResponseEntity.ok(
+                refundAdminService.reject(refundId, adminId, req.getComment(), requestId)
+        );
     }
 
 }

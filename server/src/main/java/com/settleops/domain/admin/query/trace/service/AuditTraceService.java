@@ -29,6 +29,7 @@ public class AuditTraceService {
         LocalDateTime from = rq.getFrom();
         LocalDateTime to = rq.getTo();
         LocalDateTime now = LocalDateTime.now();
+        boolean includeNoOp = rq.isIncludeNoOp();
 
         boolean hasRequestId = requestId != null && !requestId.isBlank();
         boolean hasMerchantId = merchantId != null && !merchantId.isBlank();
@@ -42,11 +43,11 @@ public class AuditTraceService {
 
         if (hasRequestId) {
             if (hasEntityType) {
-                pageResult = auditTraceQueryService.findByRequestIdAndEntityType(requestId, entityType, pageable);
+                pageResult = auditTraceQueryService.findByRequestIdAndEntityType(requestId, entityType, includeNoOp, pageable);
             } else {
-                pageResult = auditTraceQueryService.findByRequestId(requestId, pageable);
+                pageResult = auditTraceQueryService.findByRequestId(requestId, includeNoOp, pageable);
             }
-        } else if (hasMerchantId) {
+        } else  {
             if (to == null && from == null) {
                 to = now;
                 from = to.minusDays(7);
@@ -56,9 +57,9 @@ public class AuditTraceService {
             if (!to.isAfter(from)) throw new BadRequestException("to는 from 이후여야 합니다.");
 
             if (hasEntityType) {
-                pageResult = auditTraceQueryService.findByMerchantInRangeAndEntityType(merchantId, entityType, from, to, pageable);
+                pageResult = auditTraceQueryService.findByMerchantInRangeAndEntityType(merchantId, entityType, from, to, includeNoOp, pageable);
             } else {
-                pageResult = auditTraceQueryService.findByMerchantInRange(merchantId, from, to, pageable);
+                pageResult = auditTraceQueryService.findByMerchantInRange(merchantId, from, to, includeNoOp, pageable);
             }
         }
         if (pageResult == null) throw new IllegalStateException("pageResult is null");

@@ -57,6 +57,7 @@ public class PaymentQueryRepository {
                         payment.paymentId,
                         payment.orderId,
                         payment.status.stringValue(),
+                        order.itemName,
                         payment.requestedAmount,
                         payment.capturedAmount,
                         payment.currency,

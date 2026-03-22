@@ -1,6 +1,7 @@
 package com.settleops.global.audit;
 
 import com.querydsl.core.types.dsl.BooleanExpression;
+import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.global.enums.Action;
 import lombok.RequiredArgsConstructor;
@@ -24,24 +25,24 @@ public class AuditLogRepositoryImpl implements  AuditLogQuery{
     private final JPAQueryFactory jpaQueryFactory;
 
     @Override
-    public Page<AuditLog> findByRequestIdOrderByOccurredAtDesc(String requestId, Pageable pageable) {
+    public Page<AuditLog> findByRequestIdOrderByOccurredAtDesc(String requestId, boolean includeNoOp,Pageable pageable) {
 
-        return page(auditLog.requestId.eq(requestId), null,null,pageable);
+        return page(auditLog.requestId.eq(requestId), null,null, noOpCondition(includeNoOp), pageable);
     }
 
     @Override
-    public Page<AuditLog> findByRequestIdAndEntityTypeOrderByOccurredAtDesc(String requestId, EntityType entityType, Pageable pageable) {
-        return page(auditLog.requestId.eq(requestId),auditLog.entityType.eq(entityType),null,pageable);
+    public Page<AuditLog> findByRequestIdAndEntityTypeOrderByOccurredAtDesc(String requestId, EntityType entityType, boolean includeNoOp,Pageable pageable) {
+        return page(auditLog.requestId.eq(requestId),auditLog.entityType.eq(entityType),null,  noOpCondition(includeNoOp), pageable);
     }
 
     @Override
-    public Page<AuditLog> findByMerchantIdAndOccurredAtBetweenOrderByOccurredAtDesc(String merchantId, LocalDateTime from, LocalDateTime to, Pageable pageable) {
-        return page(auditLog.merchantId.eq(merchantId),null,auditLog.occurredAt.between(from, to),pageable);
+    public Page<AuditLog> findByMerchantIdAndOccurredAtBetweenOrderByOccurredAtDesc(String merchantId, LocalDateTime from, LocalDateTime to, boolean includeNoOp,Pageable pageable) {
+        return page(auditLog.merchantId.eq(merchantId),null,auditLog.occurredAt.between(from, to), noOpCondition(includeNoOp), pageable);
     }
 
     @Override
-    public Page<AuditLog> findByMerchantIdAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(String merchantId, EntityType entityType, LocalDateTime from, LocalDateTime to, Pageable pageable) {
-        return page(auditLog.merchantId.eq(merchantId),auditLog.entityType.eq(entityType),auditLog.occurredAt.between(from, to),pageable);
+    public Page<AuditLog> findByMerchantIdAndEntityTypeAndOccurredAtBetweenOrderByOccurredAtDesc(String merchantId, EntityType entityType, LocalDateTime from, LocalDateTime to, boolean includeNoOp,Pageable pageable) {
+        return page(auditLog.merchantId.eq(merchantId),auditLog.entityType.eq(entityType),auditLog.occurredAt.between(from, to), noOpCondition(includeNoOp),pageable);
     }
 
     // occurredAt DESC 고정 + pageable offset/limit 적용 + countQuery로 Page 구성
@@ -49,10 +50,11 @@ public class AuditLogRepositoryImpl implements  AuditLogQuery{
     private Page<AuditLog> page(BooleanExpression keyCond,
                                 BooleanExpression entityTypeCond,
                                 BooleanExpression rangeCond,
+                                BooleanExpression noOpCond,
                                 Pageable pageable) {
 
         // Expressions.allOf는 null-safe
-        BooleanExpression whereCond = allOf(keyCond, entityTypeCond, rangeCond);
+        BooleanExpression whereCond = allOf(keyCond, entityTypeCond, rangeCond, noOpCond);
 
         List<AuditLog> content = jpaQueryFactory
                 .selectFrom(auditLog)
@@ -91,6 +93,20 @@ public class AuditLogRepositoryImpl implements  AuditLogQuery{
                 pageable
         );
     }
+
+    private BooleanExpression noOpCondition(boolean includeNoOp) {
+        if (includeNoOp) {
+            return null;
+        }
+
+        var noOpValue = Expressions.stringTemplate(
+                "json_unquote(json_extract({0}, '$.noOp'))",
+                auditLog.metaJson
+        );
+
+        return noOpValue.isNull().or(noOpValue.ne("true"));
+    }
+
     // A2(SKIP) 전용: actionCond 포함
     private Page<AuditLog> pageWithAction(
             BooleanExpression keyCond,

@@ -14,5 +14,6 @@ public class AuditTraceSearchRequestDto {
     private EntityType entityType;
     private LocalDateTime from;
     private LocalDateTime to;
+    private boolean includeNoOp;
 
 }
