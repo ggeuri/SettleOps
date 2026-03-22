@@ -6,8 +6,6 @@ import com.settleops.domain.settlement.dto.MerchantSettlementLineItemResponse;
 import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
-import com.settleops.global.auth.MerchantSessionResolver;
-import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -24,14 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class MerchantSettlementQueryControllerTest {
 
     @Test
-    @DisplayName("Merchant 정산 리스트 조회 시 resolver의 merchantId와 path merchantId를 서비스로 전달한다")
-    void getMerchantSettlements_passesResolvedMerchantIdAndPathMerchantId() {
+    @DisplayName("Merchant 정산 리스트 조회 시 loginMerchantId와 path merchantId를 서비스로 전달한다")
+    void getMerchantSettlements_passesLoginMerchantIdAndPathMerchantId() {
         MerchantSettlementQueryService merchantSettlementQueryService = Mockito.mock(MerchantSettlementQueryService.class);
-        MerchantSessionResolver merchantSessionResolver = Mockito.mock(MerchantSessionResolver.class);
         MerchantSettlementQueryController controller =
-                new MerchantSettlementQueryController(merchantSettlementQueryService, merchantSessionResolver);
+                new MerchantSettlementQueryController(merchantSettlementQueryService);
 
-        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
         PageRequest pageable = PageRequest.of(0, 20);
 
         MerchantSettlementListItemResponse item = new MerchantSettlementListItemResponse(
@@ -45,9 +41,6 @@ public class MerchantSettlementQueryControllerTest {
                 LocalDateTime.of(2026, 3, 11, 10, 0)
         );
 
-        Mockito.when(merchantSessionResolver.resolveMerchantId(request))
-                .thenReturn("merchant-1");
-
         Mockito.when(merchantSettlementQueryService.getMerchantSettlements(
                 "merchant-1",
                 "merchant-1",
@@ -57,13 +50,12 @@ public class MerchantSettlementQueryControllerTest {
         ResponseEntity<?> response = controller.getMerchantSettlements(
                 "merchant-1",
                 pageable,
-                request
+                "merchant-1"
         );
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
 
-        Mockito.verify(merchantSessionResolver).resolveMerchantId(request);
         Mockito.verify(merchantSettlementQueryService).getMerchantSettlements(
                 "merchant-1",
                 "merchant-1",
@@ -72,14 +64,11 @@ public class MerchantSettlementQueryControllerTest {
     }
 
     @Test
-    @DisplayName("Merchant 정산 상세 조회 시 resolver의 merchantId와 settlementId를 서비스로 전달한다")
-    void getMerchantSettlementDetail_passesResolvedMerchantIdAndSettlementId() {
+    @DisplayName("Merchant 정산 상세 조회 시 loginMerchantId와 settlementId를 서비스로 전달한다")
+    void getMerchantSettlementDetail_passesLoginMerchantIdAndSettlementId() {
         MerchantSettlementQueryService merchantSettlementQueryService = Mockito.mock(MerchantSettlementQueryService.class);
-        MerchantSessionResolver merchantSessionResolver = Mockito.mock(MerchantSessionResolver.class);
         MerchantSettlementQueryController controller =
-                new MerchantSettlementQueryController(merchantSettlementQueryService, merchantSessionResolver);
-
-        HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+                new MerchantSettlementQueryController(merchantSettlementQueryService);
 
         MerchantSettlementDetailResponse detail = new MerchantSettlementDetailResponse(
                 "settlement-1",
@@ -99,9 +88,6 @@ public class MerchantSettlementQueryControllerTest {
                 )
         );
 
-        Mockito.when(merchantSessionResolver.resolveMerchantId(request))
-                .thenReturn("merchant-1");
-
         Mockito.when(merchantSettlementQueryService.getMerchantSettlementDetail(
                 "merchant-1",
                 "merchant-1",
@@ -111,13 +97,12 @@ public class MerchantSettlementQueryControllerTest {
         ResponseEntity<?> response = controller.getMerchantSettlementDetail(
                 "merchant-1",
                 "settlement-1",
-                request
+                "merchant-1"
         );
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
 
-        Mockito.verify(merchantSessionResolver).resolveMerchantId(request);
         Mockito.verify(merchantSettlementQueryService).getMerchantSettlementDetail(
                 "merchant-1",
                 "merchant-1",

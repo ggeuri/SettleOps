@@ -3,8 +3,7 @@ package com.settleops.domain.settlement.api;
 import com.settleops.domain.settlement.application.MerchantSettlementQueryService;
 import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
 import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
-import com.settleops.global.auth.MerchantSessionResolver;
-import jakarta.servlet.http.HttpServletRequest;
+import com.settleops.global.auth.annotation.LoginMerchant;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -19,16 +18,13 @@ import org.springframework.web.bind.annotation.*;
 public class MerchantSettlementQueryController {
 
     private final MerchantSettlementQueryService merchantSettlementQueryService;
-    private final MerchantSessionResolver merchantSessionResolver;
 
     @GetMapping
     public ResponseEntity<Page<MerchantSettlementListItemResponse>> getMerchantSettlements(
             @PathVariable String merchantId,
             @PageableDefault(size = 20) Pageable pageable,
-            HttpServletRequest request
+            @LoginMerchant String loginMerchantId
     ) {
-        String loginMerchantId = merchantSessionResolver.resolveMerchantId(request);
-
         Pageable fixedPageable = PageRequest.of(
                 pageable.getPageNumber(),
                 pageable.getPageSize()
@@ -47,10 +43,8 @@ public class MerchantSettlementQueryController {
     public ResponseEntity<MerchantSettlementDetailResponse> getMerchantSettlementDetail(
             @PathVariable String merchantId,
             @PathVariable String settlementId,
-            HttpServletRequest request
+            @LoginMerchant String loginMerchantId
     ) {
-        String loginMerchantId = merchantSessionResolver.resolveMerchantId(request);
-
         return ResponseEntity.ok(
                 merchantSettlementQueryService.getMerchantSettlementDetail(
                         loginMerchantId,
