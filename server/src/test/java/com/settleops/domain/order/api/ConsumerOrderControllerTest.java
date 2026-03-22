@@ -1,7 +1,5 @@
 package com.settleops.domain.order.api;
 
-import com.settleops.domain.order.api.dto.OrderCreateRequestDTO;
-import com.settleops.domain.order.api.dto.OrderCreateResponseDTO;
 import com.settleops.domain.order.application.ConsumerOrderFacade;
 import com.settleops.domain.order.domain.Orders;
 import com.settleops.global.audit.AuditLogger;
@@ -20,7 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ConsumerOrderController.class)
 @AutoConfigureMockMvc(addFilters = false)
