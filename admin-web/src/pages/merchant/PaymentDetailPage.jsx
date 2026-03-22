@@ -7,7 +7,7 @@ import {
   getRefundContext,
 } from "../../api/merchantPaymentApi.js";
 import { getMe } from "../../api/meApi.js";
-import { formatDateTimeWithSeconds, formatKrw } from "../../util/format.js";
+import { formatDateTimeWithSeconds, formatNumber } from "../../util/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
@@ -210,7 +210,7 @@ export default function PaymentDetailPage() {
               <div className="card__body">
                 <div className="summary-card__label">amount / currency</div>
                 <div className="summary-card__value">
-                  {formatKrw(paymentDetail?.capturedAmount)} {paymentDetail?.currency}
+                  {formatNumber(paymentDetail?.capturedAmount)} {paymentDetail?.currency}
                 </div>
               </div>
             </div>
@@ -245,7 +245,7 @@ export default function PaymentDetailPage() {
                 <div className="kv-item__label">requestedAmount</div>
                 <div className="kv-item__value">
                   <span className="display-field amount-text">
-                    {formatKrw(paymentDetail?.requestedAmount)}
+                    {formatNumber(paymentDetail?.requestedAmount)} {paymentDetail.currency}
                   </span>
                 </div>
               </div>
@@ -254,7 +254,7 @@ export default function PaymentDetailPage() {
                 <div className="kv-item__label">capturedAmount</div>
                 <div className="kv-item__value">
                   <span className="display-field amount-text">
-                    {formatKrw(paymentDetail?.capturedAmount)}
+                    {formatNumber(paymentDetail?.capturedAmount)} {paymentDetail.currency}
                   </span>
                 </div>
               </div>
@@ -304,7 +304,7 @@ export default function PaymentDetailPage() {
                   <div className="kv-item__label">capturedAmount</div>
                   <div className="kv-item__value">
                     <span className="display-field amount-text">
-                      {formatKrw(refundContext?.capturedAmount ?? paymentDetail?.capturedAmount)}
+                      {formatNumber(refundContext?.capturedAmount ?? paymentDetail?.capturedAmount)}
                     </span>
                   </div>
                 </div>
@@ -314,7 +314,7 @@ export default function PaymentDetailPage() {
                   <div className="kv-item__value">
                     <span className="display-field amount-text">
                       {refundContext
-                        ? formatKrw(refundContext?.refundableAmount)
+                        ? formatNumber(refundContext?.refundableAmount)
                         : "-"}
                     </span>
                   </div>

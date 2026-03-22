@@ -53,6 +53,6 @@ export function formatDateTimeWithSeconds(value) {
 }
 
 // 금액표기 포멧
-export function formatKrw(value) {
+export function formatNumber(value) {
   return Number(value ?? 0).toLocaleString();
 }

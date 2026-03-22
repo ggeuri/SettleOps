@@ -4,6 +4,7 @@ import { requestJson } from "./http.js";
 
 export function getMerchantPayments({
   merchantId,
+  status,
   confirmed,
   from,
   to,
@@ -15,6 +16,9 @@ export function getMerchantPayments({
 
   const searchParams = new URLSearchParams();
 
+  if (status && status !== "ALL") {
+    searchParams.set("status", status);
+  }
   if (confirmed && confirmed !== "ALL") {
     searchParams.set("confirmed", confirmed);
   }

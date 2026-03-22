@@ -3,18 +3,51 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getConsumerOrders } from "../../api/consumerOrderApi.js";
-import { formatDateTime, formatKrw } from "../../util/format.js";
+import { getMe } from "../../api/meApi.js";
+import { formatDateTime, formatNumber } from "../../util/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
 
+const PAGE_TITLE = "내 주문/결제 내역";
+const PAGE_DESCRIPTION =
+  "C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다.";
+
+function isConsumerRole(me) {
+  if (!me) {
+    return false;
+  }
+
+  if (me.role === "CONSUMER" || me.role === "ROLE_CONSUMER") {
+    return true;
+  }
+
+  if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_CONSUMER")) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+  return {
+    status: error?.status ?? null,
+    message:
+      error?.body?.message ||
+      error?.body?.reason ||
+      fallbackMessage,
+  };
+}
+
 export default function OrderListPage() {
   const navigate = useNavigate();
 
+  const [me, setMe] = useState(null);
   const [filters, setFilters] = useState({
     status: "ALL",
-    confirmed: "ALL",
+    // TODO: 백엔드 C3 confirmed 필터(query param + predicate) 지원 후 재오픈
+    // confirmed: "ALL",
     keyword: "",
   });
 
@@ -25,27 +58,49 @@ export default function OrderListPage() {
   async function loadOrders(nextFilters = filters) {
     const data = await getConsumerOrders({
       status: nextFilters.status,
-      confirmed: nextFilters.confirmed,
+      // TODO: 백엔드 C3 confirmed 필터(query param + predicate) 지원 후 재연결
+      // confirmed: nextFilters.confirmed,
       keyword: nextFilters.keyword,
     });
 
-    setOrders(Array.isArray(data) ? data : []);
+    setOrders(Array.isArray(data?.items) ? data.items : []);
+  }
+
+  async function runOrdersLoad(nextFilters = filters) {
+    try {
+      setLoading(true);
+      setErrorInfo(null);
+      await loadOrders(nextFilters);
+    } catch (error) {
+      setOrders([]);
+      setErrorInfo(buildErrorInfo(error, "주문 / 결제 내역을 불러오지 못했습니다."));
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadPage() {
     try {
       setLoading(true);
       setErrorInfo(null);
+
+      const meData = await getMe();
+      setMe(meData);
+
+      if (!isConsumerRole(meData)) {
+        setOrders([]);
+        setErrorInfo({
+          status: 403,
+          message: "Consumer 권한이 필요한 페이지입니다.",
+        });
+        return;
+      }
+
       await loadOrders(filters);
     } catch (error) {
+      setMe(null);
       setOrders([]);
-      setErrorInfo({
-        status: error?.status ?? null,
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "주문 / 결제 내역을 불러오지 못했습니다.",
-      });
+      setErrorInfo(buildErrorInfo(error, "페이지 정보를 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -75,75 +130,28 @@ export default function OrderListPage() {
   }
 
   async function handleSearch() {
-    try {
-      setLoading(true);
-      setErrorInfo(null);
-      await loadOrders(filters);
-    } catch (error) {
-      setOrders([]);
-      setErrorInfo({
-        status: error?.status ?? null,
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "주문 / 결제 내역을 불러오지 못했습니다.",
-      });
-    } finally {
-      setLoading(false);
-    }
+    await runOrdersLoad(filters);
   }
 
   async function handleReset() {
     const initialFilters = {
       status: "ALL",
-      confirmed: "ALL",
+      // TODO: 백엔드 C3 confirmed 필터(query param + predicate) 지원 후 재오픈
+      // confirmed: "ALL",
       keyword: "",
     };
 
-    try {
-      setFilters(initialFilters);
-      setLoading(true);
-      setErrorInfo(null);
-      await loadOrders(initialFilters);
-    } catch (error) {
-      setOrders([]);
-      setErrorInfo({
-        status: error?.status ?? null,
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "주문 / 결제 내역을 불러오지 못했습니다.",
-      });
-    } finally {
-      setLoading(false);
-    }
+    setFilters(initialFilters);
+    await runOrdersLoad(initialFilters);
   }
 
   async function handleRefresh() {
-    try {
-      setLoading(true);
-      setErrorInfo(null);
-      await loadOrders(filters);
-    } catch (error) {
-      setOrders([]);
-      setErrorInfo({
-        status: error?.status ?? null,
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "주문 / 결제 내역을 불러오지 못했습니다.",
-      });
-    } finally {
-      setLoading(false);
-    }
+    await runOrdersLoad(filters);
   }
 
   if (loading) {
     return (
-      <PageLayout
-        title="내 주문/결제 내역"
-        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">로딩 중</div>
           <div className="guard-notice__description">
@@ -156,10 +164,7 @@ export default function OrderListPage() {
 
   if (errorInfo?.status === 401) {
     return (
-      <PageLayout
-        title="내 주문/결제 내역"
-        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <RequireLoginNotice />
       </PageLayout>
     );
@@ -167,10 +172,7 @@ export default function OrderListPage() {
 
   if (errorInfo?.status === 403) {
     return (
-      <PageLayout
-        title="내 주문/결제 내역"
-        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">접근 불가</div>
           <div className="guard-notice__description">
@@ -183,10 +185,7 @@ export default function OrderListPage() {
 
   if (errorInfo) {
     return (
-      <PageLayout
-        title="내 주문/결제 내역"
-        description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">조회 실패</div>
           <div className="guard-notice__description">
@@ -198,10 +197,7 @@ export default function OrderListPage() {
   }
 
   return (
-    <PageLayout
-      title="내 주문/결제 내역"
-      description="C3 내 주문/결제 내역. row 클릭 시 C2 결제 상세로 이동하는 리스트형 페이지입니다."
-    >
+    <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
       <SectionCard title="검색 조건">
         <div className="filter-bar">
           <div className="form-field">
@@ -218,6 +214,13 @@ export default function OrderListPage() {
             </select>
           </div>
 
+          {/*
+            TODO: 백엔드 C3 목록 API가 confirmed query param을 실제로 처리하면 재오픈
+            - 컨트롤러에 confirmed 파라미터 추가
+            - 서비스 시그니처에 confirmed 전달
+            - repository/query predicate에 confirmed 조건 반영
+          */}
+          {/*
           <div className="form-field">
             <label className="form-field__label">confirmed</label>
             <select
@@ -231,6 +234,7 @@ export default function OrderListPage() {
               <option value="UNCONFIRMED">UNCONFIRMED</option>
             </select>
           </div>
+          */}
 
           <div className="form-field search-field">
             <label className="form-field__label">keyword</label>
@@ -239,7 +243,7 @@ export default function OrderListPage() {
               name="keyword"
               value={filters.keyword}
               onChange={handleFilterChange}
-              placeholder="orderId / paymentId / itemName"
+              placeholder="orderId / itemName"
             />
           </div>
         </div>
@@ -269,19 +273,18 @@ export default function OrderListPage() {
             <thead>
               <tr>
                 <th>orderId</th>
-                <th>paymentId</th>
                 <th>itemName</th>
                 <th>amount</th>
                 <th>orderStatus</th>
-                <th>paymentStatus</th>
+                <th>paid</th>
                 <th>confirmed</th>
-                <th>confirmedAt</th>
+                <th>createdAt</th>
               </tr>
             </thead>
             <tbody>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>
+                  <td colSpan={7}>
                     <div className="empty-state">조회 결과가 없습니다.</div>
                   </td>
                 </tr>
@@ -289,6 +292,7 @@ export default function OrderListPage() {
                 orders.map((order) => (
                   <tr
                     key={order.orderId}
+                    style={{ cursor: "pointer" }}
                     onClick={() => handleRowClick(order.orderId)}
                     onKeyDown={(e) => handleRowKeyDown(e, order.orderId)}
                     tabIndex={0}
@@ -303,17 +307,16 @@ export default function OrderListPage() {
                         {order.orderId}
                       </Link>
                     </td>
-                    <td>{order.paymentId ?? "-"}</td>
                     <td>{order.itemName}</td>
-                    <td>{formatKrw(order.amount)}</td>
+                    <td>{formatNumber(order.amount)}</td>
                     <td>
                       <StatusBadge status={order.orderStatus} />
                     </td>
                     <td>
-                      {order.paymentStatus ? (
-                        <StatusBadge status={order.paymentStatus} />
+                      {order.paid ? (
+                        <span className="status-text status-text--done">PAID</span>
                       ) : (
-                        "-"
+                        <span className="status-text">-</span>
                       )}
                     </td>
                     <td>
@@ -323,7 +326,7 @@ export default function OrderListPage() {
                         <span className="status-text">-</span>
                       )}
                     </td>
-                    <td>{formatDateTime(order.confirmedAt)}</td>
+                    <td>{formatDateTime(order.createdAt)}</td>
                   </tr>
                 ))
               )}
@@ -337,8 +340,10 @@ export default function OrderListPage() {
           <div><strong>역할</strong> Consumer</div>
           <div><strong>핵심 이동</strong> C3 row 클릭 → C2 결제 상세(orderId 전달)</div>
           <div><strong>주문 상태</strong> order.status는 CREATED / PAID 사용</div>
-          <div><strong>결제 상태</strong> payment.status는 CREATED / CAPTURED 사용</div>
-          <div><strong>확정 여부</strong> confirmed / confirmedAt 파생값으로 표시</div>
+          <div><strong>결제 여부</strong> paid는 orderStatus 기반 파생값으로 표시</div>
+          <div><strong>확정 여부</strong> confirmed는 PAYMENT_CONFIRMED 이벤트 존재 여부 기반 파생값으로 표시</div>
+          <div><strong>검색 기준</strong> status + keyword</div>
+          <div><strong>로그인 주체</strong> {me?.buyerId ?? "-"}</div>
         </div>
       </SectionCard>
     </PageLayout>

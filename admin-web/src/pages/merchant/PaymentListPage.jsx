@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { formatDateTime, formatKrw } from "../../util/format.js";
+import { formatDateTime, formatNumber } from "../../util/format.js";
 import { getMe } from "../../api/meApi.js";
 import { getMerchantPayments } from "../../api/merchantPaymentApi.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
@@ -33,10 +33,7 @@ function isMerchantRole(me) {
 function buildErrorInfo(error, fallbackMessage) {
   return {
     status: error?.status ?? null,
-    message:
-      error?.body?.message ||
-      error?.body?.reason ||
-      fallbackMessage,
+    message: error?.body?.message || error?.body?.reason || fallbackMessage,
   };
 }
 
@@ -45,6 +42,7 @@ export default function PaymentListPage() {
 
   const [me, setMe] = useState(null);
   const [filters, setFilters] = useState({
+    status: "ALL",
     confirmed: "ALL",
     from: "",
     to: "",
@@ -63,6 +61,7 @@ export default function PaymentListPage() {
 
     const data = await getMerchantPayments({
       merchantId: merchantIdParam,
+      status: nextFilters.status,
       confirmed: nextFilters.confirmed,
       from: nextFilters.from,
       to: nextFilters.to,
@@ -141,6 +140,7 @@ export default function PaymentListPage() {
 
   async function handleReset() {
     const initialFilters = {
+      status: "ALL",
       confirmed: "ALL",
       from: "",
       to: "",
@@ -181,9 +181,7 @@ export default function PaymentListPage() {
       <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">접근 불가</div>
-          <div className="guard-notice__description">
-            {errorInfo.message}
-          </div>
+          <div className="guard-notice__description">{errorInfo.message}</div>
         </div>
       </PageLayout>
     );
@@ -194,9 +192,7 @@ export default function PaymentListPage() {
       <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">조회 실패</div>
-          <div className="guard-notice__description">
-            {errorInfo.message}
-          </div>
+          <div className="guard-notice__description">{errorInfo.message}</div>
         </div>
       </PageLayout>
     );
@@ -206,6 +202,20 @@ export default function PaymentListPage() {
     <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
       <SectionCard title="검색 조건">
         <div className="filter-bar">
+          <div className="form-field">
+            <label className="form-field__label">status</label>
+            <select
+              className="select"
+              name="status"
+              value={filters.status}
+              onChange={handleFilterChange}
+            >
+              <option value="ALL">전체</option>
+              <option value="CREATED">CREATED</option>
+              <option value="CAPTURED">CAPTURED</option>
+            </select>
+          </div>
+
           <div className="form-field">
             <label className="form-field__label">confirmed</label>
             <select
@@ -329,8 +339,8 @@ export default function PaymentListPage() {
                         <span className="status-text">-</span>
                       )}
                     </td>
-                    <td>{formatKrw(payment.requestedAmount)}</td>
-                    <td>{formatKrw(payment.capturedAmount)}</td>
+                    <td>{formatNumber(payment.requestedAmount)}</td>
+                    <td>{formatNumber(payment.capturedAmount)}</td>
                     <td>{formatDateTime(payment.capturedAt)}</td>
                     <td>{formatDateTime(payment.confirmedAt)}</td>
                   </tr>
@@ -347,7 +357,7 @@ export default function PaymentListPage() {
           <div><strong>핵심 이동</strong> U2 row 클릭 → U3 결제 상세(paymentId 전달)</div>
           <div><strong>표시 기준</strong> payment.status는 CREATED / CAPTURED만 사용</div>
           <div><strong>확정 여부</strong> confirmed / confirmedAt 파생값으로 표시</div>
-          <div><strong>검색 기준</strong> confirmed는 PAYMENT_CONFIRMED 이벤트 존재 여부 기반 파생 필터</div>
+          <div><strong>검색 기준</strong> status + confirmed + from + to + keyword</div>
           <div><strong>로그인 주체</strong> {me?.merchantId ?? "-"}</div>
         </div>
       </SectionCard>

@@ -2,40 +2,89 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getConsumerOrderDetail } from "../../api/consumerOrderApi.js";
 import { payOrder, confirmPayment } from "../../api/paymentApi.js";
+import { getMe } from "../../api/meApi.js";
+import { formatNumber } from "../../util/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
 
+const PAGE_TITLE = "결제 상세";
+const PAGE_DESCRIPTION =
+  "C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다.";
+
+function isConsumerRole(me) {
+  if (!me) {
+    return false;
+  }
+
+  if (me.role === "CONSUMER" || me.role === "ROLE_CONSUMER") {
+    return true;
+  }
+
+  if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_CONSUMER")) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+  return {
+    status: error?.status ?? null,
+    message:
+      error?.body?.message ||
+      error?.body?.reason ||
+      fallbackMessage,
+  };
+}
+
+function isInProgressError(error) {
+  return error?.status === 409 && error?.body?.reason === "IN_PROGRESS";
+}
+
 export default function OrderDetailPage() {
   const { orderId } = useParams();
 
+  const [me, setMe] = useState(null);
   const [orderDetail, setOrderDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorInfo, setErrorInfo] = useState(null);
 
-  const [idempotencyKey, setIdempotencyKey] = useState("idem_20260318_demo_key");
+  const [idempotencyKey, setIdempotencyKey] = useState(() =>
+    `idem_${crypto.randomUUID()}`
+  );
   const [submitting, setSubmitting] = useState(false);
   const [actionInfo, setActionInfo] = useState(null);
 
-  async function loadOrderDetail() {
+  async function fetchOrderDetail() {
+    const data = await getConsumerOrderDetail(orderId);
+    setOrderDetail(data);
+  }
+
+  async function loadPage() {
     try {
       setLoading(true);
       setErrorInfo(null);
 
-      const data = await getConsumerOrderDetail(orderId);
-      setOrderDetail(data);
-//       console.log(data);
+      const meData = await getMe();
+      setMe(meData);
+
+      if (!isConsumerRole(meData)) {
+        setOrderDetail(null);
+        setErrorInfo({
+          status: 403,
+          message: "Consumer 권한이 필요한 페이지입니다.",
+        });
+        return;
+      }
+
+      await fetchOrderDetail();
     } catch (error) {
+      setMe(null);
       setOrderDetail(null);
-      setErrorInfo({
-        status: error?.status ?? null,
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "주문 정보를 불러오지 못했습니다.",
-      });
+      setErrorInfo(buildErrorInfo(error, "주문 정보를 불러오지 못했습니다."));
     } finally {
       setLoading(false);
     }
@@ -43,18 +92,16 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     if (orderId) {
-      loadOrderDetail();
+      loadPage();
     }
   }, [orderId]);
 
   const orderStatus = orderDetail?.orderStatus ?? null;
   const paymentStatus = orderDetail?.paymentStatus ?? null;
   const paymentId = orderDetail?.paymentId ?? null;
-  const isConfirmed =
-    orderDetail?.confirmed === true || Boolean(orderDetail?.confirmedAt);
+  const isConfirmed = Boolean(orderDetail?.confirmedAt);
 
   const canPay = orderStatus === "CREATED";
-
   const canConfirm =
     orderStatus === "PAID" &&
     paymentStatus === "CAPTURED" &&
@@ -82,18 +129,25 @@ export default function OrderDetailPage() {
 
       setActionInfo({
         type: "success",
-        message: `결제 승인이 완료되었습니다. status=${response?.status ?? "CAPTURED"}`,
+        message: `결제 결과가 반영되었습니다. status=${response?.status ?? "CAPTURED"}`,
       });
 
-      await loadOrderDetail();
+      await fetchOrderDetail();
     } catch (error) {
-      setActionInfo({
-        type: "error",
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "결제 승인에 실패했습니다.",
-      });
+      if (isInProgressError(error)) {
+        setActionInfo({
+          type: "error",
+          message: "동일 결제가 처리 중입니다. 잠시 후 다시 확인해주세요.",
+        });
+      } else {
+        setActionInfo({
+          type: "error",
+          message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            "결제 승인에 실패했습니다.",
+        });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -116,18 +170,18 @@ export default function OrderDetailPage() {
 
       setActionInfo({
         type: "success",
-        message: `구매확정이 완료되었습니다. confirmedAt=${response?.confirmedAt ?? "-"}`,
+        message: `구매확정 결과가 반영되었습니다. confirmedAt=${response?.confirmedAt ?? "-"}`,
       });
 
-      await loadOrderDetail();
+      await fetchOrderDetail();
     } catch (error) {
-      setActionInfo({
-        type: "error",
-        message:
-          error?.body?.message ||
-          error?.body?.reason ||
-          "구매확정에 실패했습니다.",
-      });
+        setActionInfo({
+          type: "error",
+          message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            "구매확정에 실패했습니다.",
+        });
     } finally {
       setSubmitting(false);
     }
@@ -150,10 +204,7 @@ export default function OrderDetailPage() {
 
   if (loading) {
     return (
-      <PageLayout
-        title="결제 상세"
-        description="C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">로딩 중</div>
           <div className="guard-notice__description">
@@ -166,10 +217,7 @@ export default function OrderDetailPage() {
 
   if (errorInfo?.status === 401) {
     return (
-      <PageLayout
-        title="결제 상세"
-        description="C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <RequireLoginNotice />
       </PageLayout>
     );
@@ -177,10 +225,7 @@ export default function OrderDetailPage() {
 
   if (errorInfo?.status === 403) {
     return (
-      <PageLayout
-        title="결제 상세"
-        description="C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">접근 불가</div>
           <div className="guard-notice__description">
@@ -193,10 +238,7 @@ export default function OrderDetailPage() {
 
   if (errorInfo) {
     return (
-      <PageLayout
-        title="결제 상세"
-        description="C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다."
-      >
+      <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
         <div className="guard-notice">
           <div className="guard-notice__title">조회 실패</div>
           <div className="guard-notice__description">
@@ -208,10 +250,7 @@ export default function OrderDetailPage() {
   }
 
   return (
-    <PageLayout
-      title="결제 상세"
-      description="C2 결제 상세(승인 버튼). orderId 기준 결제 승인과 멱등 UX가 들어갈 페이지입니다."
-    >
+    <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
       <SectionCard title="주문 / 결제 요약">
         <div className="kv-list">
           <div className="kv-item">
@@ -287,7 +326,7 @@ export default function OrderDetailPage() {
             <div className="kv-item__label">amount</div>
             <div className="kv-item__value">
               <span className="display-field amount-text">
-                {orderDetail?.amount?.toLocaleString()}원
+                {formatNumber(orderDetail?.amount)} {orderDetail?.currency ?? ""}
               </span>
             </div>
           </div>
