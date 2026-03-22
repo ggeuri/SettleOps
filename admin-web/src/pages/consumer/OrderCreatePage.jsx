@@ -83,6 +83,7 @@ export default function OrderCreatePage() {
 
     async function handleConfirmCreate() {
         const merchantId = form.merchantId.trim();
+        const buyerId = form.buyerId.trim();
         const itemName = form.itemName.trim();
         const amount = Number(form.amount.trim());
 
@@ -93,6 +94,7 @@ export default function OrderCreatePage() {
         try {
             const response = await createConsumerOrder({
                 merchantId,
+                buyerId,
                 itemName,
                 amount,
             });

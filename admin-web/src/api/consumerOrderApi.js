@@ -1,10 +1,11 @@
 import { requestJson } from "./http.js";
 
-export function createConsumerOrder({ merchantId, itemName, amount }) {
+export function createConsumerOrder({ merchantId, buyerId, itemName, amount }) {
   return requestJson("/api/consumer/orders", {
     method: "POST",
     body: JSON.stringify({
       merchantId,
+      buyerId,
       itemName,
       amount,
     }),
