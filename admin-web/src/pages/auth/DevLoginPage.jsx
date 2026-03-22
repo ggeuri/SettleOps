@@ -18,18 +18,25 @@ export default function DevLoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const redirectTo = location.state?.from || "/";
+  const rawFrom = location.state?.from;
+  const redirectTo =
+    rawFrom && rawFrom !== "/auth/dev-login" ? rawFrom : "/";
+
+  const [consumerId, setConsumerId] = useState(CONSUMER_IDS[0]);
+  const [merchantId, setMerchantId] = useState(MERCHANT_IDS[0]);
+  const [adminId, setAdminId] = useState(ADMIN_IDS[0]);
+
   const [loadingKey, setLoadingKey] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  async function handleLoginConsumer(buyerId) {
+  async function handleLoginConsumer(targetBuyerId) {
     try {
-      setLoadingKey(`consumer:${buyerId}`);
+      setLoadingKey(`consumer:${targetBuyerId}`);
       setErrorMessage("");
       setSuccessMessage("");
 
-      await loginConsumerSession(buyerId);
+      await loginConsumerSession(targetBuyerId);
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setErrorMessage(error?.body?.message || "Consumer 세션 생성에 실패했습니다.");
@@ -38,13 +45,13 @@ export default function DevLoginPage() {
     }
   }
 
-  async function handleLoginMerchant(merchantId) {
+  async function handleLoginMerchant(targetMerchantId) {
     try {
-      setLoadingKey(`merchant:${merchantId}`);
+      setLoadingKey(`merchant:${targetMerchantId}`);
       setErrorMessage("");
       setSuccessMessage("");
 
-      await loginMerchantSession(merchantId);
+      await loginMerchantSession(targetMerchantId);
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setErrorMessage(error?.body?.message || "Merchant 세션 생성에 실패했습니다.");
@@ -53,13 +60,13 @@ export default function DevLoginPage() {
     }
   }
 
-  async function handleLoginAdmin(adminId) {
+  async function handleLoginAdmin(targetAdminId) {
     try {
-      setLoadingKey(`admin:${adminId}`);
+      setLoadingKey(`admin:${targetAdminId}`);
       setErrorMessage("");
       setSuccessMessage("");
 
-      await loginAdminSession(adminId);
+      await loginAdminSession(targetAdminId);
       navigate(redirectTo, { replace: true });
     } catch (error) {
       setErrorMessage(error?.body?.message || "Admin 세션 생성에 실패했습니다.");
@@ -114,23 +121,48 @@ export default function DevLoginPage() {
         <div className="card">
           <div className="card__body">
             <div className="table-toolbar" style={{ marginBottom: "16px" }}>
-              <div>Consumer</div>
+              <div>Consumer - buyerId</div>
             </div>
 
-            <div className="action-panel" style={{ display: "grid", gap: "12px" , gridTemplateColumns: "repeat(3, 1fr)"}}>
+            <div style={{ marginBottom: "12px" }}>
+              <input
+                className="input"
+                value={consumerId}
+                onChange={(e) => setConsumerId(e.target.value)}
+                placeholder="buyerId 입력"
+                disabled={loadingKey !== ""}
+              />
+            </div>
+
+            <div
+              className="action-panel"
+              style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(3, 1fr)" }}
+            >
               {CONSUMER_IDS.map((buyerId) => (
                 <button
                   key={buyerId}
                   type="button"
-                  className="btn btn--primary"
-                  onClick={() => handleLoginConsumer(buyerId)}
+                  className="btn btn--secondary"
+                  onClick={() => setConsumerId(buyerId)}
                   disabled={loadingKey !== ""}
                 >
-                  {loadingKey === `consumer:${buyerId}`
-                    ? "세션 생성 중..."
-                    : `${buyerId}`}
+                  {buyerId}
                 </button>
               ))}
+            </div>
+
+            <div className="action-panel" style={{ marginTop: "12px" }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ width: "100%" }}
+                onClick={() => handleLoginConsumer(consumerId)}
+                disabled={loadingKey !== "" || !consumerId.trim()}
+              >
+                {loadingKey === `consumer:${consumerId}`
+                  ? "세션 생성 중..."
+                  : "Consumer 로그인"}
+              </button>
             </div>
           </div>
         </div>
@@ -138,23 +170,48 @@ export default function DevLoginPage() {
         <div className="card">
           <div className="card__body">
             <div className="table-toolbar" style={{ marginBottom: "16px" }}>
-              <div>Merchant</div>
+              <div>Merchant - merchantId</div>
             </div>
 
-            <div className="action-panel" style={{ display: "grid", gap: "12px" , gridTemplateColumns: "repeat(3, 1fr)"}}>
-              {MERCHANT_IDS.map((merchantId) => (
+            <div style={{ marginBottom: "12px" }}>
+              <input
+                className="input"
+                value={merchantId}
+                onChange={(e) => setMerchantId(e.target.value)}
+                placeholder="merchantId 입력"
+                disabled={loadingKey !== ""}
+              />
+            </div>
+
+            <div
+              className="action-panel"
+              style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(3, 1fr)" }}
+            >
+              {MERCHANT_IDS.map((item) => (
                 <button
-                  key={merchantId}
+                  key={item}
                   type="button"
-                  className="btn btn--primary"
-                  onClick={() => handleLoginMerchant(merchantId)}
+                  className="btn btn--secondary"
+                  onClick={() => setMerchantId(item)}
                   disabled={loadingKey !== ""}
                 >
-                  {loadingKey === `merchant:${merchantId}`
-                    ? "세션 생성 중..."
-                    : `${merchantId}`}
+                  {item}
                 </button>
               ))}
+            </div>
+
+            <div className="action-panel" style={{ marginTop: "12px" }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ width: "100%" }}
+                onClick={() => handleLoginMerchant(merchantId)}
+                disabled={loadingKey !== "" || !merchantId.trim()}
+              >
+                {loadingKey === `merchant:${merchantId}`
+                  ? "세션 생성 중..."
+                  : "Merchant 로그인"}
+              </button>
             </div>
           </div>
         </div>
@@ -162,23 +219,48 @@ export default function DevLoginPage() {
         <div className="card">
           <div className="card__body">
             <div className="table-toolbar" style={{ marginBottom: "16px" }}>
-              <div>Admin</div>
+              <div>Admin - adminId</div>
             </div>
 
-            <div className="action-panel" style={{ display: "grid", gap: "12px" , gridTemplateColumns: "repeat(3, 1fr)"}}>
-              {ADMIN_IDS.map((adminId) => (
+            <div style={{ marginBottom: "12px" }}>
+              <input
+                className="input"
+                value={adminId}
+                onChange={(e) => setAdminId(e.target.value)}
+                placeholder="adminId 입력"
+                disabled={loadingKey !== ""}
+              />
+            </div>
+
+            <div
+              className="action-panel"
+              style={{ display: "grid", gap: "12px", gridTemplateColumns: "repeat(3, 1fr)" }}
+            >
+              {ADMIN_IDS.map((item) => (
                 <button
-                  key={adminId}
+                  key={item}
                   type="button"
-                  className="btn btn--primary"
-                  onClick={() => handleLoginAdmin(adminId)}
+                  className="btn btn--secondary"
+                  onClick={() => setAdminId(item)}
                   disabled={loadingKey !== ""}
                 >
-                  {loadingKey === `admin:${adminId}`
-                    ? "세션 생성 중..."
-                    : `${adminId}`}
+                  {item}
                 </button>
               ))}
+            </div>
+
+            <div className="action-panel" style={{ marginTop: "12px" }}>
+              <button
+                type="button"
+                className="btn btn--primary"
+                style={{ width: "100%" }}
+                onClick={() => handleLoginAdmin(adminId)}
+                disabled={loadingKey !== "" || !adminId.trim()}
+              >
+                {loadingKey === `admin:${adminId}`
+                  ? "세션 생성 중..."
+                  : "Admin 로그인"}
+              </button>
             </div>
           </div>
         </div>

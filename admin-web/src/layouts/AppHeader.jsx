@@ -1,5 +1,7 @@
 // src/layouts/AppHeader.jsx
-import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, Link } from "react-router-dom";
+import { getMe } from "../api/meApi.js";
 
 function resolvePageTitle(pathname) {
   if (pathname === "/consumer/orders/new") return "거래 생성";
@@ -26,9 +28,69 @@ function resolvePageTitle(pathname) {
   return "SettleOps Admin";
 }
 
+function resolveRoleLabel(me) {
+  if (!me) {
+    return "GUEST";
+  }
+
+  if (me.role) {
+    return me.role;
+  }
+
+  if (me.authorities?.includes("ROLE_ADMIN")) {
+    return "ADMIN";
+  }
+  if (me.authorities?.includes("ROLE_MERCHANT")) {
+    return "MERCHANT";
+  }
+  if (me.authorities?.includes("ROLE_CONSUMER")) {
+    return "CONSUMER";
+  }
+
+  return "USER";
+}
+
+function resolvePrincipalId(me) {
+  if (!me) {
+    return "-";
+  }
+
+  return (
+    me.adminId ||
+    me.merchantId ||
+    me.buyerId ||
+    me.principalId ||
+    me.loginId ||
+    me.id ||
+    "-"
+  );
+}
+
 export default function AppHeader() {
   const location = useLocation();
   const pageTitle = resolvePageTitle(location.pathname);
+
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    async function loadMe() {
+      try {
+        const data = await getMe();
+        setMe(data);
+      } catch {
+        setMe(null);
+      }
+    }
+
+    loadMe();
+  }, [location.pathname]);
+
+  const roleLabel = resolveRoleLabel(me);
+  const principalId = resolvePrincipalId(me);
+  const sessionLabel =
+    me && principalId !== "-"
+      ? `DEV | ${roleLabel}(${principalId})`
+      : "DEV";
 
   return (
     <div className="app-header">
@@ -38,7 +100,13 @@ export default function AppHeader() {
       </div>
 
       <div className="app-header__right">
-        <span className="app-header__badge">DEV</span>
+        <Link
+          to="/auth/dev-login"
+          state={{ from: location.pathname + location.search }}
+          className="app-header__badge-link"
+        >
+          <span className="app-header__badge">{sessionLabel}</span>
+        </Link>
       </div>
     </div>
   );

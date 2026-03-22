@@ -5,11 +5,12 @@ import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.refund.infra.RefundReadRepository;
 import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Locale;
 
 /**
@@ -24,7 +25,12 @@ public class RefundAdminQueryService {
 
     private final RefundReadRepository refundReadRepository;
 
-    public List<AdminRefundListItemDTO> list(String status, LocalDate from, LocalDate to) {
+    public Page<AdminRefundListItemDTO> list(
+            String status,
+            LocalDate from,
+            LocalDate to,
+            Pageable pageable
+    ) {
         RefundStatus parsedStatus = parseStatus(status);
 
         if (from != null && to != null && from.isAfter(to)) {
@@ -34,16 +40,17 @@ public class RefundAdminQueryService {
         LocalDateTime fromDt = (from == null) ? null : from.atStartOfDay();
         LocalDateTime toDt = (to == null) ? null : to.atTime(23, 59, 59, 999_999_000);
 
-        return refundReadRepository.findAdminRefundQueue(parsedStatus, fromDt, toDt);
+        return refundReadRepository.findAdminRefundQueue(parsedStatus, fromDt, toDt, pageable);
     }
 
     private RefundStatus parseStatus(String status) {
-        if (status == null || status.isBlank()) return null;
+        if (status == null || status.isBlank()) {
+            return null;
+        }
 
         try {
             return RefundStatus.valueOf(status.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
-            // 파라미터/형식 오류는 400
             throw new BadRequestException("status is invalid");
         }
     }

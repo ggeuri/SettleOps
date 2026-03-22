@@ -8,6 +8,7 @@ import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
 import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.payment.domain.PaymentEventType;
 import com.settleops.domain.payment.domain.QPaymentEvent;
+import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
@@ -36,6 +37,7 @@ public class ConsumerOrderQueryRepository {
                         orders.buyerId,
                         orders.itemName,
                         orders.amount,
+                        orders.currency,
                         orders.status,
                         payment.paymentId,
                         payment.status.stringValue(),
@@ -68,6 +70,7 @@ public class ConsumerOrderQueryRepository {
                 row.buyerId(),
                 row.itemName(),
                 row.amount(),
+                row.currency(),
                 row.orderStatus(),
                 row.paymentId(),
                 row.paymentStatus(),
@@ -95,6 +98,7 @@ public class ConsumerOrderQueryRepository {
     public List<ConsumerOrderListItemResponse> findConsumerOrders(
             String buyerId,
             OrderStatus status,
+            String confirmed,
             String keyword
     ) {
         QPaymentEvent confirmedEvent = new QPaymentEvent("confirmedEvent");
@@ -104,6 +108,16 @@ public class ConsumerOrderQueryRepository {
 
         if (status != null) {
             condition.and(orders.status.eq(status));
+        }
+
+        if (StringUtils.hasText(confirmed) && !"ALL".equalsIgnoreCase(confirmed)) {
+            if ("CONFIRMED".equalsIgnoreCase(confirmed)) {
+                condition.and(confirmedEvent.occurredAt.isNotNull());
+            } else if ("UNCONFIRMED".equalsIgnoreCase(confirmed)) {
+                condition.and(confirmedEvent.occurredAt.isNull());
+            } else {
+                throw new BadRequestException("invalid confirmed filter");
+            }
         }
 
         if (StringUtils.hasText(keyword)) {
