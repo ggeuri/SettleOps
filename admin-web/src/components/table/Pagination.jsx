@@ -25,23 +25,21 @@ export default function Pagination({
                 이전
             </ActionButton>
 
-            <div className="pagination__pages">
-                {pages.map((pageIndex) => {
-                    const isCurrent = pageIndex === page;
+            {pages.map((pageIndex) => {
+                const isCurrent = pageIndex === page;
 
-                    return (
-                        <ActionButton
-                            key={pageIndex}
-                            type="button"
-                            variant={isCurrent ? "primary" : "secondary"}
-                            disabled={disabled || isCurrent}
-                            onClick={() => onPageChange(pageIndex)}
-                        >
-                            {pageIndex + 1}
-                        </ActionButton>
-                    );
-                })}
-            </div>
+                return (
+                    <ActionButton
+                        key={pageIndex}
+                        type="button"
+                        variant={isCurrent ? "primary" : "secondary"}
+                        disabled={disabled}
+                        onClick={() => onPageChange(pageIndex)}
+                    >
+                        {pageIndex + 1}
+                    </ActionButton>
+                );
+            })}
 
             <ActionButton
                 type="button"

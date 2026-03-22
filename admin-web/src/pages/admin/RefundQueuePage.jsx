@@ -299,22 +299,18 @@ export default function RefundQueuePage() {
                                             <td>{row.requestedAt || "-"}</td>
                                             <td>{row.decidedAt || "-"}</td>
                                             <td className="table-cell--comment">
+                                                {isRequested ? (
                                                     <textarea
                                                         className="textarea"
                                                         value={comments[row.refundId] || ""}
                                                         onChange={(event) =>
-                                                            handleCommentChange(
-                                                                row.refundId,
-                                                                event.target.value
-                                                            )
+                                                            handleCommentChange(row.refundId, event.target.value)
                                                         }
-                                                        placeholder={
-                                                            isRequested
-                                                                ? "comment 입력"
-                                                                : "처리 완료 상태"
-                                                        }
-                                                        disabled={!isRequested}
+                                                        placeholder="comment 입력"
                                                     />
+                                                ) : (
+                                                    <span className="badge badge--default">COMMENT LOCKED</span>
+                                                )}
                                             </td>
                                             <td className="table-cell--actions">
                                                 {isRequested ? (
@@ -322,9 +318,7 @@ export default function RefundQueuePage() {
                                                         <ActionButton
                                                             type="button"
                                                             disabled={actionDisabled}
-                                                            onClick={() =>
-                                                                handleAction(row.refundId, "approve")
-                                                            }
+                                                            onClick={() => handleAction(row.refundId, "approve")}
                                                         >
                                                             {disabled ? "처리 중..." : "승인"}
                                                         </ActionButton>
@@ -332,15 +326,13 @@ export default function RefundQueuePage() {
                                                             type="button"
                                                             variant="danger"
                                                             disabled={actionDisabled}
-                                                            onClick={() =>
-                                                                handleAction(row.refundId, "reject")
-                                                            }
+                                                            onClick={() => handleAction(row.refundId, "reject")}
                                                         >
                                                             {disabled ? "처리 중..." : "거절"}
                                                         </ActionButton>
                                                     </div>
                                                 ) : (
-                                                    <span>처리 완료</span>
+                                                    <span className="badge badge--default">DONE</span>
                                                 )}
                                             </td>
                                         </tr>
