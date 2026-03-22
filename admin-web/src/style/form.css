@@ -92,3 +92,15 @@
   color: #b91c1c;
   font-size: 14px;
 }
+
+.input--date {
+  appearance: auto;
+  -webkit-appearance: auto;
+  padding-right: 40px;
+}
+
+.input--date::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  cursor: pointer;
+  filter: invert(35%);
+}
