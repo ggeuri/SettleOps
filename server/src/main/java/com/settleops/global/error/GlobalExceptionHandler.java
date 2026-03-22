@@ -14,6 +14,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Comparator;
 
@@ -131,6 +132,22 @@ public class GlobalExceptionHandler {
         log.error("Unhandled exception occurred", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.ofInternalError("시스템 오류가 발생했습니다. 관리자에게 문의하세요."));
+    }
+
+    /**
+     * [POLICY] Request 파라미터 타입 변환 실패 처리
+     * - Spring binding 단계에서 enum, 숫자, 날짜 등의 타입 변환에 실패한 경우
+     *   400 Bad Request로 변환한다.
+     * - 예: 잘못된 enum 값(status=INVALID), 숫자 파라미터 형식 오류(page=abc)
+     * - 상태/순서 위반(409)과 구분되는 "요청 형식 오류"로 해석한다.
+     * - 메시지는 현재 단일 정책으로 "요청 값이 올바르지 않습니다."를 사용한다.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException e
+    ) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.ofBadRequest("요청 값이 올바르지 않습니다."));
     }
 
     private void tryLog409Failure(BusinessException e, HttpServletRequest request) {

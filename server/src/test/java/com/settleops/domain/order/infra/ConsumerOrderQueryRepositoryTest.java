@@ -2,6 +2,7 @@ package com.settleops.domain.order.infra;
 
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
 import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.order.domain.Orders;
 import com.settleops.domain.payment.domain.Payment;
 import com.settleops.domain.payment.domain.PaymentEvent;
@@ -66,7 +67,7 @@ class ConsumerOrderQueryRepositoryTest {
         assertThat(result.buyerId()).isEqualTo("buyer_detail_2001");
         assertThat(result.itemName()).isEqualTo("아이폰 14 프로");
         assertThat(result.amount()).isEqualTo(125000L);
-        assertThat(result.orderStatus()).isEqualTo("CREATED");
+        assertThat(result.orderStatus()).isEqualTo(OrderStatus.CREATED);
         assertThat(result.paymentId()).isNull();
         assertThat(result.paymentStatus()).isNull();
         assertThat(result.capturedAt()).isNull();
@@ -115,6 +116,7 @@ class ConsumerOrderQueryRepositoryTest {
         // then
         assertThat(result).isNotNull();
         assertThat(result.orderId()).isEqualTo(order.getOrderId());
+        assertThat(result.orderStatus()).isEqualTo(OrderStatus.CREATED);
         assertThat(result.paymentId()).isEqualTo(payment.getPaymentId());
         assertThat(result.paymentStatus()).isEqualTo("CAPTURED");
         assertThat(result.capturedAt()).isNotNull();
@@ -244,13 +246,67 @@ class ConsumerOrderQueryRepositoryTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(first.orderStatus()).isEqualTo("CREATED");
-        assertThat(first.paid()).isTrue();
+        assertThat(first.orderStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(first.paid()).isFalse();
         assertThat(first.confirmed()).isFalse();
 
-        assertThat(second.orderStatus()).isEqualTo("CREATED");
-        assertThat(second.paid()).isTrue();
+        assertThat(second.orderStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(second.paid()).isFalse();
         assertThat(second.confirmed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("C3 목록 조회 시 paid는 orders.status=PAID 기준으로 계산된다")
+    void findConsumerOrders_paidDerivedFromOrderStatus() {
+        // given
+        String buyerId = "buyer_list_paid";
+
+        Orders createdOrder = Orders.create("m_1001", buyerId, "아이폰 14 프로", 125000L);
+
+        Orders paidOrder = Orders.create("m_1001", buyerId, "에어팟 프로", 35000L);
+        paidOrder.markPaid();
+
+        ordersRepository.save(createdOrder);
+        ordersRepository.save(paidOrder);
+
+        Payment createdPayment = Payment.create(
+                createdOrder.getOrderId(),
+                createdOrder.getMerchantId(),
+                createdOrder.getBuyerId(),
+                createdOrder.getAmount()
+        );
+        createdPayment.capture();
+        paymentRepository.save(createdPayment);
+
+        Payment paidPayment = Payment.create(
+                paidOrder.getOrderId(),
+                paidOrder.getMerchantId(),
+                paidOrder.getBuyerId(),
+                paidOrder.getAmount()
+        );
+        paidPayment.capture();
+        paymentRepository.save(paidPayment);
+
+        // when
+        List<ConsumerOrderListItemResponse> results =
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null);
+
+        // then
+        ConsumerOrderListItemResponse createdRow = results.stream()
+                .filter(it -> it.orderId().equals(createdOrder.getOrderId()))
+                .findFirst()
+                .orElseThrow();
+
+        ConsumerOrderListItemResponse paidRow = results.stream()
+                .filter(it -> it.orderId().equals(paidOrder.getOrderId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(createdRow.orderStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(createdRow.paid()).isFalse();
+
+        assertThat(paidRow.orderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(paidRow.paid()).isTrue();
     }
 
     @Test
@@ -269,12 +325,13 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, "PAID", null);
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, OrderStatus.PAID, null);
 
         // then
         assertThat(results).hasSize(1);
         assertThat(results.get(0).orderId()).isEqualTo(paidOrder.getOrderId());
-        assertThat(results.get(0).orderStatus()).isEqualTo("PAID");
+        assertThat(results.get(0).orderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(results.get(0).paid()).isTrue();
     }
 
     @Test

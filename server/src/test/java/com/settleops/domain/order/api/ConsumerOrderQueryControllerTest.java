@@ -1,7 +1,10 @@
 package com.settleops.domain.order.api;
 
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 import com.settleops.domain.order.application.ConsumerOrderQueryService;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
@@ -19,8 +22,6 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
-import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -61,7 +62,7 @@ class ConsumerOrderQueryControllerTest {
                 "buyer-1",
                 "아이템",
                 1000L,
-                "CREATED",
+                OrderStatus.CREATED,
                 "44444444-4444-4444-4444-444444444444",
                 "CAPTURED",
                 LocalDateTime.of(2026, 3, 19, 12, 0, 0),
@@ -94,7 +95,8 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))
                 .willReturn(response);
 
-        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId).sessionAttr("LOGIN_CONSUMER", "dummy"))
+        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId)
+                        .sessionAttr("LOGIN_CONSUMER", "dummy"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderId").value(orderId))
                 .andExpect(jsonPath("$.merchantId").value("merchant-1"))
@@ -118,7 +120,8 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))
                 .willThrow(new NotFoundException("order not found"));
 
-        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId).sessionAttr("LOGIN_CONSUMER", "dummy"))
+        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId)
+                        .sessionAttr("LOGIN_CONSUMER", "dummy"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("order not found"));
     }
@@ -135,7 +138,8 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(consumerOrderQueryService.getOrderDetail(orderId, loginConsumerId))
                 .willThrow(new ForbiddenException("다른 구매자의 주문은 조회할 수 없습니다."));
 
-        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId).sessionAttr("LOGIN_CONSUMER", "dummy"))
+        mockMvc.perform(get("/api/consumer/orders/{orderId}", orderId)
+                        .sessionAttr("LOGIN_CONSUMER", "dummy"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("다른 구매자의 주문은 조회할 수 없습니다."));
     }
@@ -151,8 +155,8 @@ class ConsumerOrderQueryControllerTest {
                                 "11111111-1111-1111-1111-111111111111",
                                 "아이폰 14 프로",
                                 125000L,
-                                "CREATED",
-                                true,
+                                OrderStatus.CREATED,
+                                false,
                                 false,
                                 LocalDateTime.of(2026, 3, 19, 12, 0, 0)
                         ),
@@ -160,7 +164,7 @@ class ConsumerOrderQueryControllerTest {
                                 "22222222-2222-2222-2222-222222222222",
                                 "에어팟 프로",
                                 35000L,
-                                "PAID",
+                                OrderStatus.PAID,
                                 true,
                                 true,
                                 LocalDateTime.of(2026, 3, 19, 13, 0, 0)
@@ -181,13 +185,14 @@ class ConsumerOrderQueryControllerTest {
                 .andExpect(jsonPath("$.items[0].itemName").value("아이폰 14 프로"))
                 .andExpect(jsonPath("$.items[0].amount").value(125000))
                 .andExpect(jsonPath("$.items[0].orderStatus").value("CREATED"))
-                .andExpect(jsonPath("$.items[0].paid").value(true))
+                .andExpect(jsonPath("$.items[0].paid").value(false))
                 .andExpect(jsonPath("$.items[0].confirmed").value(false))
                 .andExpect(jsonPath("$.items[1].orderId").value("22222222-2222-2222-2222-222222222222"))
                 .andExpect(jsonPath("$.items[1].itemName").value("에어팟 프로"))
                 .andExpect(jsonPath("$.items[1].orderStatus").value("PAID"))
                 .andExpect(jsonPath("$.items[1].paid").value(true))
                 .andExpect(jsonPath("$.items[1].confirmed").value(true));
+
         then(consumerOrderQueryService)
                 .should()
                 .getOrders(loginConsumerId, null, null);
@@ -204,7 +209,7 @@ class ConsumerOrderQueryControllerTest {
                                 "22222222-2222-2222-2222-222222222222",
                                 "에어팟 프로",
                                 35000L,
-                                "PAID",
+                                OrderStatus.PAID,
                                 true,
                                 true,
                                 LocalDateTime.of(2026, 3, 19, 13, 0, 0)
@@ -215,7 +220,7 @@ class ConsumerOrderQueryControllerTest {
         BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
                 .willReturn(loginConsumerId);
 
-        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, "PAID", null))
+        BDDMockito.given(consumerOrderQueryService.getOrders(loginConsumerId, OrderStatus.PAID, null))
                 .willReturn(response);
 
         mockMvc.perform(get("/api/consumer/orders")
@@ -224,9 +229,24 @@ class ConsumerOrderQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].orderId").value("22222222-2222-2222-2222-222222222222"))
                 .andExpect(jsonPath("$.items[0].orderStatus").value("PAID"));
+
         then(consumerOrderQueryService)
                 .should()
-                .getOrders(loginConsumerId, "PAID", null);
+                .getOrders(loginConsumerId, OrderStatus.PAID, null);
+    }
+
+    @Test
+    @DisplayName("잘못된 status 파라미터면 400을 반환한다")
+    void getOrders_invalidStatus_then400() throws Exception {
+        String loginConsumerId = "buyer-1";
+
+        BDDMockito.given(sessionAuthProvider.getCurrentConsumerId())
+                .willReturn(loginConsumerId);
+
+        mockMvc.perform(get("/api/consumer/orders")
+                        .param("status", "INVALID")
+                        .sessionAttr("LOGIN_CONSUMER", "dummy"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -240,7 +260,7 @@ class ConsumerOrderQueryControllerTest {
                                 "33333333-3333-3333-3333-333333333333",
                                 "에어팟 프로",
                                 35000L,
-                                "CREATED",
+                                OrderStatus.CREATED,
                                 false,
                                 false,
                                 LocalDateTime.of(2026, 3, 19, 14, 0, 0)
@@ -260,6 +280,7 @@ class ConsumerOrderQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].orderId").value("33333333-3333-3333-3333-333333333333"))
                 .andExpect(jsonPath("$.items[0].itemName").value("에어팟 프로"));
+
         then(consumerOrderQueryService)
                 .should()
                 .getOrders(loginConsumerId, null, "에어팟");
@@ -281,6 +302,7 @@ class ConsumerOrderQueryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isArray())
                 .andExpect(jsonPath("$.items").isEmpty());
+
         then(consumerOrderQueryService)
                 .should()
                 .getOrders(loginConsumerId, null, null);

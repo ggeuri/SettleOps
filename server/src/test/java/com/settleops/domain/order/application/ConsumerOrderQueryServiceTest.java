@@ -1,6 +1,9 @@
 package com.settleops.domain.order.application;
 
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.order.infra.ConsumerOrderQueryRepository;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.NotFoundException;
@@ -10,8 +13,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
-import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -42,7 +43,7 @@ class ConsumerOrderQueryServiceTest {
                 "buyer_2001",
                 "아이폰 14 프로",
                 125000L,
-                "CREATED",
+                OrderStatus.CREATED,
                 "550e8400-e29b-41d4-a716-446655440001",
                 "CAPTURED",
                 LocalDateTime.of(2026, 3, 18, 10, 25, 0),
@@ -74,9 +75,11 @@ class ConsumerOrderQueryServiceTest {
         assertThat(result.orderId()).isEqualTo(orderId);
         assertThat(result.buyerId()).isEqualTo("buyer_2001");
         assertThat(result.itemName()).isEqualTo("아이폰 14 프로");
+        assertThat(result.orderStatus()).isEqualTo(OrderStatus.CREATED);
         assertThat(result.paymentId()).isEqualTo("550e8400-e29b-41d4-a716-446655440001");
         assertThat(result.paymentStatus()).isEqualTo("CAPTURED");
         assertThat(result.events()).hasSize(2);
+
         then(consumerOrderQueryRepository)
                 .should()
                 .findConsumerOrderDetail(orderId);
@@ -111,7 +114,7 @@ class ConsumerOrderQueryServiceTest {
                 "buyer_2001",
                 "아이폰 14 프로",
                 125000L,
-                "CREATED",
+                OrderStatus.CREATED,
                 null,
                 null,
                 null,
@@ -139,7 +142,7 @@ class ConsumerOrderQueryServiceTest {
                         "550e8400-e29b-41d4-a716-446655440010",
                         "아이폰 14 프로",
                         125000L,
-                        "PAID",
+                        OrderStatus.PAID,
                         true,
                         true,
                         LocalDateTime.of(2026, 3, 18, 10, 30, 0)
@@ -157,8 +160,10 @@ class ConsumerOrderQueryServiceTest {
         assertThat(result.items()).hasSize(1);
         assertThat(result.items().get(0).orderId()).isEqualTo("550e8400-e29b-41d4-a716-446655440010");
         assertThat(result.items().get(0).itemName()).isEqualTo("아이폰 14 프로");
+        assertThat(result.items().get(0).orderStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(result.items().get(0).paid()).isTrue();
         assertThat(result.items().get(0).confirmed()).isTrue();
+
         then(consumerOrderQueryRepository)
                 .should()
                 .findConsumerOrders(loginConsumer, null, null);
@@ -179,6 +184,7 @@ class ConsumerOrderQueryServiceTest {
 
         // then
         assertThat(result.items()).isEmpty();
+
         then(consumerOrderQueryRepository)
                 .should()
                 .findConsumerOrders(loginConsumer, null, null);

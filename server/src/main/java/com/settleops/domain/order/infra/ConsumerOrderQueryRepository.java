@@ -1,22 +1,22 @@
 package com.settleops.domain.order.infra;
 
+import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
-import com.settleops.domain.payment.domain.QPaymentEvent;
+import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.payment.domain.PaymentEventType;
+import com.settleops.domain.payment.domain.QPaymentEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
 import static com.settleops.domain.order.domain.QOrders.orders;
 import static com.settleops.domain.payment.domain.QPayment.payment;
 import static com.settleops.domain.payment.domain.QPaymentEvent.paymentEvent;
-
-import com.querydsl.core.BooleanBuilder;
-import com.settleops.domain.order.api.dto.ConsumerOrderListItemResponse;
-import org.springframework.util.StringUtils;
 
 @Repository
 @RequiredArgsConstructor
@@ -36,7 +36,7 @@ public class ConsumerOrderQueryRepository {
                         orders.buyerId,
                         orders.itemName,
                         orders.amount,
-                        orders.status.stringValue(),
+                        orders.status,
                         payment.paymentId,
                         payment.status.stringValue(),
                         capturedEvent.occurredAt,
@@ -94,7 +94,7 @@ public class ConsumerOrderQueryRepository {
 
     public List<ConsumerOrderListItemResponse> findConsumerOrders(
             String buyerId,
-            String status,
+            OrderStatus status,
             String keyword
     ) {
         QPaymentEvent confirmedEvent = new QPaymentEvent("confirmedEvent");
@@ -102,8 +102,8 @@ public class ConsumerOrderQueryRepository {
         BooleanBuilder condition = new BooleanBuilder()
                 .and(orders.buyerId.eq(buyerId));
 
-        if (StringUtils.hasText(status)) {
-            condition.and(orders.status.stringValue().eq(status));
+        if (status != null) {
+            condition.and(orders.status.eq(status));
         }
 
         if (StringUtils.hasText(keyword)) {
@@ -120,7 +120,7 @@ public class ConsumerOrderQueryRepository {
                         orders.buyerId,
                         orders.itemName,
                         orders.amount,
-                        orders.status.stringValue(),
+                        orders.status,
                         payment.paymentId,
                         confirmedEvent.occurredAt,
                         orders.createdAt
@@ -141,7 +141,7 @@ public class ConsumerOrderQueryRepository {
                         row.itemName(),
                         row.amount(),
                         row.orderStatus(),
-                        row.paymentId() != null,
+                        row.orderStatus() == OrderStatus.PAID,
                         row.confirmedAt() != null,
                         row.createdAt()
                 ))

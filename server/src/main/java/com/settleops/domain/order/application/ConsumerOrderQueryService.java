@@ -1,13 +1,14 @@
 package com.settleops.domain.order.application;
 
 import com.settleops.domain.order.api.dto.ConsumerOrderDetailResponse;
+import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
+import com.settleops.domain.order.domain.OrderStatus;
 import com.settleops.domain.order.infra.ConsumerOrderQueryRepository;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.settleops.domain.order.api.dto.ConsumerOrderListResponse;
 
 @Service
 @RequiredArgsConstructor
@@ -36,15 +37,25 @@ public class ConsumerOrderQueryService {
         return detail;
     }
 
+    /**
+     * Consumer 주문/결제 목록 조회
+     *
+     * - status 필터는 orders.status SoT 기준을 그대로 사용한다.
+     * - paid/confirmed 같은 파생 필드는 응답 조립부에서 별도 기준을 따른다.
+     */
+    public ConsumerOrderListResponse getOrders(
+            String loginConsumer,
+            OrderStatus status,
+            String keyword
+    ) {
+        return new ConsumerOrderListResponse(
+                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, keyword)
+        );
+    }
+
     private void validateConsumerAccess(String buyerId, String loginConsumer) {
         if (!buyerId.equals(loginConsumer)) {
             throw new ForbiddenException("다른 구매자의 주문은 조회할 수 없습니다.");
         }
-    }
-
-    public ConsumerOrderListResponse getOrders(String loginConsumer, String status, String keyword) {
-        return new ConsumerOrderListResponse(
-                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, keyword)
-        );
     }
 }
