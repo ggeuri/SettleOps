@@ -41,15 +41,20 @@ public class ConsumerOrderQueryService {
      * Consumer 주문/결제 목록 조회
      *
      * - status 필터는 orders.status SoT 기준을 그대로 사용한다.
-     * - paid/confirmed 같은 파생 필드는 응답 조립부에서 별도 기준을 따른다.
+     * - confirmed 필터는 PAYMENT_CONFIRMED 이벤트 존재 여부 기준으로 동작한다.
+     *   - CONFIRMED   : PAYMENT_CONFIRMED 이벤트 존재
+     *   - UNCONFIRMED : PAYMENT_CONFIRMED 이벤트 미존재
+     *   - ALL/null    : 조건 미적용
+     * - paid/confirmed 같은 파생 필드는 응답 조립부에서 동일 기준을 따른다.
      */
     public ConsumerOrderListResponse getOrders(
             String loginConsumer,
             OrderStatus status,
+            String confirmed,
             String keyword
     ) {
         return new ConsumerOrderListResponse(
-                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, keyword)
+                consumerOrderQueryRepository.findConsumerOrders(loginConsumer, status, confirmed, keyword)
         );
     }
 

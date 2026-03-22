@@ -6,6 +6,11 @@
     min-width:0;
 }
 
+.section-card__title {
+  margin: 0 0 16px;
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
 .card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);

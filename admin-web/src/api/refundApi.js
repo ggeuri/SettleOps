@@ -22,10 +22,11 @@ export function getAdminRefunds(params = {}) {
     if (params.from) searchParams.set("from", params.from);
     if (params.to) searchParams.set("to", params.to);
 
-    const query = searchParams.toString();
-    const url = query ? `/api/admin/refunds?${query}` : "/api/admin/refunds";
+    searchParams.set("page", String(params.page ?? 0));
+    searchParams.set("size", String(params.size ?? 20));
 
-    return requestJson(url);
+    const query = searchParams.toString();
+    return requestJson(`/api/admin/refunds?${query}`);
 }
 
 export function approveRefund(refundId, comment) {
