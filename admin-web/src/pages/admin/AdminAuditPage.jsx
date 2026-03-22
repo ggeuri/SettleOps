@@ -60,6 +60,17 @@ function buildRowKey(item, index) {
   return `${item?.auditId ?? "audit"}-${index}`;
 }
 
+// 최소 수정: date 입력값을 API 호출 직전에만 LocalDateTime 문자열로 변환
+function toFromDateTime(dateValue) {
+  if (!dateValue) return undefined;
+  return `${dateValue}T00:00:00`;
+}
+
+function toToDateTime(dateValue) {
+  if (!dateValue) return undefined;
+  return `${dateValue}T23:59:59`;
+}
+
 export default function AdminAuditPage() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -99,8 +110,8 @@ export default function AdminAuditPage() {
           requestId: queryState.requestId || undefined,
           merchantId: queryState.merchantId || undefined,
           entityType: queryState.entityType || undefined,
-          from: queryState.from || undefined,
-          to: queryState.to || undefined,
+          from: toFromDateTime(queryState.from),
+          to: toToDateTime(queryState.to),
           includeNoOp: queryState.includeNoOp,
           page: queryState.page,
           size: queryState.size,

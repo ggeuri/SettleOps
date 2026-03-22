@@ -131,7 +131,7 @@ export default function AuditSearchForm({
           <input
             id="from"
             name="from"
-            className="input"
+            className="input input--date"
             type="date"
             value={form.from}
             onChange={handleChange}
@@ -146,7 +146,7 @@ export default function AuditSearchForm({
           <input
             id="to"
             name="to"
-            className="input"
+            className="input input--date"
             type="date"
             value={form.to}
             onChange={handleChange}
