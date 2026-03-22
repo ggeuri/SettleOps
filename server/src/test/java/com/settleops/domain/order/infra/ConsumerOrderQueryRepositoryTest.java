@@ -8,6 +8,7 @@ import com.settleops.domain.payment.domain.Payment;
 import com.settleops.domain.payment.domain.PaymentEvent;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
+import com.settleops.global.error.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test-db")
@@ -162,7 +164,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(myBuyerId, null, null);
+                consumerOrderQueryRepository.findConsumerOrders(myBuyerId, null, null, null);
 
         // then
         assertThat(results).hasSize(2);
@@ -233,7 +235,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null);
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null, null);
 
         // then
         ConsumerOrderListItemResponse first = results.stream()
@@ -253,6 +255,179 @@ class ConsumerOrderQueryRepositoryTest {
         assertThat(second.orderStatus()).isEqualTo(OrderStatus.CREATED);
         assertThat(second.paid()).isFalse();
         assertThat(second.confirmed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("C3 목록 조회 시 confirmed=CONFIRMED 이면 confirmed=true row만 반환한다")
+    void findConsumerOrders_filterByConfirmedConfirmed() {
+        // given
+        String buyerId = "buyer_list_confirmed_filter";
+
+        Orders notConfirmedOrder = Orders.create("m_1001", buyerId, "아이폰 14 프로", 125000L);
+        Orders confirmedOrder = Orders.create("m_1001", buyerId, "에어팟 프로", 35000L);
+
+        ordersRepository.save(notConfirmedOrder);
+        ordersRepository.save(confirmedOrder);
+
+        Payment payment1 = Payment.create(
+                notConfirmedOrder.getOrderId(),
+                notConfirmedOrder.getMerchantId(),
+                notConfirmedOrder.getBuyerId(),
+                notConfirmedOrder.getAmount()
+        );
+        payment1.capture();
+        paymentRepository.save(payment1);
+
+        Payment payment2 = Payment.create(
+                confirmedOrder.getOrderId(),
+                confirmedOrder.getMerchantId(),
+                confirmedOrder.getBuyerId(),
+                confirmedOrder.getAmount()
+        );
+        payment2.capture();
+        paymentRepository.save(payment2);
+
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment1.getPaymentId(),
+                "11111111-1111-1111-1111-111111111111"
+        ));
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment2.getPaymentId(),
+                "22222222-2222-2222-2222-222222222222"
+        ));
+        paymentEventRepository.save(PaymentEvent.confirmed(
+                payment2.getPaymentId(),
+                "33333333-3333-3333-3333-333333333333"
+        ));
+
+        // when
+        List<ConsumerOrderListItemResponse> results =
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, "CONFIRMED", null);
+
+        // then
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).orderId()).isEqualTo(confirmedOrder.getOrderId());
+        assertThat(results.get(0).confirmed()).isTrue();
+    }
+
+    @Test
+    @DisplayName("C3 목록 조회 시 confirmed=UNCONFIRMED 이면 confirmed=false row만 반환한다")
+    void findConsumerOrders_filterByConfirmedUnconfirmed() {
+        // given
+        String buyerId = "buyer_list_unconfirmed_filter";
+
+        Orders notConfirmedOrder = Orders.create("m_1001", buyerId, "아이폰 14 프로", 125000L);
+        Orders confirmedOrder = Orders.create("m_1001", buyerId, "에어팟 프로", 35000L);
+
+        ordersRepository.save(notConfirmedOrder);
+        ordersRepository.save(confirmedOrder);
+
+        Payment payment1 = Payment.create(
+                notConfirmedOrder.getOrderId(),
+                notConfirmedOrder.getMerchantId(),
+                notConfirmedOrder.getBuyerId(),
+                notConfirmedOrder.getAmount()
+        );
+        payment1.capture();
+        paymentRepository.save(payment1);
+
+        Payment payment2 = Payment.create(
+                confirmedOrder.getOrderId(),
+                confirmedOrder.getMerchantId(),
+                confirmedOrder.getBuyerId(),
+                confirmedOrder.getAmount()
+        );
+        payment2.capture();
+        paymentRepository.save(payment2);
+
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment1.getPaymentId(),
+                "11111111-1111-1111-1111-111111111111"
+        ));
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment2.getPaymentId(),
+                "22222222-2222-2222-2222-222222222222"
+        ));
+        paymentEventRepository.save(PaymentEvent.confirmed(
+                payment2.getPaymentId(),
+                "33333333-3333-3333-3333-333333333333"
+        ));
+
+        // when
+        List<ConsumerOrderListItemResponse> results =
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, "UNCONFIRMED", null);
+
+        // then
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).orderId()).isEqualTo(notConfirmedOrder.getOrderId());
+        assertThat(results.get(0).confirmed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("C3 목록 조회 시 confirmed=ALL 이면 전체를 반환한다")
+    void findConsumerOrders_filterByConfirmedAll() {
+        // given
+        String buyerId = "buyer_list_all_filter";
+
+        Orders notConfirmedOrder = Orders.create("m_1001", buyerId, "아이폰 14 프로", 125000L);
+        Orders confirmedOrder = Orders.create("m_1001", buyerId, "에어팟 프로", 35000L);
+
+        ordersRepository.save(notConfirmedOrder);
+        ordersRepository.save(confirmedOrder);
+
+        Payment payment1 = Payment.create(
+                notConfirmedOrder.getOrderId(),
+                notConfirmedOrder.getMerchantId(),
+                notConfirmedOrder.getBuyerId(),
+                notConfirmedOrder.getAmount()
+        );
+        payment1.capture();
+        paymentRepository.save(payment1);
+
+        Payment payment2 = Payment.create(
+                confirmedOrder.getOrderId(),
+                confirmedOrder.getMerchantId(),
+                confirmedOrder.getBuyerId(),
+                confirmedOrder.getAmount()
+        );
+        payment2.capture();
+        paymentRepository.save(payment2);
+
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment1.getPaymentId(),
+                "11111111-1111-1111-1111-111111111111"
+        ));
+        paymentEventRepository.save(PaymentEvent.captured(
+                payment2.getPaymentId(),
+                "22222222-2222-2222-2222-222222222222"
+        ));
+        paymentEventRepository.save(PaymentEvent.confirmed(
+                payment2.getPaymentId(),
+                "33333333-3333-3333-3333-333333333333"
+        ));
+
+        // when
+        List<ConsumerOrderListItemResponse> results =
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, "ALL", null);
+
+        // then
+        assertThat(results).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("C3 목록 조회 시 잘못된 confirmed 값이면 400 예외를 던진다")
+    void findConsumerOrders_filterByConfirmedInvalid() {
+        // given
+        String buyerId = "buyer_list_invalid_confirmed";
+
+        Orders order = Orders.create("m_1001", buyerId, "아이폰 14 프로", 125000L);
+        ordersRepository.save(order);
+
+        // when // then
+        assertThatThrownBy(() ->
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, "INVALID", null)
+        ).isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("invalid confirmed filter");
     }
 
     @Test
@@ -289,7 +464,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null);
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null, null);
 
         // then
         ConsumerOrderListItemResponse createdRow = results.stream()
@@ -325,7 +500,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, OrderStatus.PAID, null);
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, OrderStatus.PAID, null, null);
 
         // then
         assertThat(results).hasSize(1);
@@ -348,7 +523,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, "에어팟");
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null, "에어팟");
 
         // then
         assertThat(results).hasSize(1);
@@ -371,7 +546,7 @@ class ConsumerOrderQueryRepositoryTest {
 
         // when
         List<ConsumerOrderListItemResponse> results =
-                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null);
+                consumerOrderQueryRepository.findConsumerOrders(buyerId, null, null, null);
 
         // then
         assertThat(results).hasSize(2);

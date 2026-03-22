@@ -149,12 +149,12 @@ class ConsumerOrderQueryServiceTest {
                 )
         );
 
-        given(consumerOrderQueryRepository.findConsumerOrders(loginConsumer, null, null))
+        given(consumerOrderQueryRepository.findConsumerOrders(loginConsumer, null, null, null))
                 .willReturn(items);
 
         // when
         ConsumerOrderListResponse result =
-                consumerOrderQueryService.getOrders(loginConsumer, null, null);
+                consumerOrderQueryService.getOrders(loginConsumer, null, null, null);
 
         // then
         assertThat(result.items()).hasSize(1);
@@ -166,7 +166,41 @@ class ConsumerOrderQueryServiceTest {
 
         then(consumerOrderQueryRepository)
                 .should()
-                .findConsumerOrders(loginConsumer, null, null);
+                .findConsumerOrders(loginConsumer, null, null, null);
+    }
+
+    @Test
+    @DisplayName("confirmed 필터를 repository로 그대로 전달한다")
+    void getOrders_withConfirmedFilter() {
+        // given
+        String loginConsumer = "buyer_2001";
+
+        List<ConsumerOrderListItemResponse> items = List.of(
+                new ConsumerOrderListItemResponse(
+                        "550e8400-e29b-41d4-a716-446655440010",
+                        "아이폰 14 프로",
+                        125000L,
+                        OrderStatus.PAID,
+                        true,
+                        true,
+                        LocalDateTime.of(2026, 3, 18, 10, 30, 0)
+                )
+        );
+
+        given(consumerOrderQueryRepository.findConsumerOrders(loginConsumer, null, "CONFIRMED", null))
+                .willReturn(items);
+
+        // when
+        ConsumerOrderListResponse result =
+                consumerOrderQueryService.getOrders(loginConsumer, null, "CONFIRMED", null);
+
+        // then
+        assertThat(result.items()).hasSize(1);
+        assertThat(result.items().get(0).confirmed()).isTrue();
+
+        then(consumerOrderQueryRepository)
+                .should()
+                .findConsumerOrders(loginConsumer, null, "CONFIRMED", null);
     }
 
     @Test
@@ -175,18 +209,18 @@ class ConsumerOrderQueryServiceTest {
         // given
         String loginConsumer = "buyer_2001";
 
-        given(consumerOrderQueryRepository.findConsumerOrders(loginConsumer, null, null))
+        given(consumerOrderQueryRepository.findConsumerOrders(loginConsumer, null, null, null))
                 .willReturn(List.of());
 
         // when
         ConsumerOrderListResponse result =
-                consumerOrderQueryService.getOrders(loginConsumer, null, null);
+                consumerOrderQueryService.getOrders(loginConsumer, null, null, null);
 
         // then
         assertThat(result.items()).isEmpty();
 
         then(consumerOrderQueryRepository)
                 .should()
-                .findConsumerOrders(loginConsumer, null, null);
+                .findConsumerOrders(loginConsumer, null, null, null);
     }
 }
