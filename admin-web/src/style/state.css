@@ -44,3 +44,25 @@
   color: #9a3412;
   font-size: var(--font-size-sm);
 }
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%) translateY(8px);
+  background: #111827;
+  color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.app-toast--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
