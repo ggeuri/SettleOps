@@ -6,12 +6,17 @@ import com.settleops.domain.refund.api.dto.QAdminRefundListItemDTO;
 import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static com.settleops.domain.refund.domain.QRefund.refund;
+
 
 @Repository
 @RequiredArgsConstructor
@@ -26,10 +31,11 @@ public class RefundReadRepository {
      * - 시간 기준 SoT: refund.requestedAt (DB: requested_at)
      * - 정렬: requestedAt DESC (최신 요청 우선)
      */
-    public List<AdminRefundListItemDTO> findAdminRefundQueue(
+    public Page<AdminRefundListItemDTO> findAdminRefundQueue(
             RefundStatus status,
             LocalDateTime from,
-            LocalDateTime to
+            LocalDateTime to,
+            Pageable pageable
     ) {
         BooleanBuilder where = new BooleanBuilder();
 
@@ -43,7 +49,7 @@ public class RefundReadRepository {
             where.and(refund.requestedAt.loe(to));
         }
 
-        return queryFactory
+        List<AdminRefundListItemDTO> content = queryFactory
                 .select(new QAdminRefundListItemDTO(
                         refund.refundId,
                         refund.paymentId,
@@ -56,7 +62,20 @@ public class RefundReadRepository {
                 .from(refund)
                 .where(where)
                 .orderBy(refund.requestedAt.desc())
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
                 .fetch();
+
+        var countQuery = queryFactory
+                .select(refund.count())
+                .from(refund)
+                .where(where);
+
+        return PageableExecutionUtils.getPage(
+                content,
+                pageable,
+                () -> Optional.ofNullable(countQuery.fetchOne()).orElse(0L)
+        );
     }
 
     public List<Refund> findAllByOrderByCreatedAtDesc() {

@@ -7,15 +7,19 @@ import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
 import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
+import com.settleops.global.web.pagination.PageResponse;
+import com.settleops.global.web.pagination.PageableUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -35,12 +39,18 @@ public class AdminRefundController {
      * - 기준 시각: requestedAt (DB requested_at)
      */
     @GetMapping
-    public ResponseEntity<List<AdminRefundListItemDTO>> list(
+    public ResponseEntity<PageResponse<AdminRefundListItemDTO>> list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @PageableDefault(size = 20) Pageable pageable
     ) {
-        return ResponseEntity.ok(refundAdminQueryService.list(status, from, to));
+        Pageable normalized = PageableUtils.normalize(pageable);
+
+        Page<AdminRefundListItemDTO> result =
+                refundAdminQueryService.list(status, from, to, normalized);
+
+        return ResponseEntity.ok(PageResponse.from(result));
     }
 
     @PatchMapping("/{refundId}/approve")
@@ -51,6 +61,7 @@ public class AdminRefundController {
             HttpServletRequest request
     ) {
         String requestId = requestIdResolver.resolve(request);
+
         return ResponseEntity.ok(
                 refundAdminService.approve(refundId, adminId, req.getComment(), requestId)
         );
@@ -60,13 +71,13 @@ public class AdminRefundController {
     public ResponseEntity<AdminRefundDecisionResponseDTO> reject(
             @PathVariable String refundId,
             @RequestBody @Valid AdminRefundDecisionRequestDTO req,
-            HttpServletRequest request,
-            @LoginAdmin String adminId
+            @LoginAdmin String adminId,
+            HttpServletRequest request
     ) {
         String requestId = requestIdResolver.resolve(request);
+
         return ResponseEntity.ok(
                 refundAdminService.reject(refundId, adminId, req.getComment(), requestId)
         );
     }
-
 }
