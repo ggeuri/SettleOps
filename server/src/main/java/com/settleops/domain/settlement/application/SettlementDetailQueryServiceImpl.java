@@ -47,6 +47,9 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
         boolean refundAdjustmentPending =
                 refundAdjustmentPolicy.isRefundAdjustmentPending(settlementId);
 
+        String lastRequestId =
+                settlementDetailQueryRepository.findLatestSettlementRequestId(settlementId);
+
         AdminSettlementRefundSummaryResponse refund =
                 new AdminSettlementRefundSummaryResponse(
                         hasApprovedRefund,
@@ -62,6 +65,7 @@ public class SettlementDetailQueryServiceImpl implements SettlementDetailQuerySe
                 base.fee(),
                 base.vat(),
                 base.net(),
+                lastRequestId,
                 lines,
                 hold,
                 refund

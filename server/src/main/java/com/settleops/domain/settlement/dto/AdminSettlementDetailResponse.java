@@ -14,6 +14,7 @@ public record AdminSettlementDetailResponse(
         long fee,
         long vat,
         long net,
+        String lastRequestId,
         List<AdminSettlementLineItemResponse> lines,
         AdminSettlementHoldSummaryResponse hold,
         AdminSettlementRefundSummaryResponse refund

@@ -1,17 +1,21 @@
 package com.settleops.domain.settlement.infra;
 
+import com.settleops.domain.hold.domain.Hold;
+import com.settleops.domain.hold.domain.HoldReasonCode;
+import com.settleops.domain.hold.domain.HoldStatus;
+import com.settleops.domain.hold.infra.HoldRepository;
 import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.refund.infra.RefundRepository;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
-import com.settleops.domain.hold.domain.Hold;
-import com.settleops.domain.hold.domain.HoldReasonCode;
-import com.settleops.domain.hold.domain.HoldStatus;
-import com.settleops.domain.hold.infra.HoldRepository;
 import com.settleops.domain.settlement.entity.Settlement;
 import com.settleops.domain.settlement.entity.SettlementLine;
 import com.settleops.domain.settlement.enums.SettlementLineType;
+import com.settleops.global.audit.ActorType;
+import com.settleops.global.audit.AuditLog;
+import com.settleops.global.audit.EntityType;
+import com.settleops.global.enums.Action;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -213,6 +217,60 @@ public class SettlementDetailQueryRepositoryImplTest {
 
         // then
         assertThat(result).isFalse();
+    }
+
+    @Test
+    @DisplayName("A4 Trace CTA용 최신 requestId는 settlement audit 기준 최신값을 반환한다")
+    void findLatestSettlementRequestId_returnsLatestRequestId() {
+        // given
+        String settlementId = UUID.randomUUID().toString();
+
+        Settlement settlement = createSettlement(
+                settlementId,
+                "merchant-1",
+                LocalDate.of(2026, 3, 10),
+                10000L
+        );
+        settlementRepository.save(settlement);
+
+        AuditLog olderLog = AuditLog.builder()
+                .requestId("11111111-1111-1111-1111-111111111111")
+                .occurredAt(LocalDateTime.of(2026, 3, 11, 10, 0, 0))
+                .actorType(ActorType.ADMIN)
+                .actorId("admin1")
+                .action(Action.SETTLEMENT_PAY_REQUESTED)
+                .entityType(EntityType.SETTLEMENT)
+                .entityId(settlementId)
+                .statusBefore("READY")
+                .statusAfter("PAY_REQUESTED")
+                .merchantId("merchant-1")
+                .metaJson("{\"noOp\":false}")
+                .build();
+
+        AuditLog newerLog = AuditLog.builder()
+                .requestId("22222222-2222-2222-2222-222222222222")
+                .occurredAt(LocalDateTime.of(2026, 3, 11, 11, 0, 0))
+                .actorType(ActorType.ADMIN)
+                .actorId("admin2")
+                .action(Action.SETTLEMENT_PAY_APPROVED)
+                .entityType(EntityType.SETTLEMENT)
+                .entityId(settlementId)
+                .statusBefore("PAY_REQUESTED")
+                .statusAfter("PAID")
+                .merchantId("merchant-1")
+                .metaJson("{\"noOp\":false}")
+                .build();
+
+        entityManager.persist(olderLog);
+        entityManager.persist(newerLog);
+        entityManager.flush();
+        entityManager.clear();
+
+        // when
+        String result = settlementDetailQueryRepository.findLatestSettlementRequestId(settlementId);
+
+        // then
+        assertThat(result).isEqualTo("22222222-2222-2222-2222-222222222222");
     }
 
     private Settlement createSettlement(

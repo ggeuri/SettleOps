@@ -2,7 +2,11 @@ package com.settleops.domain.settlement.api;
 
 import com.settleops.domain.settlement.application.SettlementDetailQueryService;
 import com.settleops.domain.settlement.application.SettlementQueryService;
-import com.settleops.domain.settlement.dto.*;
+import com.settleops.domain.settlement.dto.AdminSettlementDetailResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +23,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class AdminSettlementQueryControllerTest {
+
     @Test
     @DisplayName("관리자 정산 리스트 조회 시 merchantId 파라미터를 서비스로 전달한다")
     void getSettlements_withMerchantIdFilter() {
@@ -109,7 +114,7 @@ public class AdminSettlementQueryControllerTest {
 
     @Test
     @DisplayName("관리자 정산 상세 조회 시 settlementId를 서비스로 전달한다")
-    void getSettlementDetail_withSettlementId(){
+    void getSettlementDetail_withSettlementId() {
         SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
         SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
         AdminSettlementQueryController controller =
@@ -124,6 +129,7 @@ public class AdminSettlementQueryControllerTest {
                 0L,
                 0L,
                 10000L,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
                 List.of(
                         new AdminSettlementLineItemResponse(
                                 "1",
@@ -143,6 +149,8 @@ public class AdminSettlementQueryControllerTest {
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
+        assertThat(((AdminSettlementDetailResponse) response.getBody()).lastRequestId())
+                .isEqualTo("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
         Mockito.verify(settlementDetailQueryService)
                 .getAdminSettlementDetail("settlement-1");

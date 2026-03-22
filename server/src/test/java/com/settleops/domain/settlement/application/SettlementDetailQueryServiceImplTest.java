@@ -27,11 +27,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Transactional
 public class SettlementDetailQueryServiceImplTest {
 
-    @Autowired SettlementDetailQueryService settlementDetailQueryService;
+    @Autowired
+    SettlementDetailQueryService settlementDetailQueryService;
 
-    @Autowired SettlementRepository settlementRepository;
+    @Autowired
+    SettlementRepository settlementRepository;
 
-    @Autowired SettlementLineRepository settlementLineRepository;
+    @Autowired
+    SettlementLineRepository settlementLineRepository;
 
     @Test
     @DisplayName("관리자 정산 상세 조회 시 존재하지 않는 settlementId면 404를 반환한다")
@@ -90,6 +93,7 @@ public class SettlementDetailQueryServiceImplTest {
         assertThat(response.fee()).isEqualTo(0L);
         assertThat(response.vat()).isEqualTo(0L);
         assertThat(response.net()).isEqualTo(10000L);
+        assertThat(response.lastRequestId()).isNull();
 
         assertThat(response.lines()).hasSize(2);
         assertThat(response.lines())

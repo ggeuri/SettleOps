@@ -4,14 +4,16 @@ import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
+import com.settleops.domain.hold.domain.QHold;
 import com.settleops.domain.refund.domain.QRefund;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.settlement.dto.AdminSettlementDetailBaseView;
 import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
-import com.settleops.domain.hold.domain.QHold;
 import com.settleops.domain.settlement.entity.QSettlement;
 import com.settleops.domain.settlement.entity.QSettlementLine;
+import com.settleops.global.audit.EntityType;
+import com.settleops.global.audit.QAuditLog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -111,5 +113,28 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                         refund.status.eq(RefundStatus.APPROVED)
                 )
                 .fetchFirst() != null;
+    }
+
+    /**
+     * A4 Trace CTA용 최신 requestId 조회
+     *
+     * 기준:
+     * - audit_log.entity_type = SETTLEMENT
+     * - audit_log.entity_id = settlementId
+     * - 가장 최근 occurred_at / audit_id 1건의 request_id
+     */
+    @Override
+    public String findLatestSettlementRequestId(String settlementId) {
+        QAuditLog auditLog = QAuditLog.auditLog;
+
+        return queryFactory
+                .select(auditLog.requestId)
+                .from(auditLog)
+                .where(
+                        auditLog.entityType.eq(EntityType.SETTLEMENT),
+                        auditLog.entityId.eq(settlementId)
+                )
+                .orderBy(auditLog.occurredAt.desc(), auditLog.auditId.desc())
+                .fetchFirst();
     }
 }
