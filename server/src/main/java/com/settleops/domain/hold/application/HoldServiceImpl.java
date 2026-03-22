@@ -36,24 +36,24 @@ public class HoldServiceImpl implements HoldService {
 
     @Override
     public HoldCreateResponse createHold(HoldCreateCommand command) {
-
-        //	2.	settlementRepository.findById(command.settlementId())
         var settlement = settlementRepository.findById(command.settlementId())
                 .orElseThrow(() -> new NotFoundException("존재하지 않는 settlement 입니다."));
 
-        //	3.	settlement가 PAID면 PAID_ALREADY
         if (settlement.isPaid()) {
             throw new ConflictException(ReasonCode.PAID_ALREADY, "이미 PAID 상태인 settlement 입니다.");
         }
-        //	4.	holdRepository.existsBySettlementId(...)면 HOLD_ALREADY_EXISTS
 
         if (holdRepository.existsBySettlementId(command.settlementId())) {
             throw new ConflictException(ReasonCode.HOLD_ALREADY_EXISTS, "이미 hold가 존재하는 settlement 입니다.");
         }
-        //	5.	Hold.requested(...) 생성
-        var hold = Hold.requested(command.settlementId(), command.reasonCode(), command.comment(), command.actorId());
 
-        //	6.	holdRepository.save(hold)
+        var hold = Hold.requested(
+                command.settlementId(),
+                command.reasonCode(),
+                command.comment(),
+                command.actorId()
+        );
+
         var savedHold = holdRepository.save(hold);
 
         String metaJson = buildMetaJson(
@@ -65,7 +65,7 @@ public class HoldServiceImpl implements HoldService {
                 null
         );
 
-        var holdEvent = HoldEvent.of(
+        holdEventRepository.save(HoldEvent.of(
                 savedHold.getHoldId(),
                 Action.HOLD_REQUESTED,
                 command.requestId(),
@@ -73,18 +73,21 @@ public class HoldServiceImpl implements HoldService {
                 command.actorId(),
                 savedHold.getCreatedAt(),
                 metaJson
-        );
+        ));
 
-        holdEventRepository.save(holdEvent);
-
-        //	7.	auditLogger.log(...)
-        auditLogger.log(AuditLogCommand.builder().requestId(command.requestId())
-                .merchantId(settlement.getMerchantId()).entityType(EntityType.HOLD).occurredAt(savedHold.getCreatedAt())
-                .actorType(ActorType.ADMIN).actorId(command.actorId()).action(Action.HOLD_REQUESTED)
-                .statusBefore(null).statusAfter(savedHold.getStatus().name()).entityId(savedHold.getHoldId())
-                .metaJson(metaJson).build());
-
-        //	8.	HoldCreateResponse 반환
+        auditLogger.log(AuditLogCommand.builder()
+                .requestId(command.requestId())
+                .merchantId(settlement.getMerchantId())
+                .entityType(EntityType.HOLD)
+                .occurredAt(savedHold.getCreatedAt())
+                .actorType(ActorType.ADMIN)
+                .actorId(command.actorId())
+                .action(Action.HOLD_REQUESTED)
+                .statusBefore(null)
+                .statusAfter(savedHold.getStatus().name())
+                .entityId(savedHold.getHoldId())
+                .metaJson(metaJson)
+                .build());
 
         return new HoldCreateResponse(
                 command.requestId(),
@@ -97,21 +100,16 @@ public class HoldServiceImpl implements HoldService {
 
     @Override
     public HoldDecisionResponse approveHold(String holdId, HoldApproveCommand command) {
-
-        //1.	hold 조회
         Hold hold = holdRepository.findById(holdId)
                 .orElseThrow(() -> new NotFoundException("존재하지 않는 hold 입니다."));
-        //	2.	settlement 조회
+
         var settlement = settlementRepository.findById(hold.getSettlementId())
                 .orElseThrow(() -> new NotFoundException("존재하지 않는 settlement 입니다."));
-        //	3.	hold 상태 확인
+
         HoldStatus beforeStatus = hold.getStatus();
         LocalDateTime now = LocalDateTime.now();
 
-
-        //	4.	HOLD_ACTIVE면 no-op 200 + audit
         if (beforeStatus == HoldStatus.HOLD_ACTIVE) {
-
             String metaJson = buildMetaJson(
                     command.comment(),
                     hold.getRequestedReasonCode().name(),
@@ -135,7 +133,6 @@ public class HoldServiceImpl implements HoldService {
                     .metaJson(metaJson)
                     .build());
 
-
             return new HoldDecisionResponse(
                     command.requestId(),
                     hold.getStatus(),
@@ -143,7 +140,6 @@ public class HoldServiceImpl implements HoldService {
             );
         }
 
-        //	5.	RELEASED면 no-op 200 + audit
         if (beforeStatus == HoldStatus.RELEASED) {
             String metaJson = buildMetaJson(
                     command.comment(),
@@ -173,10 +169,17 @@ public class HoldServiceImpl implements HoldService {
                     hold.getStatus(),
                     now
             );
-
         }
-        //	6.	HOLD_REQUESTED면 hold.approve()
+
         if (beforeStatus == HoldStatus.HOLD_REQUESTED) {
+            // 추가 1: settlement 상태 가드
+            if (!settlement.isReady()) {
+                throw new ConflictException(
+                        ReasonCode.SETTLEMENT_NOT_READY,
+                        "READY 상태의 settlement만 Hold approve가 가능합니다."
+                );
+            }
+
             String metaJson = buildMetaJson(
                     command.comment(),
                     hold.getRequestedReasonCode().name(),
@@ -187,9 +190,8 @@ public class HoldServiceImpl implements HoldService {
             );
 
             hold.approve();
-            //	7.	settlement markHoldActive()
             settlement.markHoldActive();
-            //	8.	audit 저장
+
             holdEventRepository.save(HoldEvent.of(
                     hold.getHoldId(),
                     Action.HOLD_APPROVED,
@@ -214,37 +216,27 @@ public class HoldServiceImpl implements HoldService {
                     .metaJson(metaJson)
                     .build());
 
-
-            //	9.	HoldDecisionResponse 반환
-
             return new HoldDecisionResponse(
                     command.requestId(),
                     HoldStatus.HOLD_ACTIVE,
                     now
             );
         }
+
         throw new IllegalStateException("unsupported hold status: " + beforeStatus);
     }
 
     @Override
     public HoldDecisionResponse releaseHold(String holdId, HoldReleaseCommand command) {
-
-        //1.	hold 조회
         Hold hold = holdRepository.findById(holdId)
                 .orElseThrow(() -> new NotFoundException("존재하지 않는 hold 입니다."));
-        //	2.	settlement 조회
+
         var settlement = settlementRepository.findById(hold.getSettlementId())
                 .orElseThrow(() -> new NotFoundException("존재하지 않는 settlement 입니다."));
-        //	3.	hold 상태 확인
+
         HoldStatus beforeStatus = hold.getStatus();
         LocalDateTime now = LocalDateTime.now();
 
-        //		5.	RELEASED면
-        //	•	noOp=true
-        //	•	noOpReason=ALREADY_RELEASED
-        //	•	Action.HOLD_RELEASED
-        //	•	audit만 저장
-        //	•	200 반환
         if (beforeStatus == HoldStatus.RELEASED) {
             String metaJson = buildMetaJson(
                     command.comment(),
@@ -274,21 +266,24 @@ public class HoldServiceImpl implements HoldService {
                     hold.getStatus(),
                     now
             );
-
         }
 
-        //		6.	HOLD_REQUESTED면
-        //	•	409 HOLD_NOT_ACTIVE
-        if (beforeStatus == HoldStatus.HOLD_REQUESTED)
-            throw new ConflictException(ReasonCode.HOLD_NOT_ACTIVE,"release 가능한 hold 상태가 아닙니다.");
+        if (beforeStatus == HoldStatus.HOLD_REQUESTED) {
+            throw new ConflictException(
+                    ReasonCode.HOLD_NOT_ACTIVE,
+                    "release 가능한 hold 상태가 아닙니다."
+            );
+        }
 
-        //7.	HOLD_ACTIVE면
-        //	•	hold.release()
-        //	•	settlement.restoreReady()
-        //	•	hold_event(HOLD_RELEASED) 저장
-        //	•	audit 저장
-        //	•	200 반환
         if (beforeStatus == HoldStatus.HOLD_ACTIVE) {
+            // 추가 2: settlement 상태 가드
+            if (!settlement.isHoldActive()) {
+                throw new ConflictException(
+                        ReasonCode.HOLD_NOT_ACTIVE,
+                        "연동 settlement가 HOLD_ACTIVE 상태가 아닙니다."
+                );
+            }
+
             hold.release();
             settlement.restoreReady();
 
@@ -324,7 +319,6 @@ public class HoldServiceImpl implements HoldService {
                     .entityId(hold.getHoldId())
                     .metaJson(metaJson)
                     .build());
-
 
             return new HoldDecisionResponse(
                     command.requestId(),
