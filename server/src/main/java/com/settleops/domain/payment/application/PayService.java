@@ -105,7 +105,7 @@ public class PayService {
         payment = payPaymentWriter.saveCapturedState(payment);
 
         // 8. PAYMENT_EVENT :: CAPTURED
-        payEventWriter.saveCaptured(payment.getPaymentId(), requestId);
+        payEventWriter.saveCaptured(payment.getPaymentId());
 
         // 9. capturedAt 확정
         LocalDateTime capturedAt = payQueryService.getCapturedAtOrThrow(payment);

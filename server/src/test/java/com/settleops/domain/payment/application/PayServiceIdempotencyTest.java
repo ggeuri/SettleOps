@@ -11,12 +11,17 @@ import com.settleops.domain.payment.infra.PaymentRepository;
 import com.settleops.global.enums.IdempotencyTargetType;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.logging.RequestIdKeys;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -75,6 +80,7 @@ class PayServiceIdempotencyTest {
         createdPayment = paymentRepository.saveAndFlush(createdPayment);
 
         // when: 첫 번째 결제
+        bindRequestId(requestId1);
         PayResponseDTO first = payService.pay(orderId, idempotencyKey, requestId1);
 
         // then: 첫 번째 결제 결과 확인
@@ -110,6 +116,7 @@ class PayServiceIdempotencyTest {
         assertThat(firstRecord.getRequestId()).isEqualTo(requestId1);
 
         // when: 동일 멱등키 재시도
+        bindRequestId(requestId2);
         PayResponseDTO second = payService.pay(orderId, idempotencyKey, requestId2);
 
         // then: 동일 결과 반환
@@ -177,12 +184,14 @@ class PayServiceIdempotencyTest {
         createdPayment = paymentRepository.saveAndFlush(createdPayment);
 
         // 첫 번째 결제 성공
+        bindRequestId(requestId1);
         PayResponseDTO first = payService.pay(orderId, firstIdempotencyKey, requestId1);
 
         long paymentCountBefore = paymentRepository.count();
         long idempotencyCountBefore = idempotencyRecordRepository.count();
 
         // when & then
+        bindRequestId(requestId2);
         assertThatThrownBy(() -> payService.pay(orderId, secondIdempotencyKey, requestId2))
                 .isInstanceOf(ConflictException.class)
                 .satisfies(ex -> {
@@ -211,5 +220,17 @@ class PayServiceIdempotencyTest {
                         secondIdempotencyKey
                 )
         ).isEmpty();
+    }
+
+    private void bindRequestId(String requestId) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(RequestIdKeys.HEADER, requestId);
+        request.setAttribute(RequestIdKeys.ATTR_KEY, requestId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+    }
+
+    @AfterEach
+    void tearDown() {
+        RequestContextHolder.resetRequestAttributes();
     }
 }

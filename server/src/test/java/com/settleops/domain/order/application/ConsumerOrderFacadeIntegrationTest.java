@@ -3,17 +3,23 @@ package com.settleops.domain.order.application;
 import com.settleops.domain.order.domain.Orders;
 import com.settleops.domain.order.infra.OrdersRepository;
 import com.settleops.domain.payment.domain.Payment;
+import com.settleops.domain.payment.domain.PaymentEvent;
 import com.settleops.domain.payment.domain.PaymentEventType;
 import com.settleops.domain.payment.domain.PaymentStatus;
 import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.domain.payment.infra.PaymentRepository;
+import com.settleops.global.logging.RequestIdKeys;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.UUID;
 
@@ -37,9 +43,14 @@ class ConsumerOrderFacadeIntegrationTest {
     @Autowired
     private PaymentEventRepository paymentEventRepository;
 
+    @AfterEach
+    void tearDown() {
+        RequestContextHolder.resetRequestAttributes();
+    }
+
     @Test
-    @DisplayName("order 생성 시 payment CREATED 선생성과 PAYMENT_CREATED 이벤트 적재가 함께 수행된다")
-    void createOrderWithPaymentCreated_should_create_payment_and_paymentCreated_event() {
+    @DisplayName("order 생성 시 payment CREATED 선생성과 PAYMENT_CREATED 이벤트 적재가 함께 수행되고 request_id가 기록된다")
+    void createOrderWithPaymentCreated_should_create_payment_and_paymentCreated_event_with_requestId() {
         // given
         String merchantId = "merchant_1";
         String buyerId = "buyer_1";
@@ -47,13 +58,17 @@ class ConsumerOrderFacadeIntegrationTest {
         long amount = 1000L;
         String requestId = UUID.randomUUID().toString();
 
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(RequestIdKeys.HEADER, requestId);
+        request.setAttribute(RequestIdKeys.ATTR_KEY, requestId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
         // when
         Orders order = consumerOrderFacade.createOrderWithPaymentCreated(
                 merchantId,
                 buyerId,
                 itemName,
-                amount,
-                requestId
+                amount
         );
 
         // then - order 생성 확인
@@ -74,12 +89,15 @@ class ConsumerOrderFacadeIntegrationTest {
         assertThat(savedPayment.getRequestedAmount()).isEqualTo(amount);
         assertThat(savedPayment.getStatus()).isEqualTo(PaymentStatus.CREATED);
 
-        // then - PAYMENT_CREATED 이벤트 적재 확인
-        assertThat(
-                paymentEventRepository.findOccurredAtByPaymentIdAndEventType(
-                        savedPayment.getPaymentId(),
-                        PaymentEventType.PAYMENT_CREATED
-                )
-        ).isPresent();
+        // then - PAYMENT_CREATED 이벤트 적재 및 request_id 확인
+        PaymentEvent createdEvent = paymentEventRepository
+                .findByPaymentIdAndEventType(savedPayment.getPaymentId(), PaymentEventType.PAYMENT_CREATED)
+                .orElseThrow();
+
+        assertThat(createdEvent.getPaymentId()).isEqualTo(savedPayment.getPaymentId());
+        assertThat(createdEvent.getEventType()).isEqualTo(PaymentEventType.PAYMENT_CREATED);
+        assertThat(createdEvent.getRequestId()).isEqualTo(requestId);
+        assertThat(createdEvent.getStatusBefore()).isNull();
+        assertThat(createdEvent.getStatusAfter()).isEqualTo(PaymentStatus.CREATED);
     }
 }

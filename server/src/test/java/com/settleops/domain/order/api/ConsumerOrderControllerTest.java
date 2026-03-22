@@ -35,9 +35,6 @@ class ConsumerOrderControllerTest {
     private ConsumerOrderFacade consumerOrderFacade;
 
     @MockitoBean
-    private RequestIdResolver requestIdResolver;
-
-    @MockitoBean
     private SessionAuthProvider sessionAuthProvider;
 
     @MockitoBean
@@ -53,16 +50,12 @@ class ConsumerOrderControllerTest {
                 1000L
         );
 
-        BDDMockito.given(requestIdResolver.resolve(BDDMockito.any()))
-                .willReturn("req-123");
-
         BDDMockito.given(
                 consumerOrderFacade.createOrderWithPaymentCreated(
                         "merchant-1",
                         "buyer-1",
                         "아이템",
-                        1000L,
-                        "req-123"
+                        1000L
                 )
         ).willReturn(order);
 
@@ -184,16 +177,12 @@ class ConsumerOrderControllerTest {
                 1000L
         );
 
-        BDDMockito.given(requestIdResolver.resolve(BDDMockito.any()))
-                .willReturn("req-123");
-
         BDDMockito.given(
                 consumerOrderFacade.createOrderWithPaymentCreated(
                         "merchant-1",
                         "buyer-1",
                         "아이템",
-                        1000L,
-                        "req-123"
+                        1000L
                 )
         ).willReturn(order);
 

@@ -38,8 +38,7 @@ public class ConsumerOrderFacade {
             String merchantId,
             String buyerId,
             String itemName,
-            Long amount,
-            String requestId
+            Long amount
     ) {
         Orders order = orderService.createSeedOrder(merchantId, buyerId, itemName, amount);
 
@@ -51,7 +50,7 @@ public class ConsumerOrderFacade {
         );
 
         payment = payPaymentWriter.create(payment, order.getOrderId());
-        payEventWriter.saveCreated(payment.getPaymentId(), requestId);
+        payEventWriter.saveCreated(payment.getPaymentId());
 
         return order;
     }
