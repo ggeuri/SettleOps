@@ -1,14 +1,24 @@
-/**
- * TODO:
- * 현재 CopyableId는 표시 전용이며 실제 복사 기능은 구현되어 있지 않음.
- * naming 상 혼선을 줄이기 위해 후속 PR에서 clipboard 복사 기능을 추가할 예정.
- */
+import { copyText } from "../../utils/copyText.js";
+import { showToast } from "../../utils/toast.js";
+
 export default function CopyableId({
                                        value,
                                        short = false,
                                    }) {
     if (!value) {
         return <span>-</span>;
+    }
+
+    async function handleCopy(event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        try {
+            await copyText(value);
+            showToast("복사 완료");
+        } catch (error) {
+            console.error("copy failed", error);
+        }
     }
 
     return (
@@ -22,6 +32,15 @@ export default function CopyableId({
             >
                 {value}
             </span>
+
+            <button
+                type="button"
+                className="copyable-id__button"
+                onClick={handleCopy}
+                aria-label="ID 복사"
+            >
+                복사
+            </button>
         </span>
     );
 }

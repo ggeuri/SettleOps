@@ -33,7 +33,7 @@ export default function Pagination({
                         key={pageIndex}
                         type="button"
                         variant={isCurrent ? "primary" : "secondary"}
-                        disabled={disabled}
+                        disabled={disabled || isCurrent}
                         onClick={() => onPageChange(pageIndex)}
                     >
                         {pageIndex + 1}
