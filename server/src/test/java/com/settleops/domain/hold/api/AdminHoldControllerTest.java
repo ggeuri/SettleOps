@@ -1,6 +1,5 @@
-package com.settleops.domain.hold;
+package com.settleops.domain.hold.api;
 
-import com.settleops.domain.hold.api.AdminHoldController;
 import com.settleops.domain.hold.api.dto.AdminHoldQueueResponse;
 import com.settleops.domain.hold.api.dto.AdminHoldQueueRowDto;
 import com.settleops.domain.hold.api.dto.HoldQueueSearchRequestDto;
