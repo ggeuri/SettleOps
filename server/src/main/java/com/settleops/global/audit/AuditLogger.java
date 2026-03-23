@@ -40,8 +40,7 @@ public class AuditLogger {
         }
 
         if (cmd.getAction() == null) throw new BadRequestException("action is null");
-        if (cmd.getActorType() == null) throw new BadRequestException("actorType is null");
-        validateActorId(cmd.getActorId());
+        validateActor(cmd.getActorType(), cmd.getActorId());
 
         if (cmd.getEntityType() == null) throw new BadRequestException("entityType is null");
         if (cmd.getEntityId() == null || cmd.getEntityId().isBlank()) {
@@ -49,14 +48,29 @@ public class AuditLogger {
         }
     }
 
-    private void validateActorId(String actorId) {
-        if (actorId == null) throw new BadRequestException("actorId is null");
-        if (actorId.isBlank()) throw new BadRequestException("actorId is blank");
+    private void validateActor(ActorType actorType, String actorId) {
+        if (actorType == null) {
+            throw new BadRequestException("actorType is null");
+        }
+
+        if (actorId == null) {
+            throw new BadRequestException("actorId is null");
+        }
+
+        if (actorId.isBlank()) {
+            throw new BadRequestException("actorId is blank");
+        }
+
         if (actorId.length() > ACTOR_ID_MAX) {
             throw new BadRequestException("actorId too long (max 32)");
         }
+
         if (actorId.chars().anyMatch(ch -> ch <= 0x20 || ch >= 0x7F)) {
             throw new BadRequestException("actorId must be ASCII without whitespace");
+        }
+
+        if (actorType == ActorType.SYSTEM && !"SYSTEM".equals(actorId)) {
+            throw new BadRequestException("SYSTEM actorType requires actorId=SYSTEM");
         }
     }
 
