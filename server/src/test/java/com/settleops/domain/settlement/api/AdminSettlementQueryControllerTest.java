@@ -2,7 +2,13 @@ package com.settleops.domain.settlement.api;
 
 import com.settleops.domain.settlement.application.SettlementDetailQueryService;
 import com.settleops.domain.settlement.application.SettlementQueryService;
-import com.settleops.domain.settlement.dto.*;
+import com.settleops.domain.settlement.application.SettlementTraceEntryQueryService;
+import com.settleops.domain.settlement.dto.AdminSettlementDetailResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementHoldSummaryResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementLineItemResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
+import com.settleops.domain.settlement.dto.AdminSettlementRefundSummaryResponse;
+import com.settleops.domain.settlement.dto.SettlementTraceEntryResponse;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -19,13 +25,20 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class AdminSettlementQueryControllerTest {
+
     @Test
     @DisplayName("관리자 정산 리스트 조회 시 merchantId 파라미터를 서비스로 전달한다")
     void getSettlements_withMerchantIdFilter() {
         SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
         SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
+        SettlementTraceEntryQueryService settlementTraceEntryQueryService = Mockito.mock(SettlementTraceEntryQueryService.class);
+
         AdminSettlementQueryController controller =
-                new AdminSettlementQueryController(settlementQueryService, settlementDetailQueryService);
+                new AdminSettlementQueryController(
+                        settlementQueryService,
+                        settlementDetailQueryService,
+                        settlementTraceEntryQueryService
+                );
 
         PageRequest pageable = PageRequest.of(0, 20);
 
@@ -68,8 +81,14 @@ public class AdminSettlementQueryControllerTest {
     void getSettlements_withStatusFilter() {
         SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
         SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
+        SettlementTraceEntryQueryService settlementTraceEntryQueryService = Mockito.mock(SettlementTraceEntryQueryService.class);
+
         AdminSettlementQueryController controller =
-                new AdminSettlementQueryController(settlementQueryService, settlementDetailQueryService);
+                new AdminSettlementQueryController(
+                        settlementQueryService,
+                        settlementDetailQueryService,
+                        settlementTraceEntryQueryService
+                );
 
         PageRequest pageable = PageRequest.of(0, 20);
 
@@ -109,11 +128,17 @@ public class AdminSettlementQueryControllerTest {
 
     @Test
     @DisplayName("관리자 정산 상세 조회 시 settlementId를 서비스로 전달한다")
-    void getSettlementDetail_withSettlementId(){
+    void getSettlementDetail_withSettlementId() {
         SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
         SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
+        SettlementTraceEntryQueryService settlementTraceEntryQueryService = Mockito.mock(SettlementTraceEntryQueryService.class);
+
         AdminSettlementQueryController controller =
-                new AdminSettlementQueryController(settlementQueryService, settlementDetailQueryService);
+                new AdminSettlementQueryController(
+                        settlementQueryService,
+                        settlementDetailQueryService,
+                        settlementTraceEntryQueryService
+                );
 
         AdminSettlementDetailResponse detailResponse = new AdminSettlementDetailResponse(
                 "settlement-1",
@@ -146,5 +171,36 @@ public class AdminSettlementQueryControllerTest {
 
         Mockito.verify(settlementDetailQueryService)
                 .getAdminSettlementDetail("settlement-1");
+    }
+
+    @Test
+    @DisplayName("관리자 Trace entry 조회 API는 settlementId 기준 최신 non-no-op traceRequestId 응답을 반환한다")
+    void getSettlementTraceEntry_withSettlementId() {
+        SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
+        SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
+        SettlementTraceEntryQueryService settlementTraceEntryQueryService = Mockito.mock(SettlementTraceEntryQueryService.class);
+
+        AdminSettlementQueryController controller =
+                new AdminSettlementQueryController(
+                        settlementQueryService,
+                        settlementDetailQueryService,
+                        settlementTraceEntryQueryService
+                );
+
+        SettlementTraceEntryResponse traceEntryResponse =
+                new SettlementTraceEntryResponse("request-1");
+
+        Mockito.when(settlementTraceEntryQueryService.getSettlementTraceEntry("settlement-1"))
+                .thenReturn(traceEntryResponse);
+
+        ResponseEntity<SettlementTraceEntryResponse> response =
+                controller.getSettlementTraceEntry("settlement-1");
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().traceRequestId()).isEqualTo("request-1");
+
+        Mockito.verify(settlementTraceEntryQueryService)
+                .getSettlementTraceEntry("settlement-1");
     }
 }

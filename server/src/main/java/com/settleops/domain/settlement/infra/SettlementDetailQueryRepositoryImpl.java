@@ -2,6 +2,7 @@ package com.settleops.domain.settlement.infra;
 
 import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.Expressions;
+import com.querydsl.core.types.dsl.StringExpression;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.refund.domain.QRefund;
@@ -14,6 +15,8 @@ import com.settleops.domain.settlement.entity.QSettlement;
 import com.settleops.domain.settlement.entity.QSettlementLine;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
+import com.settleops.global.audit.EntityType;
+import com.settleops.global.audit.QAuditLog;
 
 import java.util.List;
 
@@ -111,5 +114,29 @@ public class SettlementDetailQueryRepositoryImpl implements SettlementDetailQuer
                         refund.status.eq(RefundStatus.APPROVED)
                 )
                 .fetchFirst() != null;
+    }
+
+    @Override
+    public String findLatestNonNoOpSettlementRequestId(String settlementId) {
+        QAuditLog auditLog = QAuditLog.auditLog;
+
+        StringExpression noOpValue = Expressions.stringTemplate(
+                "coalesce(function('json_unquote', function('json_extract', {0}, '$.noOp')), 'false')",
+                auditLog.metaJson
+        );
+
+        return queryFactory
+                .select(auditLog.requestId)
+                .from(auditLog)
+                .where(
+                        auditLog.entityType.eq(EntityType.SETTLEMENT),
+                        auditLog.entityId.eq(settlementId),
+                        noOpValue.eq("false")
+                )
+                .orderBy(
+                        auditLog.occurredAt.desc(),
+                        auditLog.auditId.desc()
+                )
+                .fetchFirst();
     }
 }
