@@ -41,13 +41,15 @@ function formatDateTime(value) {
   return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
-function normalizeHistoryRows(data) {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.content)) return data.content;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.rows)) return data.rows;
-  return [];
+function normalizeHistoryPayload(data) {
+  const page = data?.page ?? null;
+  const content = Array.isArray(page?.content) ? page.content : [];
+
+  return {
+    rows: content,
+    totalElements: Number(page?.totalElements ?? 0),
+    numberOfElements: Number(page?.numberOfElements ?? content.length),
+  };
 }
 
 function buildErrorMessage(error) {
@@ -98,12 +100,87 @@ function extractRunId(runResponse) {
   );
 }
 
+function extractHistoryResult(row) {
+  if (row?.type === "SKIP") return "SKIP";
+  if (row?.type === "OK_FAIL") {
+    return row?.batch?.result || "UNKNOWN";
+  }
+  return "UNKNOWN";
+}
+
+function extractHistoryRunId(row, index) {
+  if (row?.type === "SKIP") {
+    return row?.skip?.runId || `skip-row-${index}`;
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return row?.batch?.runId || row?.batch?.batchId || `okfail-row-${index}`;
+  }
+
+  return `row-${index}`;
+}
+
+function extractHistoryBaseDate(row) {
+  if (row?.type === "SKIP") {
+    return row?.skip?.baseDate || "-";
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return row?.batch?.batchKey || "-";
+  }
+
+  return "-";
+}
+
+function extractHistoryRequestId(row) {
+  if (row?.type === "SKIP") {
+    return row?.skip?.requestId || null;
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return row?.batch?.requestId || null;
+  }
+
+  return null;
+}
+
+function extractHistoryTriggeredBy(row) {
+  if (row?.type === "SKIP") {
+    return row?.skip?.actorId || "-";
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return row?.batch?.triggeredBy || "-";
+  }
+
+  return "-";
+}
+
+function extractHistoryOccurredAt(row) {
+  if (row?.type === "SKIP") {
+    return row?.skip?.occurredAt || row?.occurredAt || null;
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return (
+      row?.batch?.finishedAt ||
+      row?.batch?.createdAt ||
+      row?.occurredAt ||
+      null
+    );
+  }
+
+  return row?.occurredAt || null;
+}
+
 export default function BatchPage() {
   const [baseDate, setBaseDate] = useState(getDefaultTo());
   const [fromDate, setFromDate] = useState(getDefaultFrom());
   const [toDate, setToDate] = useState(getDefaultTo());
 
   const [historyRows, setHistoryRows] = useState([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
+
   const [loading, setLoading] = useState(false);
   const [runLoading, setRunLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -131,10 +208,13 @@ export default function BatchPage() {
           }
         );
 
-        setHistoryRows(normalizeHistoryRows(response.data));
+        const normalized = normalizeHistoryPayload(response.data);
+        setHistoryRows(normalized.rows);
+        setHistoryTotal(normalized.totalElements);
       } catch (error) {
         console.error("A2 배치 이력 조회 실패", error);
         setHistoryRows([]);
+        setHistoryTotal(0);
         setErrorMessage(buildErrorMessage(error));
       } finally {
         setLoading(false);
@@ -153,16 +233,14 @@ export default function BatchPage() {
   };
 
   const handleReset = async () => {
-    const nextFrom = getDefaultFrom();
-    const nextTo = getDefaultTo();
+  const nextFrom = getDefaultFrom();
+  const nextTo = getDefaultTo();
 
-    setFromDate(nextFrom);
-    setToDate(nextTo);
-    setBaseDate(nextTo);
-    setRunResult(null);
+  setFromDate(nextFrom);
+  setToDate(nextTo);
 
-    await fetchHistory(nextFrom, nextTo);
-  };
+  await fetchHistory(nextFrom, nextTo);
+};
 
   const handleRunBatch = async () => {
     if (!baseDate) return;
@@ -192,19 +270,19 @@ export default function BatchPage() {
   };
 
   const summary = useMemo(() => {
-    const total = historyRows.length;
+    const total = historyTotal;
     const okCount = historyRows.filter(
-      (row) => String(row?.result || row?.status || "").toUpperCase() === "OK"
+      (row) => extractHistoryResult(row) === "OK"
     ).length;
     const failCount = historyRows.filter(
-      (row) => String(row?.result || row?.status || "").toUpperCase() === "FAIL"
+      (row) => extractHistoryResult(row) === "FAIL"
     ).length;
     const skipCount = historyRows.filter(
-      (row) => String(row?.result || row?.status || "").toUpperCase() === "SKIP"
+      (row) => extractHistoryResult(row) === "SKIP"
     ).length;
 
     return { total, okCount, failCount, skipCount };
-  }, [historyRows]);
+  }, [historyRows, historyTotal]);
 
   return (
     <PageLayout
@@ -402,7 +480,7 @@ export default function BatchPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="배치 이력" description={`총 ${historyRows.length}건`}>
+      <SectionCard title="배치 이력" description={`총 ${historyTotal}건`}>
         {loading ? (
           <LoadingBlock
             title="로딩 중"
@@ -428,28 +506,19 @@ export default function BatchPage() {
               </thead>
               <tbody>
                 {historyRows.map((row, index) => {
-                  const runId =
-                    row?.runId ||
-                    row?.batchRunId ||
-                    row?.batchId ||
-                    row?.id ||
-                    `row-${index}`;
-
-                  const result = row?.result || row?.status || "UNKNOWN";
-                  const requestId = row?.requestId || null;
-                  const occurredAt =
-                    row?.occurredAt ||
-                    row?.finishedAt ||
-                    row?.createdAt ||
-                    row?.triggeredAt ||
-                    null;
+                  const runId = extractHistoryRunId(row, index);
+                  const baseDateValue = extractHistoryBaseDate(row);
+                  const result = extractHistoryResult(row);
+                  const requestId = extractHistoryRequestId(row);
+                  const triggeredBy = extractHistoryTriggeredBy(row);
+                  const occurredAt = extractHistoryOccurredAt(row);
 
                   return (
-                    <tr key={runId}>
+                    <tr key={`${row?.type || "ROW"}-${runId}-${index}`}>
                       <td>
                         <CopyableId value={runId} short />
                       </td>
-                      <td>{row?.baseDate || "-"}</td>
+                      <td>{baseDateValue}</td>
                       <td>
                         <StatusBadge status={result} />
                       </td>
@@ -460,7 +529,7 @@ export default function BatchPage() {
                           "-"
                         )}
                       </td>
-                      <td>{row?.triggeredBy || row?.actorId || "-"}</td>
+                      <td>{triggeredBy}</td>
                       <td>{formatDateTime(occurredAt)}</td>
                     </tr>
                   );
