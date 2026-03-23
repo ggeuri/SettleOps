@@ -2,7 +2,7 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import AppHeader from "./AppHeader";
-import "../style/layout.css";
+import "../../style/layout.css";
 
 export default function AppLayout() {
   return (

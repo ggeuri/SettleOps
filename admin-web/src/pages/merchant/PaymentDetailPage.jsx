@@ -7,11 +7,11 @@ import {
   getRefundContext,
 } from "../../api/merchantPaymentApi.js";
 import { getMe } from "../../api/meApi.js";
-import { formatDateTimeWithSeconds, formatNumber } from "../../util/format.js";
+import { formatDateTimeWithSeconds, formatNumber } from "../../utils/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
-import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import "../../style/payment-detail.css";
 
 function isMerchantRole(me) {

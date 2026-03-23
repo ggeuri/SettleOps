@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { formatDateTime, formatNumber } from "../../util/format.js";
+import { formatDateTime, formatNumber } from "../../utils/format.js";
 import { getMe } from "../../api/meApi.js";
 import { getMerchantPayments } from "../../api/merchantPaymentApi.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
-import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+import Pagination from "../../components/table/Pagination.jsx";
+import usePagination from "../../hooks/usePagination.js";
 
 const PAGE_TITLE = "결제 조회";
 const PAGE_DESCRIPTION =
@@ -39,44 +41,89 @@ function buildErrorInfo(error, fallbackMessage) {
 
 export default function PaymentListPage() {
   const navigate = useNavigate();
+  const { page, size, setPage, setSize, resetPage } = usePagination(0, 20);
 
   const [me, setMe] = useState(null);
   const [filters, setFilters] = useState({
     status: "ALL",
-    // confirmed: "ALL", // 확장 검색 조건. 기획서 고정 U2 계약(status/from/to/keyword) 확정 전까지 미사용
     from: "",
     to: "",
     keyword: "",
   });
 
   const [payments, setPayments] = useState([]);
+  const [pageInfo, setPageInfo] = useState({
+    page: 0,
+    size: 20,
+    totalElements: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  });
+
   const [loading, setLoading] = useState(true);
   const [errorInfo, setErrorInfo] = useState(null);
 
-  async function loadPayments(nextFilters = filters, merchantIdParam = me?.merchantId) {
+  function applyPageResponse(response, fallbackSize = size) {
+    setPayments(response?.items ?? []);
+    setPageInfo({
+      page: response?.page ?? 0,
+      size: response?.size ?? fallbackSize,
+      totalElements: response?.totalElements ?? 0,
+      totalPages: response?.totalPages ?? 0,
+      hasNext: response?.hasNext ?? false,
+      hasPrevious: response?.hasPrevious ?? false,
+    });
+  }
+
+  function clearPageResponse(nextSize = size) {
+    setPayments([]);
+    setPageInfo({
+      page: 0,
+      size: nextSize,
+      totalElements: 0,
+      totalPages: 0,
+      hasNext: false,
+      hasPrevious: false,
+    });
+  }
+
+  async function loadPayments(
+    nextFilters = filters,
+    merchantIdParam = me?.merchantId,
+    nextPage = page,
+    nextSize = size
+  ) {
     if (!merchantIdParam) {
-      setPayments([]);
+      clearPageResponse(nextSize);
       return;
     }
 
-    const data = await getMerchantPayments({
+    const response = await getMerchantPayments({
       merchantId: merchantIdParam,
       status: nextFilters.status,
       from: nextFilters.from,
       to: nextFilters.to,
       keyword: nextFilters.keyword,
+      page: nextPage,
+      size: nextSize,
     });
 
-    setPayments(Array.isArray(data) ? data : []);
+    applyPageResponse(response, nextSize);
   }
 
-  async function runPaymentsLoad(nextFilters = filters) {
+  async function runPaymentsLoad(
+    nextFilters = filters,
+    nextPage = page,
+    nextSize = size,
+    merchantIdParam = me?.merchantId
+  ) {
     try {
       setLoading(true);
       setErrorInfo(null);
-      await loadPayments(nextFilters, me?.merchantId);
+      await loadPayments(nextFilters, merchantIdParam, nextPage, nextSize);
     } catch (error) {
-      setPayments([]);
+      clearPageResponse(nextSize);
       setErrorInfo(buildErrorInfo(error, "결제 목록을 불러오지 못했습니다."));
     } finally {
       setLoading(false);
@@ -92,7 +139,7 @@ export default function PaymentListPage() {
       setMe(meData);
 
       if (!isMerchantRole(meData)) {
-        setPayments([]);
+        clearPageResponse(size);
         setErrorInfo({
           status: 403,
           message: "Merchant 권한이 필요한 페이지입니다.",
@@ -100,10 +147,10 @@ export default function PaymentListPage() {
         return;
       }
 
-      await loadPayments(filters, meData?.merchantId);
+      await loadPayments(filters, meData?.merchantId, page, size);
     } catch (error) {
       setMe(null);
-      setPayments([]);
+      clearPageResponse(size);
       setErrorInfo(buildErrorInfo(error, "페이지 정보를 불러오지 못했습니다."));
     } finally {
       setLoading(false);
@@ -133,25 +180,57 @@ export default function PaymentListPage() {
     }));
   }
 
-  async function handleSearch() {
-    await runPaymentsLoad(filters);
+  async function handleSearch(event) {
+    event?.preventDefault?.();
+
+    if (page !== 0) {
+      resetPage();
+      await runPaymentsLoad(filters, 0, size, me?.merchantId);
+      return;
+    }
+
+    await runPaymentsLoad(filters, 0, size, me?.merchantId);
   }
 
   async function handleReset() {
     const initialFilters = {
       status: "ALL",
-      // confirmed: "ALL", // 확장 검색 조건. 기획서 고정 계약 확정 전까지 미사용
       from: "",
       to: "",
       keyword: "",
     };
 
     setFilters(initialFilters);
-    await runPaymentsLoad(initialFilters);
+
+    if (page !== 0) {
+      resetPage();
+      await runPaymentsLoad(initialFilters, 0, size, me?.merchantId);
+      return;
+    }
+
+    await runPaymentsLoad(initialFilters, 0, size, me?.merchantId);
   }
 
   async function handleRefresh() {
-    await runPaymentsLoad(filters);
+    await runPaymentsLoad(filters, page, size, me?.merchantId);
+  }
+
+  async function handlePageChange(nextPage) {
+    setPage(nextPage);
+    await runPaymentsLoad(filters, nextPage, size, me?.merchantId);
+  }
+
+  async function handleSizeChange(event) {
+    const nextSize = Number(event.target.value);
+    setSize(nextSize);
+
+    if (page !== 0) {
+      resetPage();
+      await runPaymentsLoad(filters, 0, nextSize, me?.merchantId);
+      return;
+    }
+
+    await runPaymentsLoad(filters, 0, nextSize, me?.merchantId);
   }
 
   if (loading) {
@@ -215,22 +294,6 @@ export default function PaymentListPage() {
             </select>
           </div>
 
-          {/*
-          <div className="form-field">
-            <label className="form-field__label">confirmed</label>
-            <select
-              className="select"
-              name="confirmed"
-              value={filters.confirmed}
-              onChange={handleFilterChange}
-            >
-              <option value="ALL">전체</option>
-              <option value="CONFIRMED">CONFIRMED</option>
-              <option value="UNCONFIRMED">UNCONFIRMED</option>
-            </select>
-          </div>
-          */}
-
           <div className="form-field">
             <label className="form-field__label">from</label>
             <input
@@ -277,8 +340,15 @@ export default function PaymentListPage() {
 
       <SectionCard title="결제 목록">
         <div className="table-toolbar">
-          <div>merchant 결제 목록</div>
+          <div>merchant 결제 목록 · 총 {formatNumber(pageInfo.totalElements)}건</div>
+
           <div className="action-panel">
+            <select className="select" value={size} onChange={handleSizeChange}>
+              <option value={10}>10개</option>
+              <option value={20}>20개</option>
+              <option value={50}>50개</option>
+            </select>
+
             <button type="button" className="btn btn--secondary" onClick={handleRefresh}>
               새로고침
             </button>
@@ -350,6 +420,13 @@ export default function PaymentListPage() {
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          page={pageInfo.page}
+          totalPages={pageInfo.totalPages}
+          onPageChange={handlePageChange}
+          disabled={loading}
+        />
       </SectionCard>
 
       <SectionCard title="페이지 규칙">
@@ -359,6 +436,7 @@ export default function PaymentListPage() {
           <div><strong>표시 기준</strong> payment.status는 CREATED / CAPTURED만 사용</div>
           <div><strong>확정 여부</strong> confirmed / confirmedAt 파생값으로 표시</div>
           <div><strong>검색 기준</strong> status + from + to + keyword</div>
+          <div><strong>페이지 정보</strong> {pageInfo.page + 1} / {Math.max(pageInfo.totalPages, 1)}</div>
           <div><strong>로그인 주체</strong> {me?.merchantId ?? "-"}</div>
         </div>
       </SectionCard>

@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import AppLayout from "./layouts/AppLayout";
+import AppLayout from "./app/layouts/AppLayout";
 import AdminRoutes from "./app/router/AdminRoutes.jsx";
 import MerchantRoutes from "./app/router/MerchantRoutes.jsx";
 import ConsumerRoutes from "./app/router/ConsumerRoutes.jsx";
