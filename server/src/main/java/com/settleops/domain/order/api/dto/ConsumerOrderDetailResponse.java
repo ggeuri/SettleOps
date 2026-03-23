@@ -18,6 +18,7 @@ public record ConsumerOrderDetailResponse(
         String buyerId,
         String itemName,
         long amount,
+        String currency,
         OrderStatus orderStatus,
         String paymentId,
         String paymentStatus,

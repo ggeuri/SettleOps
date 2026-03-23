@@ -10,6 +10,7 @@ public record ConsumerOrderFlatRow(
         String buyerId,
         String itemName,
         Long amount,
+        String currency,
         OrderStatus orderStatus,
         String paymentId,
         String paymentStatus,

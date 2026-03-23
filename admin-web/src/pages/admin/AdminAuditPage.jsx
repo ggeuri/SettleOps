@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
-import AuditSearchForm from "../../components/AuditSearchForm.jsx";
-import AuditLogTable from "../../components/AuditLogTable.jsx";
-import AuditLogRowExpand from "../../components/AuditLogRowExpand.jsx";
-import { fetchAuditLogs } from "../../api/auditLogs.js";
-import { fetchAuditEvents } from "../../api/auditEvents.js";
+import AuditSearchForm from "../../components/audit/AuditSearchForm.jsx";
+import AuditLogTable from "../../components/audit/AuditLogTable.jsx";
+import AuditLogRowExpand from "../../components/audit/AuditLogRowExpand.jsx";
+import { fetchAuditLogs } from "../../api/auditLogsApi.js";
+import { fetchAuditEvents } from "../../api/auditEventsApi.js";
 
 const DEFAULT_PAGE = 0;
 const DEFAULT_SIZE = 20;
