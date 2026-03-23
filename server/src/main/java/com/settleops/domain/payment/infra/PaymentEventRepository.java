@@ -12,6 +12,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PaymentEventRepository extends JpaRepository<PaymentEvent,Long> {
+
+    Optional<PaymentEvent> findByPaymentIdAndEventType(String paymentId, PaymentEventType eventType);
+
     @Query("""
         select e.occurredAt
         from PaymentEvent e

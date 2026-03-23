@@ -2,7 +2,7 @@ package com.settleops.domain.order.api;
 
 import com.settleops.domain.order.api.dto.OrderCreateRequestDTO;
 import com.settleops.domain.order.api.dto.OrderCreateResponseDTO;
-import com.settleops.domain.order.application.OrderService;
+import com.settleops.domain.order.application.ConsumerOrderFacade;
 import com.settleops.domain.order.domain.Orders;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -18,13 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/consumer/orders")
 public class ConsumerOrderController {
 
-    private final OrderService orderService;
+    private final ConsumerOrderFacade consumerOrderFacade;
 
     @PostMapping
     public ResponseEntity<OrderCreateResponseDTO> createOrder(
             @RequestBody @Valid OrderCreateRequestDTO request
     ) {
-        Orders order = orderService.createSeedOrder(
+
+        Orders order = consumerOrderFacade.createOrderWithPaymentCreated(
                 request.getMerchantId(),
                 request.getBuyerId(),
                 request.getItemName(),

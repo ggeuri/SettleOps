@@ -17,7 +17,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -43,6 +44,7 @@ class ConsumerOrderQueryServiceTest {
                 "buyer_2001",
                 "아이폰 14 프로",
                 125000L,
+                "KRW",
                 OrderStatus.CREATED,
                 "550e8400-e29b-41d4-a716-446655440001",
                 "CAPTURED",
@@ -75,6 +77,8 @@ class ConsumerOrderQueryServiceTest {
         assertThat(result.orderId()).isEqualTo(orderId);
         assertThat(result.buyerId()).isEqualTo("buyer_2001");
         assertThat(result.itemName()).isEqualTo("아이폰 14 프로");
+        assertThat(result.amount()).isEqualTo(125000L);
+        assertThat(result.currency()).isEqualTo("KRW");
         assertThat(result.orderStatus()).isEqualTo(OrderStatus.CREATED);
         assertThat(result.paymentId()).isEqualTo("550e8400-e29b-41d4-a716-446655440001");
         assertThat(result.paymentStatus()).isEqualTo("CAPTURED");
@@ -114,6 +118,7 @@ class ConsumerOrderQueryServiceTest {
                 "buyer_2001",
                 "아이폰 14 프로",
                 125000L,
+                "KRW",
                 OrderStatus.CREATED,
                 null,
                 null,
