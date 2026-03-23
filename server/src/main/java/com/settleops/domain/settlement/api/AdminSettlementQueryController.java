@@ -2,8 +2,10 @@ package com.settleops.domain.settlement.api;
 
 import com.settleops.domain.settlement.application.SettlementDetailQueryService;
 import com.settleops.domain.settlement.application.SettlementQueryService;
+import com.settleops.domain.settlement.application.SettlementTraceEntryQueryService;
 import com.settleops.domain.settlement.dto.AdminSettlementDetailResponse;
 import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
+import com.settleops.domain.settlement.dto.SettlementTraceEntryResponse;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -20,10 +22,11 @@ public class AdminSettlementQueryController {
 
     private final SettlementQueryService settlementQueryService;
     private final SettlementDetailQueryService settlementDetailQueryService;
+    private final SettlementTraceEntryQueryService settlementTraceEntryQueryService;
 
     @GetMapping
     public ResponseEntity<Page<AdminSettlementListItemResponse>> getSettlements(
-            @RequestParam(required = false)SettlementStatus status,
+            @RequestParam(required = false) SettlementStatus status,
             @RequestParam(required = false) String merchantId,
             @PageableDefault(size = 20) Pageable pageable
     ) {
@@ -41,5 +44,14 @@ public class AdminSettlementQueryController {
             @PathVariable String settlementId
     ) {
         return ResponseEntity.ok(settlementDetailQueryService.getAdminSettlementDetail(settlementId));
+    }
+
+    @GetMapping("/{settlementId}/trace-entry")
+    public ResponseEntity<SettlementTraceEntryResponse> getSettlementTraceEntry(
+            @PathVariable String settlementId
+    ) {
+        return ResponseEntity.ok(
+                settlementTraceEntryQueryService.getSettlementTraceEntry(settlementId)
+        );
     }
 }
