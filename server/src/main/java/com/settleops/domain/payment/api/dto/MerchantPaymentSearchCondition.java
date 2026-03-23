@@ -21,4 +21,7 @@ public class MerchantPaymentSearchCondition {
     private LocalDate to;
 
     private String keyword;
+
+    private Integer page;
+    private Integer size;
 }

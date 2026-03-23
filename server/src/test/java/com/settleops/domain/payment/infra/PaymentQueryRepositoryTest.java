@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -122,13 +123,15 @@ class PaymentQueryRepositoryTest {
         );
 
         // when
-        List<MerchantPaymentListItemResponse> result =
+        Page<MerchantPaymentListItemResponse> result =
                 paymentQueryRepository.searchMerchantPayments("MERCHANT_1", condition);
 
         // then
-        assertThat(result).hasSize(1);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getNumber()).isEqualTo(0);
+        assertThat(result.getSize()).isEqualTo(10);
 
-        MerchantPaymentListItemResponse item = result.get(0);
+        MerchantPaymentListItemResponse item = result.getContent().get(0);
         assertThat(item.getPaymentId().trim()).isEqualTo(PAYMENT_ID_1);
         assertThat(item.getOrderId().trim()).isEqualTo(ORDER_ID_1);
         assertThat(item.getStatus()).isEqualTo("CAPTURED");
@@ -159,12 +162,12 @@ class PaymentQueryRepositoryTest {
         MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "aaaaaaaa");
 
         // when
-        List<MerchantPaymentListItemResponse> result =
+        Page<MerchantPaymentListItemResponse> result =
                 paymentQueryRepository.searchMerchantPayments("MERCHANT_1", condition);
 
         // then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPaymentId().trim()).isEqualTo(PAYMENT_ID_1);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getPaymentId().trim()).isEqualTo(PAYMENT_ID_1);
     }
 
     @Test
@@ -185,12 +188,12 @@ class PaymentQueryRepositoryTest {
         MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "22222222");
 
         // when
-        List<MerchantPaymentListItemResponse> result =
+        Page<MerchantPaymentListItemResponse> result =
                 paymentQueryRepository.searchMerchantPayments("MERCHANT_1", condition);
 
         // then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getOrderId().trim()).isEqualTo(ORDER_ID_2);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getOrderId().trim()).isEqualTo(ORDER_ID_2);
     }
 
     @Test
@@ -211,12 +214,12 @@ class PaymentQueryRepositoryTest {
         MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "아이폰");
 
         // when
-        List<MerchantPaymentListItemResponse> result =
+        Page<MerchantPaymentListItemResponse> result =
                 paymentQueryRepository.searchMerchantPayments("MERCHANT_1", condition);
 
         // then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getPaymentId().trim()).isEqualTo(PAYMENT_ID_1);
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).getPaymentId().trim()).isEqualTo(PAYMENT_ID_1);
     }
 
     // =========================================================
@@ -461,6 +464,8 @@ class PaymentQueryRepositoryTest {
         condition.setFrom(from);
         condition.setTo(to);
         condition.setKeyword(keyword);
+        condition.setPage(0);
+        condition.setSize(10);
         return condition;
     }
 

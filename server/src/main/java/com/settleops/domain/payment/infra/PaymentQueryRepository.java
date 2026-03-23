@@ -16,7 +16,11 @@ import com.settleops.domain.payment.domain.QPayment;
 import com.settleops.domain.payment.domain.QPaymentEvent;
 import com.settleops.domain.refund.domain.QRefund;
 import com.settleops.domain.refund.domain.RefundStatus;
+import com.settleops.global.web.pagination.PageableUtils;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -33,7 +37,7 @@ public class PaymentQueryRepository {
      * - 상태 / 확정여부 / 기간 / 키워드 조건 반영
      * - confirmed / confirmedAt 은 PAYMENT_CONFIRMED 이벤트 존재 여부로 파생
      */
-    public List<MerchantPaymentListItemResponse> searchMerchantPayments(
+    public Page<MerchantPaymentListItemResponse> searchMerchantPayments(
             String merchantId,
             MerchantPaymentSearchCondition condition
     ) {
@@ -43,6 +47,8 @@ public class PaymentQueryRepository {
         QPaymentEvent confirmedAtEvent = new QPaymentEvent("confirmedAtEvent");
         QPaymentEvent capturedAtEvent = new QPaymentEvent("capturedAtEvent");
 
+        Pageable pageable = PageableUtils.validateAndCreate(condition.getPage(), condition.getSize());
+
         BooleanBuilder where = new BooleanBuilder();
         where.and(payment.merchantId.eq(merchantId));
         where.and(statusEq(condition.getStatus(), payment));
@@ -51,7 +57,7 @@ public class PaymentQueryRepository {
         where.and(createdAtLt(condition, payment));
         where.and(keywordContains(condition, payment, order));
 
-        return queryFactory
+        List<MerchantPaymentListItemResponse> items = queryFactory
                 .select(Projections.constructor(
                         MerchantPaymentListItemResponse.class,
                         payment.paymentId,
@@ -89,11 +95,23 @@ public class PaymentQueryRepository {
                 .join(order).on(payment.orderId.eq(order.orderId))
                 .where(where)
                 .orderBy(payment.createdAt.desc())
+                .offset(pageable.getOffset())
+                .limit(pageable.getPageSize())
                 .fetch();
+
+        Long total = queryFactory
+                .select(payment.count())
+                .from(payment)
+                .join(order).on(payment.orderId.eq(order.orderId))
+                .where(where)
+                .fetchOne();
+
+        return new PageImpl<>(items, pageable, total == null ? 0L : total);
     }
 
     /**
      * 결제 상세 조회
+     *
      * - payment 기본 정보 조회
      * - capturedAt은 PAYMENT_CAPTURED 이벤트 occurredAt 파생
      * - confirmed / confirmedAt은 PAYMENT_CONFIRMED 이벤트 기반 파생
@@ -218,9 +236,7 @@ public class PaymentQueryRepository {
                             )
                             .exists()
             );
-        }
-
-        else if (confirmed == ConfirmedFilter.UNCONFIRMED) {
+        } else if (confirmed == ConfirmedFilter.UNCONFIRMED) {
             builder.and(
                     JPAExpressions
                             .selectOne()
