@@ -5,7 +5,8 @@ import com.settleops.domain.order.domain.Orders;
 import com.settleops.global.audit.AuditLogger;
 import com.settleops.global.auth.SessionAuthProvider;
 import com.settleops.global.auth.resolver.LoginAdminArgumentResolver;
-import com.settleops.global.web.RequestIdResolver;
+import com.settleops.global.filter.RequestIdFilter;
+import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.BDDMockito;
@@ -15,11 +16,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ConsumerOrderController.class)
 @AutoConfigureMockMvc(addFilters = false)
@@ -39,6 +40,92 @@ class ConsumerOrderControllerTest {
 
     @MockitoBean
     private LoginAdminArgumentResolver loginAdminArgumentResolver;
+
+    @Test
+    @DisplayName("주문 생성 요청 시 RequestIdFilter가 X-Request-Id를 응답 헤더에 유지한다")
+    void createOrder_should_keep_request_id_in_response_header() throws Exception {
+        MockMvc filterMockMvc = MockMvcBuilders
+                .standaloneSetup(new ConsumerOrderController(consumerOrderFacade))
+                .addFilters(new RequestIdFilter())
+                .build();
+
+        Orders order = Orders.create(
+                "merchant-1",
+                "buyer-1",
+                "아이템",
+                1000L
+        );
+
+        BDDMockito.given(
+                consumerOrderFacade.createOrderWithPaymentCreated(
+                        "merchant-1",
+                        "buyer-1",
+                        "아이템",
+                        1000L
+                )
+        ).willReturn(order);
+
+        String requestId = "req-12345678-1234-1234-1234-123456789012";
+
+        String requestBody = """
+            {
+              "merchantId": "merchant-1",
+              "buyerId": "buyer-1",
+              "itemName": "아이템",
+              "amount": 1000
+            }
+            """;
+
+        filterMockMvc.perform(post("/api/consumer/orders")
+                        .header(RequestIdKeys.HEADER, requestId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(header().string(RequestIdKeys.HEADER, requestId))
+                .andExpect(jsonPath("$.orderId", notNullValue()))
+                .andExpect(jsonPath("$.status").value("CREATED"))
+                .andExpect(jsonPath("$.amount").value(1000));
+    }
+
+    @Test
+    @DisplayName("주문 생성 요청 시 X-Request-Id가 없으면 RequestIdFilter가 응답 헤더에 새 값을 넣는다")
+    void createOrder_should_generate_request_id_when_header_missing() throws Exception {
+        MockMvc filterMockMvc = MockMvcBuilders
+                .standaloneSetup(new ConsumerOrderController(consumerOrderFacade))
+                .addFilters(new RequestIdFilter())
+                .build();
+
+        Orders order = Orders.create(
+                "merchant-1",
+                "buyer-1",
+                "아이템",
+                1000L
+        );
+
+        BDDMockito.given(
+                consumerOrderFacade.createOrderWithPaymentCreated(
+                        "merchant-1",
+                        "buyer-1",
+                        "아이템",
+                        1000L
+                )
+        ).willReturn(order);
+
+        String requestBody = """
+            {
+              "merchantId": "merchant-1",
+              "buyerId": "buyer-1",
+              "itemName": "아이템",
+              "amount": 1000
+            }
+            """;
+
+        filterMockMvc.perform(post("/api/consumer/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestBody))
+                .andExpect(status().isCreated())
+                .andExpect(header().exists(RequestIdKeys.HEADER));
+    }
 
     @Test
     @DisplayName("주문 생성 성공 시 201을 반환한다")

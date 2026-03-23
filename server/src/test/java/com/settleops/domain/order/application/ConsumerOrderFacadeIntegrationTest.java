@@ -12,14 +12,12 @@ import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.UUID;
 
@@ -43,11 +41,6 @@ class ConsumerOrderFacadeIntegrationTest {
     @Autowired
     private PaymentEventRepository paymentEventRepository;
 
-    @AfterEach
-    void tearDown() {
-        RequestContextHolder.resetRequestAttributes();
-    }
-
     @Test
     @DisplayName("order 생성 시 payment CREATED 선생성과 PAYMENT_CREATED 이벤트 적재가 함께 수행되고 request_id가 기록된다")
     void createOrderWithPaymentCreated_should_create_payment_and_paymentCreated_event_with_requestId() {
@@ -58,10 +51,7 @@ class ConsumerOrderFacadeIntegrationTest {
         long amount = 1000L;
         String requestId = UUID.randomUUID().toString();
 
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader(RequestIdKeys.HEADER, requestId);
-        request.setAttribute(RequestIdKeys.ATTR_KEY, requestId);
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        bindRequestId(requestId);
 
         // when
         Orders order = consumerOrderFacade.createOrderWithPaymentCreated(
@@ -99,5 +89,14 @@ class ConsumerOrderFacadeIntegrationTest {
         assertThat(createdEvent.getRequestId()).isEqualTo(requestId);
         assertThat(createdEvent.getStatusBefore()).isNull();
         assertThat(createdEvent.getStatusAfter()).isEqualTo(PaymentStatus.CREATED);
+    }
+
+    private void bindRequestId(String requestId) {
+        MDC.put(RequestIdKeys.MDC_KEY, requestId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        MDC.clear();
     }
 }

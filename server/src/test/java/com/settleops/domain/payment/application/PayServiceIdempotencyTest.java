@@ -15,13 +15,11 @@ import com.settleops.global.logging.RequestIdKeys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -55,7 +53,6 @@ class PayServiceIdempotencyTest {
     @Test
     @DisplayName("동일 idempotency key 재시도 시 기존 결과를 반환하고 payment/idempotency row는 재사용된다")
     void pay_same_idempotency_key_should_return_same_result_and_keep_rows_immutable() {
-        // given
         String idempotencyKey = "idem-" + UUID.randomUUID();
         String requestId1 = UUID.randomUUID().toString();
         String requestId2 = UUID.randomUUID().toString();
@@ -70,7 +67,6 @@ class PayServiceIdempotencyTest {
 
         String orderId = order.getOrderId();
 
-        // order 생성 시 payment.CREATED 선생성
         Payment createdPayment = Payment.create(
                 order.getOrderId(),
                 order.getMerchantId(),
@@ -79,25 +75,21 @@ class PayServiceIdempotencyTest {
         );
         createdPayment = paymentRepository.saveAndFlush(createdPayment);
 
-        // when: 첫 번째 결제
         bindRequestId(requestId1);
         PayResponseDTO first = payService.pay(orderId, idempotencyKey, requestId1);
 
-        // then: 첫 번째 결제 결과 확인
         assertThat(first).isNotNull();
         assertThat(first.paymentId()).isNotBlank();
         assertThat(first.paymentId()).isEqualTo(createdPayment.getPaymentId());
         assertThat(first.status()).isEqualTo("CAPTURED");
         assertThat(first.capturedAt()).isNotNull();
 
-        // 현재 orderId 기준 payment row 확인
         Payment firstSavedPayment = paymentRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new AssertionError("payment가 생성되지 않았습니다."));
 
         assertThat(firstSavedPayment.getPaymentId()).isEqualTo(first.paymentId());
         assertThat(firstSavedPayment.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
 
-        // 현재 (targetType, orderId, idempotencyKey) 기준 idempotency row 확인
         Optional<IdempotencyRecord> firstRecordOpt =
                 idempotencyRecordRepository.findByTargetTypeAndTargetIdAndIdempotencyKey(
                         IdempotencyTargetType.PAY_ORDER,
@@ -115,24 +107,20 @@ class PayServiceIdempotencyTest {
         assertThat(firstRecord.getResponseStatus()).isEqualTo(200);
         assertThat(firstRecord.getRequestId()).isEqualTo(requestId1);
 
-        // when: 동일 멱등키 재시도
         bindRequestId(requestId2);
         PayResponseDTO second = payService.pay(orderId, idempotencyKey, requestId2);
 
-        // then: 동일 결과 반환
         assertThat(second).isNotNull();
         assertThat(second.paymentId()).isEqualTo(first.paymentId());
         assertThat(second.status()).isEqualTo(first.status());
         assertThat(second.capturedAt()).isEqualTo(first.capturedAt());
 
-        // 동일 orderId 기준 payment row 재사용 확인
         Payment secondSavedPayment = paymentRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new AssertionError("payment가 조회되지 않습니다."));
 
         assertThat(secondSavedPayment.getPaymentId()).isEqualTo(first.paymentId());
         assertThat(secondSavedPayment.getStatus()).isEqualTo(PaymentStatus.CAPTURED);
 
-        // 동일 idempotency row 재사용 확인
         Optional<IdempotencyRecord> secondRecordOpt =
                 idempotencyRecordRepository.findByTargetTypeAndTargetIdAndIdempotencyKey(
                         IdempotencyTargetType.PAY_ORDER,
@@ -146,19 +134,14 @@ class PayServiceIdempotencyTest {
 
         assertThat(secondRecord.getIdempotencyId()).isEqualTo(firstIdempotencyId);
         assertThat(secondRecord.getCreatedAt()).isEqualTo(firstCreatedAt);
-
-        // 성공 결과 유지 확인
         assertThat(secondRecord.getPaymentId()).isEqualTo(first.paymentId());
         assertThat(secondRecord.getResponseStatus()).isEqualTo(200);
-
-        // 현재 구현 기준: 성공 이력은 최초 requestId를 유지한다
         assertThat(secondRecord.getRequestId()).isEqualTo(requestId1);
     }
 
     @Test
     @DisplayName("이미 PAID인 order에 다른 idempotency key로 pay 재요청하면 409 ORDER_ALREADY_PAID이고 row는 추가되지 않는다")
     void pay_different_idempotency_key_should_throw_conflict_when_order_already_paid() {
-        // given
         String firstIdempotencyKey = "idem-" + UUID.randomUUID();
         String secondIdempotencyKey = "idem-" + UUID.randomUUID();
         String requestId1 = UUID.randomUUID().toString();
@@ -174,7 +157,6 @@ class PayServiceIdempotencyTest {
 
         String orderId = order.getOrderId();
 
-        // order 생성 시 payment.CREATED 선생성
         Payment createdPayment = Payment.create(
                 order.getOrderId(),
                 order.getMerchantId(),
@@ -183,14 +165,12 @@ class PayServiceIdempotencyTest {
         );
         createdPayment = paymentRepository.saveAndFlush(createdPayment);
 
-        // 첫 번째 결제 성공
         bindRequestId(requestId1);
         PayResponseDTO first = payService.pay(orderId, firstIdempotencyKey, requestId1);
 
         long paymentCountBefore = paymentRepository.count();
         long idempotencyCountBefore = idempotencyRecordRepository.count();
 
-        // when & then
         bindRequestId(requestId2);
         assertThatThrownBy(() -> payService.pay(orderId, secondIdempotencyKey, requestId2))
                 .isInstanceOf(ConflictException.class)
@@ -223,14 +203,11 @@ class PayServiceIdempotencyTest {
     }
 
     private void bindRequestId(String requestId) {
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader(RequestIdKeys.HEADER, requestId);
-        request.setAttribute(RequestIdKeys.ATTR_KEY, requestId);
-        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        MDC.put(RequestIdKeys.MDC_KEY, requestId);
     }
 
     @AfterEach
     void tearDown() {
-        RequestContextHolder.resetRequestAttributes();
+        MDC.clear();
     }
 }

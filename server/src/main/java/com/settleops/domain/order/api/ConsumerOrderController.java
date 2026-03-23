@@ -4,7 +4,6 @@ import com.settleops.domain.order.api.dto.OrderCreateRequestDTO;
 import com.settleops.domain.order.api.dto.OrderCreateResponseDTO;
 import com.settleops.domain.order.application.ConsumerOrderFacade;
 import com.settleops.domain.order.domain.Orders;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,8 +22,7 @@ public class ConsumerOrderController {
 
     @PostMapping
     public ResponseEntity<OrderCreateResponseDTO> createOrder(
-            @RequestBody @Valid OrderCreateRequestDTO request,
-            HttpServletRequest httpServletRequest
+            @RequestBody @Valid OrderCreateRequestDTO request
     ) {
 
         Orders order = consumerOrderFacade.createOrderWithPaymentCreated(

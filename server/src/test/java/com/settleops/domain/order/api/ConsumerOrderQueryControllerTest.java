@@ -15,9 +15,6 @@ import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.BDDMockito;
-
-import static org.mockito.BDDMockito.then;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -28,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +62,7 @@ class ConsumerOrderQueryControllerTest {
                 "buyer-1",
                 "아이템",
                 1000L,
+                "KRW",
                 OrderStatus.CREATED,
                 "44444444-4444-4444-4444-444444444444",
                 "CAPTURED",
@@ -105,6 +104,7 @@ class ConsumerOrderQueryControllerTest {
                 .andExpect(jsonPath("$.buyerId").value("buyer-1"))
                 .andExpect(jsonPath("$.itemName").value("아이템"))
                 .andExpect(jsonPath("$.amount").value(1000))
+                .andExpect(jsonPath("$.currency").value("KRW"))
                 .andExpect(jsonPath("$.orderStatus").value("CREATED"))
                 .andExpect(jsonPath("$.paymentId").value("44444444-4444-4444-4444-444444444444"))
                 .andExpect(jsonPath("$.paymentStatus").value("CAPTURED"));
