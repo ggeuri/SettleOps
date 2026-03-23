@@ -5,6 +5,7 @@ import com.settleops.domain.payment.infra.PaymentEventRepository;
 import com.settleops.global.db.DbConstraintUtils;
 import com.settleops.global.enums.ReasonCode;
 import com.settleops.global.error.ConflictException;
+import com.settleops.global.logging.RequestIdProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,9 +21,13 @@ public class PayEventWriter {
     /**
      * PAYMENT_CREATED 이벤트 저장.
      *
+     * <p>request_id 생성/주입 책임은 Filter에 있고,
+     * 본 writer는 MDC에 주입된 request_id를 소비만 한다.</p>
      * <p>duplicate는 동시 처리 중으로 간주한다.</p>
      */
-    public void saveCreated(String paymentId, String requestId) {
+    public void saveCreated(String paymentId) {
+        String requestId = RequestIdProvider.current();
+
         try {
             paymentEventRepository.saveAndFlush(
                     PaymentEvent.created(paymentId, requestId)
@@ -40,9 +45,13 @@ public class PayEventWriter {
     /**
      * PAYMENT_CAPTURED 이벤트 저장.
      *
+     * <p>request_id 생성/주입 책임은 Filter에 있고,
+     * 본 writer는 MDC에 주입된 request_id를 소비만 한다.</p>
      * <p>duplicate는 동시 처리 중으로 간주한다.</p>
      */
-    public void saveCaptured(String paymentId, String requestId) {
+    public void saveCaptured(String paymentId) {
+        String requestId = RequestIdProvider.current();
+
         try {
             paymentEventRepository.saveAndFlush(
                     PaymentEvent.captured(paymentId, requestId)
@@ -51,7 +60,7 @@ public class PayEventWriter {
             if (!DbConstraintUtils.isDuplicateKey(e)) {
                 throw e;
             }
-            // duplicate는 동시 처리 경합으로 간주하고 상위 정책에 따라 예외 처리한다.
+
             log.info("PAYMENT_CAPTURED 이벤트 충돌. paymentId={}", paymentId);
             throw new ConflictException(ReasonCode.IN_PROGRESS, "결제가 처리 중입니다. 잠시 후 다시 시도해주세요.");
         }
