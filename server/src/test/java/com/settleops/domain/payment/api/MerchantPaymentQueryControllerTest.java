@@ -1,6 +1,5 @@
 package com.settleops.domain.payment.api;
 
-import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.application.PaymentQueryService;
@@ -35,9 +34,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -113,7 +110,6 @@ class MerchantPaymentQueryControllerTest {
                             .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
                             .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .param("status", "CAPTURED")
-                            .param("confirmed", "CONFIRMED")
                             .param("from", "2026-03-10")
                             .param("to", "2026-03-13")
                             .param("keyword", "아이폰"))
@@ -148,7 +144,6 @@ class MerchantPaymentQueryControllerTest {
 
             MerchantPaymentSearchCondition condition = captor.getValue();
             assertThat(readField(condition, "status")).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(readField(condition, "confirmed")).isEqualTo(ConfirmedFilter.CONFIRMED);
             assertThat(readField(condition, "keyword")).isEqualTo("아이폰");
             assertThat(readField(condition, "from")).isEqualTo(LocalDate.of(2026, 3, 10));
             assertThat(readField(condition, "to")).isEqualTo(LocalDate.of(2026, 3, 13));
@@ -203,23 +198,6 @@ class MerchantPaymentQueryControllerTest {
                             .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
                             .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
                             .param("status", "INVALID_STATUS"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                    .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
-                    .andExpect(jsonPath("$.reason").doesNotExist());
-        }
-
-        @Test
-        @DisplayName("GET /api/merchants/{merchantId}/payments - 잘못된 confirmed면 400")
-        void getMerchantPayments_returns_bad_request_when_confirmed_invalid() throws Exception {
-            // given
-            when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
-
-            // when & then
-            mockMvc.perform(get("/api/merchants/{merchantId}/payments", MERCHANT_ID)
-                            .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
-                            .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
-                            .param("confirmed", "INVALID_CONFIRMED"))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.code").value("BAD_REQUEST"))
@@ -286,7 +264,6 @@ class MerchantPaymentQueryControllerTest {
 
             MerchantPaymentSearchCondition condition = captor.getValue();
             assertThat(readField(condition, "status")).isNull();
-            assertThat(readField(condition, "confirmed")).isNull();
             assertThat(readField(condition, "from")).isNull();
             assertThat(readField(condition, "to")).isNull();
             assertThat(readField(condition, "keyword")).isNull();
@@ -335,7 +312,6 @@ class MerchantPaymentQueryControllerTest {
 
             MerchantPaymentSearchCondition condition = captor.getValue();
             assertThat(readField(condition, "status")).isEqualTo(PaymentStatus.CAPTURED);
-            assertThat(readField(condition, "confirmed")).isNull();
             assertThat(readField(condition, "from")).isNull();
             assertThat(readField(condition, "to")).isNull();
             assertThat(readField(condition, "keyword")).isNull();

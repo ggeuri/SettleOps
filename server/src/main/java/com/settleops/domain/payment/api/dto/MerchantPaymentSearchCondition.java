@@ -12,7 +12,6 @@ import java.time.LocalDate;
 public class MerchantPaymentSearchCondition {
 
     private PaymentStatus status;
-    private ConfirmedFilter confirmed; // CONFIRMED / UNCONFIRMED / null=미적용
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
     private LocalDate from;

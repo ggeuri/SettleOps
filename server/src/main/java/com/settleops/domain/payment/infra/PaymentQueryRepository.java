@@ -5,7 +5,6 @@ import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.JPAExpressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.order.domain.QOrders;
-import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
@@ -34,7 +33,7 @@ public class PaymentQueryRepository {
     /**
      * Merchant 결제 목록 조회
      * - merchantId 기준 기본 범위 제한
-     * - 상태 / 확정여부 / 기간 / 키워드 조건 반영
+     * - 상태 / 기간 / 키워드 조건 반영
      * - confirmed / confirmedAt 은 PAYMENT_CONFIRMED 이벤트 존재 여부로 파생
      */
     public Page<MerchantPaymentListItemResponse> searchMerchantPayments(
@@ -52,7 +51,6 @@ public class PaymentQueryRepository {
         BooleanBuilder where = new BooleanBuilder();
         where.and(payment.merchantId.eq(merchantId));
         where.and(statusEq(condition.getStatus(), payment));
-        where.and(confirmedFilter(condition.getConfirmed(), payment, confirmedEvent));
         where.and(createdAtGoe(condition, payment));
         where.and(createdAtLt(condition, payment));
         where.and(keywordContains(condition, payment, order));
@@ -205,50 +203,6 @@ public class PaymentQueryRepository {
         }
 
         builder.and(payment.status.eq(status));
-        return builder;
-    }
-
-    /**
-     * 확정여부 필터 조건 생성
-     * - null: 조건 미적용
-     * - CONFIRMED: PAYMENT_CONFIRMED 이벤트 존재 건만 조회
-     * - UNCONFIRMED: PAYMENT_CONFIRMED 이벤트 미존재 건만 조회
-     */
-    private BooleanBuilder confirmedFilter(
-            ConfirmedFilter confirmed,
-            QPayment payment,
-            QPaymentEvent confirmedEvent
-    ) {
-        BooleanBuilder builder = new BooleanBuilder();
-
-        if (confirmed == null) {
-            return builder;
-        }
-
-        if (confirmed == ConfirmedFilter.CONFIRMED) {
-            builder.and(
-                    JPAExpressions
-                            .selectOne()
-                            .from(confirmedEvent)
-                            .where(
-                                    confirmedEvent.paymentId.eq(payment.paymentId),
-                                    confirmedEvent.eventType.eq(PaymentEventType.PAYMENT_CONFIRMED)
-                            )
-                            .exists()
-            );
-        } else if (confirmed == ConfirmedFilter.UNCONFIRMED) {
-            builder.and(
-                    JPAExpressions
-                            .selectOne()
-                            .from(confirmedEvent)
-                            .where(
-                                    confirmedEvent.paymentId.eq(payment.paymentId),
-                                    confirmedEvent.eventType.eq(PaymentEventType.PAYMENT_CONFIRMED)
-                            )
-                            .notExists()
-            );
-        }
-
         return builder;
     }
 

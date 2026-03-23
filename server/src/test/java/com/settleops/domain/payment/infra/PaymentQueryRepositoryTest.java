@@ -1,6 +1,5 @@
 package com.settleops.domain.payment.infra;
 
-import com.settleops.domain.payment.api.dto.ConfirmedFilter;
 import com.settleops.domain.payment.api.dto.MerchantPaymentListItemResponse;
 import com.settleops.domain.payment.api.dto.MerchantPaymentSearchCondition;
 import com.settleops.domain.payment.api.dto.PaymentDetailResponse;
@@ -20,7 +19,6 @@ import org.springframework.test.context.ActiveProfiles;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -38,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * <ul>
  *   <li>QueryDSL projection 정합 검증</li>
  *   <li>이벤트 기반 파생값(capturedAt, confirmedAt) 검증</li>
- *   <li>검색 조건(status/confirmed/기간/keyword) 동작 검증</li>
+ *   <li>검색 조건(status/기간/keyword) 동작 검증</li>
  *   <li>미존재 조회 및 빈 결과 처리 검증</li>
  * </ul>
  */
@@ -90,7 +88,7 @@ class PaymentQueryRepositoryTest {
     // =========================================================
 
     @Test
-    @DisplayName("U2_merchantId/status/confirmed/keyword 조건과 파생값 조회")
+    @DisplayName("U2_merchantId/status/기간/keyword 조건과 파생값 조회")
     void searchMerchantPayments_filters_and_derives_fields() {
         // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 13, 10, 0, 0);
@@ -116,7 +114,6 @@ class PaymentQueryRepositoryTest {
 
         MerchantPaymentSearchCondition condition = createSearchCondition(
                 PaymentStatus.CAPTURED,
-                ConfirmedFilter.CONFIRMED,
                 LocalDate.of(2026, 3, 10),
                 LocalDate.of(2026, 3, 13),
                 "아이폰"
@@ -159,7 +156,7 @@ class PaymentQueryRepositoryTest {
         insertPaymentEvent(PAYMENT_ID_1, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_1, base);
         insertPaymentEvent(PAYMENT_ID_2, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_2, base.minusDays(1));
 
-        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "aaaaaaaa");
+        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, "aaaaaaaa");
 
         // when
         Page<MerchantPaymentListItemResponse> result =
@@ -185,7 +182,7 @@ class PaymentQueryRepositoryTest {
         insertPaymentEvent(PAYMENT_ID_1, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_1, base);
         insertPaymentEvent(PAYMENT_ID_2, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_2, base.minusDays(1));
 
-        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "22222222");
+        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, "22222222");
 
         // when
         Page<MerchantPaymentListItemResponse> result =
@@ -211,7 +208,7 @@ class PaymentQueryRepositoryTest {
         insertPaymentEvent(PAYMENT_ID_1, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_1, base);
         insertPaymentEvent(PAYMENT_ID_2, "PAYMENT_CAPTURED", "CREATED", "CAPTURED", REQUEST_ID_2, base.minusDays(1));
 
-        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, null, "아이폰");
+        MerchantPaymentSearchCondition condition = createSearchCondition(null, null, null, "아이폰");
 
         // when
         Page<MerchantPaymentListItemResponse> result =
@@ -453,14 +450,12 @@ class PaymentQueryRepositoryTest {
      */
     private MerchantPaymentSearchCondition createSearchCondition(
             PaymentStatus status,
-            ConfirmedFilter confirmed,
             LocalDate from,
             LocalDate to,
             String keyword
     ) {
         MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
         condition.setStatus(status);
-        condition.setConfirmed(confirmed);
         condition.setFrom(from);
         condition.setTo(to);
         condition.setKeyword(keyword);
