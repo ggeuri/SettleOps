@@ -166,8 +166,8 @@ export default function SettlementDetailAdminPage() {
         );
 
         const requestId =
-          response?.data?.requestId ||
           response?.data?.traceRequestId ||
+          response?.data?.requestId ||
           response?.data?.resolvedRequestId ||
           "";
 
@@ -443,6 +443,22 @@ export default function SettlementDetailAdminPage() {
             Batch 콘솔(A2)
           </Link>
         </div>
+
+        <div style={{ marginTop: "12px" }}>
+          {traceRequestId ? (
+            <GuardNotice
+              title="Trace 진입 정보"
+              tone="info"
+              message="아래 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
+            />
+          ) : (
+            <GuardNotice
+              title="Trace 진입 정보"
+              tone="info"
+              message="현재 정산 건의 Trace 진입 requestId를 확인 중이거나, 아직 재현 가능한 requestId가 없습니다."
+            />
+          )}
+        </div>
       </SectionCard>
 
       <SectionCard title="요약">
@@ -528,6 +544,10 @@ export default function SettlementDetailAdminPage() {
       <SectionCard title="연결 정보">
         <InfoRow label="settlementId">
           <CopyableValue value={currentSettlementId} />
+        </InfoRow>
+
+        <InfoRow label="requestId">
+          {traceRequestId ? <CopyableValue value={traceRequestId} /> : "-"}
         </InfoRow>
 
         <InfoRow label="merchantId">
