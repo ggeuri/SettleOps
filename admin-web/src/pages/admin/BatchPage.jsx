@@ -15,7 +15,7 @@ import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
 import {
   formatDateTimeWithSeconds,
-} from "../../util/format.js";
+} from "../../utils/format.js";
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);

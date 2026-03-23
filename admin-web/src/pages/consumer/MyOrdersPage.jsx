@@ -13,7 +13,7 @@ import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
-import { formatDateTime } from "../../util/format.js";
+import { formatDateTime } from "../../utils/format.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
