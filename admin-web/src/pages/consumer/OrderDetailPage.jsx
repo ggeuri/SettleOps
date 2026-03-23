@@ -3,12 +3,12 @@ import { useParams } from "react-router-dom";
 import { getConsumerOrderDetail } from "../../api/consumerOrderApi.js";
 import { payOrder, confirmPayment } from "../../api/paymentApi.js";
 import { getMe } from "../../api/meApi.js";
-import { formatNumber } from "../../util/format.js";
+import { formatNumber } from "../../utils/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
-import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 
 const PAGE_TITLE = "결제 상세";
 const PAGE_DESCRIPTION =

@@ -58,3 +58,44 @@
 .table-cell--actions {
   min-width: 180px;
 }
+
+.pagination__button,
+.pagination__page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.pagination__button:hover:not(:disabled),
+.pagination__page:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.pagination__button:disabled,
+.pagination__page:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pagination__page--active {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 700;
+}

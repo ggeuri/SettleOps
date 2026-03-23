@@ -8,10 +8,9 @@ import com.settleops.domain.payment.infra.PaymentQueryRepository;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.NotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -20,7 +19,7 @@ public class PaymentQueryService {
 
     private final PaymentQueryRepository paymentQueryRepository;
 
-    public List<MerchantPaymentListItemResponse> getMerchantPayments(
+    public Page<MerchantPaymentListItemResponse> getMerchantPayments(
             String merchantId,
             String loginMerchantId,
             MerchantPaymentSearchCondition condition
