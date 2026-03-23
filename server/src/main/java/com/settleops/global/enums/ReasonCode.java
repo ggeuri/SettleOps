@@ -14,6 +14,9 @@ public enum ReasonCode {
     /** 결제가 capture 되지 않은 상태 */
     PAYMENT_NOT_CAPTURED,
 
+    /** 결제가 이미 capture 된 상태 */
+    PAYMENT_ALREADY_CAPTURED,
+
     /** 이미 환불이 존재하는 경우 */
     REFUND_ALREADY_EXISTS,
 
