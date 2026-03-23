@@ -28,13 +28,13 @@ public class SettlementTraceEntryQueryService {
             throw new NotFoundException("settlement not found");
         }
 
-        String requestId =
+        String traceRequestId =
                 settlementDetailQueryRepository.findLatestNonNoOpSettlementRequestId(settlementId);
 
-        if (requestId == null || requestId.isBlank()) {
+        if (traceRequestId == null || traceRequestId.isBlank()) {
             throw new NotFoundException("trace entry not found");
         }
 
-        return new SettlementTraceEntryResponse(requestId);
+        return new SettlementTraceEntryResponse(traceRequestId);
     }
 }

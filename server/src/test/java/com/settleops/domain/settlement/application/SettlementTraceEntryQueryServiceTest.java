@@ -18,8 +18,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SettlementTraceEntryQueryServiceTest {
 
     @Test
-    @DisplayName("정산이 존재하고 최신 non-no-op requestId가 있으면 Trace entry를 반환한다")
-    void getSettlementTraceEntry_returnsRequestId() {
+    @DisplayName("정산이 존재하고 최신 non-no-op traceRequestId가 있으면 Trace entry를 반환한다")
+    void getSettlementTraceEntry_returnsTraceRequestId() {
         SettlementDetailQueryRepository repository =
                 Mockito.mock(SettlementDetailQueryRepository.class);
 
@@ -46,7 +46,7 @@ class SettlementTraceEntryQueryServiceTest {
         SettlementTraceEntryResponse response =
                 service.getSettlementTraceEntry("settlement-1");
 
-        assertThat(response.requestId()).isEqualTo("request-1");
+        assertThat(response.traceRequestId()).isEqualTo("request-1");
 
         Mockito.verify(repository).findSettlementBase("settlement-1");
         Mockito.verify(repository).findLatestNonNoOpSettlementRequestId("settlement-1");
@@ -74,7 +74,7 @@ class SettlementTraceEntryQueryServiceTest {
     }
 
     @Test
-    @DisplayName("정산이 존재하지 않으면 NotFoundException을 던진다")
+    @DisplayName("정산이 존재하지 않으면 settlement not found NotFoundException을 던진다")
     void getSettlementTraceEntry_throwsNotFound_whenSettlementDoesNotExist() {
         SettlementDetailQueryRepository repository =
                 Mockito.mock(SettlementDetailQueryRepository.class);
@@ -86,7 +86,8 @@ class SettlementTraceEntryQueryServiceTest {
                 .thenReturn(null);
 
         assertThatThrownBy(() -> service.getSettlementTraceEntry("settlement-1"))
-                .isInstanceOf(NotFoundException.class);
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("settlement not found");
 
         Mockito.verify(repository).findSettlementBase("settlement-1");
         Mockito.verify(repository, Mockito.never())
@@ -94,7 +95,7 @@ class SettlementTraceEntryQueryServiceTest {
     }
 
     @Test
-    @DisplayName("정산은 존재하지만 Trace entry용 requestId가 없으면 NotFoundException을 던진다")
+    @DisplayName("정산은 존재하지만 Trace entry용 requestId가 없으면 trace entry not found NotFoundException을 던진다")
     void getSettlementTraceEntry_throwsNotFound_whenTraceEntryDoesNotExist() {
         SettlementDetailQueryRepository repository =
                 Mockito.mock(SettlementDetailQueryRepository.class);
@@ -120,14 +121,15 @@ class SettlementTraceEntryQueryServiceTest {
                 .thenReturn(null);
 
         assertThatThrownBy(() -> service.getSettlementTraceEntry("settlement-1"))
-                .isInstanceOf(NotFoundException.class);
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("trace entry not found");
 
         Mockito.verify(repository).findSettlementBase("settlement-1");
         Mockito.verify(repository).findLatestNonNoOpSettlementRequestId("settlement-1");
     }
 
     @Test
-    @DisplayName("requestId가 blank면 Trace entry가 없는 것으로 간주하고 NotFoundException을 던진다")
+    @DisplayName("requestId가 blank면 trace entry not found NotFoundException을 던진다")
     void getSettlementTraceEntry_throwsNotFound_whenRequestIdIsBlank() {
         SettlementDetailQueryRepository repository =
                 Mockito.mock(SettlementDetailQueryRepository.class);
@@ -153,7 +155,8 @@ class SettlementTraceEntryQueryServiceTest {
                 .thenReturn("   ");
 
         assertThatThrownBy(() -> service.getSettlementTraceEntry("settlement-1"))
-                .isInstanceOf(NotFoundException.class);
+                .isInstanceOf(NotFoundException.class)
+                .hasMessage("trace entry not found");
 
         Mockito.verify(repository).findSettlementBase("settlement-1");
         Mockito.verify(repository).findLatestNonNoOpSettlementRequestId("settlement-1");
