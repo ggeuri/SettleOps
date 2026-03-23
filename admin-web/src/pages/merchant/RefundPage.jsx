@@ -13,7 +13,7 @@ import {
 import {
     formatDateTime,
     formatDateTimeWithSeconds,
-} from "../../util/format.js";
+} from "../../utils/format.js";
 
 const INITIAL_FORM = {
     paymentId: "",
