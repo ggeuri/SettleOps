@@ -11,8 +11,25 @@ export function createRefund(payload) {
     });
 }
 
-export function getMyRefunds() {
-    return requestJson("/api/me/refunds");
+export function getMyRefunds(params = {}) {
+    const searchParams = new URLSearchParams();
+
+    if (params.status && params.status !== "ALL") {
+        searchParams.set("status", params.status);
+    }
+    if (params.from) searchParams.set("from", params.from);
+    if (params.to) searchParams.set("to", params.to);
+    if (params.keyword) searchParams.set("keyword", params.keyword);
+    if (params.sortKey) searchParams.set("sortKey", params.sortKey);
+    if (params.sortDirection) {
+        searchParams.set("sortDirection", params.sortDirection);
+    }
+
+    searchParams.set("page", String(params.page ?? 0));
+    searchParams.set("size", String(params.size ?? 20));
+
+    const query = searchParams.toString();
+    return requestJson(`/api/me/refunds?${query}`);
 }
 
 export function getAdminRefunds(params = {}) {
@@ -23,7 +40,9 @@ export function getAdminRefunds(params = {}) {
     if (params.to) searchParams.set("to", params.to);
     if (params.keyword) searchParams.set("keyword", params.keyword);
     if (params.sortKey) searchParams.set("sortKey", params.sortKey);
-    if (params.sortDirection) searchParams.set("sortDirection", params.sortDirection);
+    if (params.sortDirection) {
+        searchParams.set("sortDirection", params.sortDirection);
+    }
 
     searchParams.set("page", String(params.page ?? 0));
     searchParams.set("size", String(params.size ?? 20));

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { getMe } from "../../api/meApi.js";
 import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
@@ -72,36 +72,6 @@ function formatAmount(value) {
     return Number(value).toLocaleString("ko-KR");
 }
 
-function getDerivedLabel(row) {
-    if (
-        row.status === "APPROVED" &&
-        row.capturedAmount != null &&
-        Number(row.amount) === Number(row.capturedAmount)
-    ) {
-        return "전액 환불(파생)";
-    }
-
-    return "-";
-}
-
-function compareValues(a, b) {
-    if (a === b) return 0;
-    if (a === null || a === undefined || a === "") return 1;
-    if (b === null || b === undefined || b === "") return -1;
-
-    const aNumber = Number(a);
-    const bNumber = Number(b);
-
-    if (!Number.isNaN(aNumber) && !Number.isNaN(bNumber)) {
-        return aNumber - bNumber;
-    }
-
-    return String(a).localeCompare(String(b), "ko-KR", {
-        numeric: true,
-        sensitivity: "base",
-    });
-}
-
 function SortHeader({ label, columnKey, sort, onSortChange }) {
     const isActive = sort.key === columnKey;
     const arrow = !isActive ? "⇅" : sort.direction === "asc" ? "▲" : "▼";
@@ -117,7 +87,7 @@ function SortHeader({ label, columnKey, sort, onSortChange }) {
 
         onSortChange({
             key: columnKey,
-            direction: "asc",
+            direction: columnKey === "requestedAt" ? "desc" : "asc",
         });
     }
 
@@ -180,7 +150,7 @@ function ContextRow({ label, value, isStatus = false }) {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                 }}
-                title={displayValue}
+                title={String(displayValue)}
             >
                 {isStatus && displayValue !== "-" ? (
                     <StatusBadge status={displayValue} />
@@ -194,22 +164,38 @@ function ContextRow({ label, value, isStatus = false }) {
 
 export default function RefundPage() {
     const [form, setForm] = useState(INITIAL_FORM);
-    const [filter, setFilter] = useState(INITIAL_FILTER);
+    const [draftFilter, setDraftFilter] = useState(INITIAL_FILTER);
+    const [appliedFilter, setAppliedFilter] = useState(INITIAL_FILTER);
     const [sort, setSort] = useState(INITIAL_SORT);
+
     const [refundContext, setRefundContext] = useState(null);
     const [refunds, setRefunds] = useState([]);
+
     const [loading, setLoading] = useState(true);
     const [loadingContext, setLoadingContext] = useState(false);
     const [loadingRefunds, setLoadingRefunds] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
     const [errorInfo, setErrorInfo] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+
     const [selectedRefundId, setSelectedRefundId] = useState("");
-    const [searchParams] = useSearchParams();
-    const location = useLocation();
+
+    const [pageInfo, setPageInfo] = useState({
+        page: 0,
+        size: 7,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+    });
+
     const [page, setPage] = useState(0);
     const pageSize = 7;
+
+    const [searchParams] = useSearchParams();
+    const location = useLocation();
 
     const initialPaymentId =
         searchParams.get("paymentId")?.trim() ||
@@ -235,8 +221,6 @@ export default function RefundPage() {
                     });
                     return;
                 }
-
-                await loadMyRefunds();
 
                 if (initialPaymentId) {
                     setForm({
@@ -264,17 +248,56 @@ export default function RefundPage() {
     }, [initialPaymentId]);
 
     useEffect(() => {
-        setPage(0);
-    }, [filter, sort]);
+        if (loading || errorInfo) {
+            return;
+        }
 
-    async function loadMyRefunds() {
+        loadMyRefunds(page);
+    }, [loading, errorInfo, page, appliedFilter, sort]);
+
+    async function loadMyRefunds(targetPage = 0) {
         setLoadingRefunds(true);
 
         try {
-            const response = await getMyRefunds();
-            setRefunds(Array.isArray(response) ? response : []);
+            const response = await getMyRefunds({
+                status: appliedFilter.status,
+                from: appliedFilter.from,
+                to: appliedFilter.to,
+                keyword: appliedFilter.keyword,
+                sortKey: sort.key,
+                sortDirection: sort.direction,
+                page: targetPage,
+                size: pageSize,
+            });
+
+            const items = Array.isArray(response?.items) ? response.items : [];
+            setRefunds(items);
+
+            setPageInfo({
+                page: response?.page ?? targetPage,
+                size: response?.size ?? pageSize,
+                totalElements: response?.totalElements ?? items.length,
+                totalPages: response?.totalPages ?? 0,
+                hasNext: response?.hasNext ?? false,
+                hasPrevious: response?.hasPrevious ?? false,
+            });
+
+            if (selectedRefundId) {
+                const exists = items.some((row) => row.refundId === selectedRefundId);
+                if (!exists) {
+                    setSelectedRefundId("");
+                }
+            }
         } catch (error) {
             setRefunds([]);
+            setPageInfo({
+                page: targetPage,
+                size: pageSize,
+                totalElements: 0,
+                totalPages: 0,
+                hasNext: false,
+                hasPrevious: false,
+            });
             setErrorMessage(
                 error?.body?.message || "내 환불 내역 조회에 실패했습니다."
             );
@@ -314,16 +337,32 @@ export default function RefundPage() {
         }));
     }
 
-    function handleFilterChange(event) {
+    function handleDraftFilterChange(event) {
         const { name, value } = event.target;
-        setFilter((prev) => ({
+        setDraftFilter((prev) => ({
             ...prev,
             [name]: value,
         }));
     }
 
     function handleFilterReset() {
-        setFilter(INITIAL_FILTER);
+        setDraftFilter(INITIAL_FILTER);
+        setAppliedFilter(INITIAL_FILTER);
+        setPage(0);
+    }
+
+    function handleFilterSubmit(event) {
+        event.preventDefault();
+        setAppliedFilter({
+            ...draftFilter,
+            keyword: String(draftFilter.keyword || "").trim(),
+        });
+        setPage(0);
+    }
+
+    function handleSortChange(nextSort) {
+        setSort(nextSort);
+        setPage(0);
     }
 
     async function handleLoadContext() {
@@ -340,99 +379,6 @@ export default function RefundPage() {
         setSuccessMessage("");
         await loadRefundContextByPaymentId(paymentId);
     }
-
-    const filteredRefunds = useMemo(() => {
-        return refunds.filter((row) => {
-            const rowStatus = row.status || "";
-            const rowRequestedAt = row.requestedAt || "";
-            const keyword = filter.keyword.trim().toLowerCase();
-
-            const matchesStatus =
-                filter.status === "ALL" || rowStatus === filter.status;
-
-            const requestedDate = rowRequestedAt
-                ? rowRequestedAt.slice(0, 10)
-                : "";
-
-            const matchesFrom =
-                !filter.from || (requestedDate && requestedDate >= filter.from);
-
-            const matchesTo =
-                !filter.to || (requestedDate && requestedDate <= filter.to);
-
-            const matchesKeyword =
-                !keyword ||
-                [row.refundId, row.paymentId, row.orderId]
-                    .filter(Boolean)
-                    .some((value) =>
-                        String(value).toLowerCase().includes(keyword)
-                    );
-
-            return matchesStatus && matchesFrom && matchesTo && matchesKeyword;
-        });
-    }, [refunds, filter]);
-
-    const sortedRefunds = useMemo(() => {
-        const copied = [...filteredRefunds];
-
-        copied.sort((a, b) => {
-            let leftValue;
-            let rightValue;
-
-            switch (sort.key) {
-                case "refundId":
-                    leftValue = a.refundId;
-                    rightValue = b.refundId;
-                    break;
-                case "paymentId":
-                    leftValue = a.paymentId;
-                    rightValue = b.paymentId;
-                    break;
-                case "amount":
-                    leftValue = Number(a.amount ?? 0);
-                    rightValue = Number(b.amount ?? 0);
-                    break;
-                case "status":
-                    leftValue = a.status;
-                    rightValue = b.status;
-                    break;
-                case "derived":
-                    leftValue = getDerivedLabel(a);
-                    rightValue = getDerivedLabel(b);
-                    break;
-                case "requestedAt":
-                    leftValue = a.requestedAt;
-                    rightValue = b.requestedAt;
-                    break;
-                case "decidedAt":
-                    leftValue = a.decidedAt;
-                    rightValue = b.decidedAt;
-                    break;
-                default:
-                    leftValue = a.requestedAt;
-                    rightValue = b.requestedAt;
-                    break;
-            }
-
-            const compared = compareValues(leftValue, rightValue);
-            return sort.direction === "asc" ? compared : compared * -1;
-        });
-
-        return copied;
-    }, [filteredRefunds, sort]);
-
-    const totalPages = Math.max(1, Math.ceil(sortedRefunds.length / pageSize));
-
-    const pagedRefunds = useMemo(() => {
-        const start = page * pageSize;
-        return sortedRefunds.slice(start, start + pageSize);
-    }, [sortedRefunds, page]);
-
-    useEffect(() => {
-        if (page > totalPages - 1) {
-            setPage(0);
-        }
-    }, [page, totalPages]);
 
     async function handleSelectRefund(row) {
         setSelectedRefundId(row.refundId);
@@ -519,8 +465,9 @@ export default function RefundPage() {
                 reasonText: "",
             }));
 
-            await loadMyRefunds();
             await loadRefundContextByPaymentId(paymentId);
+            await loadMyRefunds(0);
+            setPage(0);
         } catch (error) {
             if (error?.body?.reason) {
                 setErrorMessage(`환불 요청 실패: ${error.body.reason}`);
@@ -776,72 +723,77 @@ export default function RefundPage() {
             ) : null}
 
             <SectionCard title="조회 필터">
-                <div
-                    style={{
-                        display: "flex",
-                        gap: "10px",
-                        alignItems: "flex-end",
-                        flexWrap: "wrap",
-                    }}
-                >
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">from</label>
-                        <input
-                            className="input"
-                            type="date"
-                            name="from"
-                            value={filter.from}
-                            onChange={handleFilterChange}
-                        />
-                    </div>
+                <form onSubmit={handleFilterSubmit}>
+                    <div
+                        style={{
+                            display: "flex",
+                            gap: "10px",
+                            alignItems: "flex-end",
+                            flexWrap: "wrap",
+                        }}
+                    >
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">from</label>
+                            <input
+                                className="input"
+                                type="date"
+                                name="from"
+                                value={draftFilter.from}
+                                onChange={handleDraftFilterChange}
+                            />
+                        </div>
 
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">to</label>
-                        <input
-                            className="input"
-                            type="date"
-                            name="to"
-                            value={filter.to}
-                            onChange={handleFilterChange}
-                        />
-                    </div>
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">to</label>
+                            <input
+                                className="input"
+                                type="date"
+                                name="to"
+                                value={draftFilter.to}
+                                onChange={handleDraftFilterChange}
+                            />
+                        </div>
 
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">status</label>
-                        <select
-                            className="input"
-                            name="status"
-                            value={filter.status}
-                            onChange={handleFilterChange}
-                        >
-                            <option value="ALL">ALL</option>
-                            <option value="REQUESTED">REQUESTED</option>
-                            <option value="APPROVED">APPROVED</option>
-                            <option value="REJECTED">REJECTED</option>
-                        </select>
-                    </div>
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">status</label>
+                            <select
+                                className="input"
+                                name="status"
+                                value={draftFilter.status}
+                                onChange={handleDraftFilterChange}
+                            >
+                                <option value="ALL">ALL</option>
+                                <option value="REQUESTED">REQUESTED</option>
+                                <option value="APPROVED">APPROVED</option>
+                                <option value="REJECTED">REJECTED</option>
+                            </select>
+                        </div>
 
-                    <div style={{ flex: 1, minWidth: "260px" }}>
-                        <label className="form-field__label">keyword</label>
-                        <input
-                            className="input"
-                            name="keyword"
-                            value={filter.keyword}
-                            onChange={handleFilterChange}
-                            placeholder="refundId / paymentId"
-                        />
-                    </div>
+                        <div style={{ flex: 1, minWidth: "260px" }}>
+                            <label className="form-field__label">keyword</label>
+                            <input
+                                className="input"
+                                name="keyword"
+                                value={draftFilter.keyword}
+                                onChange={handleDraftFilterChange}
+                                placeholder="refundId / paymentId"
+                            />
+                        </div>
 
-                    <div>
-                        <ActionButton
-                            type="button"
-                            variant="secondary"
-                            onClick={handleFilterReset}
-                        >
-                            초기화
-                        </ActionButton>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                            <ActionButton type="submit">
+                                조회
+                            </ActionButton>
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={handleFilterReset}
+                            >
+                                초기화
+                            </ActionButton>
+                        </div>
                     </div>
-                </div>
+                </form>
             </SectionCard>
 
             <SectionCard title="내 환불 현황">
@@ -852,7 +804,7 @@ export default function RefundPage() {
                             환불 내역을 불러오고 있습니다.
                         </div>
                     </div>
-                ) : filteredRefunds.length === 0 ? (
+                ) : refunds.length === 0 ? (
                     <div className="state-block">
                         <div className="state-block__title">환불 내역 없음</div>
                         <div className="state-block__description">
@@ -871,48 +823,42 @@ export default function RefundPage() {
                                     label="refundId"
                                     columnKey="refundId"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="paymentId"
                                     columnKey="paymentId"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="refundAmount"
                                     columnKey="amount"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="status"
                                     columnKey="status"
                                     sort={sort}
-                                    onSortChange={setSort}
-                                />
-                                <SortHeader
-                                    label="derived"
-                                    columnKey="derived"
-                                    sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="requestedAt"
                                     columnKey="requestedAt"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="decidedAt"
                                     columnKey="decidedAt"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                             </tr>
                             </thead>
                             <tbody>
-                            {pagedRefunds.map((row) => {
+                            {refunds.map((row) => {
                                 const isSelected = selectedRefundId === row.refundId;
 
                                 return (
@@ -982,14 +928,6 @@ export default function RefundPage() {
                                                 lineHeight: 1.2,
                                             }}
                                         >
-                                            {getDerivedLabel(row)}
-                                        </td>
-                                        <td
-                                            style={{
-                                                padding: "10px 18px",
-                                                lineHeight: 1.2,
-                                            }}
-                                        >
                                             {formatDateTime(row.requestedAt)}
                                         </td>
                                         <td
@@ -1022,8 +960,8 @@ export default function RefundPage() {
                                 }}
                             >
                                 <Pagination
-                                    page={page}
-                                    totalPages={totalPages}
+                                    page={pageInfo.page}
+                                    totalPages={pageInfo.totalPages}
                                     onPageChange={setPage}
                                     disabled={loadingRefunds}
                                 />
