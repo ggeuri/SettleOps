@@ -720,6 +720,17 @@ export default function RefundQueuePage() {
                                         <div>status: {lastActionResult.status || "-"}</div>
                                         <div>decidedAt: {renderDate(lastActionResult.decidedAt)}</div>
                                     </div>
+
+                                    <div className="refund-queue-detail-actions">
+                                        <ActionButton
+                                            type="button"
+                                            variant="secondary"
+                                            onClick={moveToTrace}
+                                            disabled={!lastActionResult.requestId}
+                                        >
+                                            Trace로 보기(A1)
+                                        </ActionButton>
+                                    </div>
                                 </div>
                             ) : null}
 
@@ -838,15 +849,6 @@ export default function RefundQueuePage() {
                                         onClick={() => handleDecision("reject")}
                                     >
                                         {acting ? "처리 중..." : "거절(Reject)"}
-                                    </ActionButton>
-
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!canTraceToA1}
-                                        onClick={moveToTrace}
-                                    >
-                                        Trace로 보기(A1)
                                     </ActionButton>
                                 </div>
 
