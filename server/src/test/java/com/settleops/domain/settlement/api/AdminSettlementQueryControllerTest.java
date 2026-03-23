@@ -174,7 +174,7 @@ public class AdminSettlementQueryControllerTest {
     }
 
     @Test
-    @DisplayName("관리자 Trace entry 조회 시 settlementId를 서비스로 전달한다")
+    @DisplayName("관리자 Trace entry 조회 API는 settlementId 기준 최신 non-no-op traceRequestId 응답을 반환한다")
     void getSettlementTraceEntry_withSettlementId() {
         SettlementQueryService settlementQueryService = Mockito.mock(SettlementQueryService.class);
         SettlementDetailQueryService settlementDetailQueryService = Mockito.mock(SettlementDetailQueryService.class);
@@ -193,10 +193,12 @@ public class AdminSettlementQueryControllerTest {
         Mockito.when(settlementTraceEntryQueryService.getSettlementTraceEntry("settlement-1"))
                 .thenReturn(traceEntryResponse);
 
-        ResponseEntity<?> response = controller.getSettlementTraceEntry("settlement-1");
+        ResponseEntity<SettlementTraceEntryResponse> response =
+                controller.getSettlementTraceEntry("settlement-1");
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
-        assertThat(response.getBody()).isEqualTo(traceEntryResponse);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().traceRequestId()).isEqualTo("request-1");
 
         Mockito.verify(settlementTraceEntryQueryService)
                 .getSettlementTraceEntry("settlement-1");

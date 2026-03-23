@@ -20,7 +20,9 @@ public class PayPaymentWriter {
     /**
      * payment 생성.
      *
-     * <p>orderId UNIQUE 충돌은 동시 처리 중으로 간주하고 409 IN_PROGRESS를 반환한다.</p>
+     * <p>현재 구조에서 payment는 order 생성 시점에 선생성된다.</p>
+     * <p>orderId UNIQUE 충돌은 동일 주문에 대한 중복 생성 또는 동시 처리 경합으로 간주하고
+     * 409 IN_PROGRESS를 반환한다.</p>
      */
     public Payment create(Payment payment, String orderId) {
         try {
