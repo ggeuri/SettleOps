@@ -47,22 +47,35 @@ class SettlementBatchHistoryIT {
     MockMvc mockMvc;
 
     @Test
-    @DisplayName("A2: 배치 이력 통합조회(OK/FAIL + SKIP) - 같은 baseDate 재실행 시 SKIP가 함께 노출되고 occurredAt desc로 정렬된다")
+    @DisplayName("A2: history는 settlement_batch(OK/FAIL)와 audit_log(BATCH_RUN_SKIPPED)를 통합해 occurredAt desc로 노출한다")
     void history_should_include_okFail_and_skip_and_sort_by_occurredAt_desc() {
         // given
+        // A2 history의 SoT는 두 갈래다.
+        // 1) OK/FAIL = settlement_batch
+        // 2) SKIP    = audit_log(action=BATCH_RUN_SKIPPED, entity_type=BATCH)
+        //
+        // 같은 baseDate에 대해 1차 실행 -> OK/FAIL row 생성,
+        // 같은 baseDate 재실행 -> SKIP row 생성 흐름을 만들어
+        // history API가 두 소스를 실제로 merge하는지 검증한다.
         LocalDate baseDate = nextAvailableBaseDateWithin30Days();
         String actorId = "adminA-" + UUID.randomUUID().toString().substring(0, 8);
 
-        SettlementBatchRunResponse first = settlementAdminCommandService.runBatch(baseDate, "req-test-001", actorId);
-        SettlementBatchRunResponse second = settlementAdminCommandService.runBatch(baseDate, "req-test-002", actorId);
+        SettlementBatchRunResponse first =
+                settlementAdminCommandService.runBatch(baseDate, "req-test-001", actorId);
+        SettlementBatchRunResponse second =
+                settlementAdminCommandService.runBatch(baseDate, "req-test-002", actorId);
 
         // sanity
+        // 첫 실행은 settlement_batch에 남는 OK/FAIL 이어야 하고,
+        // 같은 baseDate 재실행은 audit_log 기반 SKIP 이어야 한다.
         assertThat(first.result()).isIn(
                 SettlementBatchRunResponse.RunResult.OK,
                 SettlementBatchRunResponse.RunResult.FAIL
         );
         assertThat(second.result()).isEqualTo(SettlementBatchRunResponse.RunResult.SKIP);
 
+        // settlement_batch 쪽 SoT 확인:
+        // 동일 baseDate의 batch_key로 실제 batch row가 존재해야 한다.
         var persistedBatch = settlementBatchRepository.findByBatchKey(baseDate).orElseThrow();
         assertThat(persistedBatch.getRunId()).isNotBlank();
 
@@ -82,10 +95,12 @@ class SettlementBatchHistoryIT {
         List<SettlementBatchHistoryRowResponse> rows = res.page().getContent();
         assertThat(rows).isNotEmpty();
 
+        // 통합 응답은 source 종류와 무관하게 occurredAt desc 전역 정렬이어야 한다.
         for (int i = 0; i < rows.size() - 1; i++) {
             assertThat(rows.get(i).occurredAt()).isAfterOrEqualTo(rows.get(i + 1).occurredAt());
         }
 
+        // settlement_batch(OK/FAIL) 쪽 row가 실제로 포함되는지 검증
         assertThat(rows.stream()
                 .filter(r -> r.type() == SettlementBatchHistoryRowResponse.RowType.OK_FAIL)
                 .filter(r -> r.batch() != null)
@@ -95,6 +110,7 @@ class SettlementBatchHistoryIT {
                 ))
                 .isTrue();
 
+        // audit_log(BATCH_RUN_SKIPPED) 쪽 row가 실제로 포함되는지 검증
         assertThat(rows.stream()
                 .filter(r -> r.type() == SettlementBatchHistoryRowResponse.RowType.SKIP)
                 .filter(r -> r.skip() != null)
@@ -108,6 +124,8 @@ class SettlementBatchHistoryIT {
     @Test
     @DisplayName("A2 history 응답에는 no-store 헤더가 적용된다")
     void getHistory_appliesNoStoreHeaders() throws Exception {
+        // 운영 이력 화면은 캐시되면 정합성과 보안 리스크가 생기므로
+        // admin history 응답에 no-store 계열 헤더가 실제로 적용되는지 검증한다.
         mockMvc.perform(get("/api/admin/settlement-batches/history")
                         .sessionAttr("ROLE", "ADMIN")
                         .sessionAttr("ADMIN_ID", "adminA")

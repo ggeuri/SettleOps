@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
@@ -47,6 +47,25 @@ function mapRequestPaidReasonToMessage(reason) {
     default:
       return "현재 상태에서는 지급 요청이 불가능합니다.";
   }
+}
+
+function mapTraceEntryErrorToMessage(error) {
+  const status = error?.response?.status;
+  const message =
+    error?.response?.data?.message ||
+    error?.response?.data?.reason ||
+    error?.message;
+
+  if (status === 401) {
+    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
+  }
+  if (status === 403) {
+    return "Admin 권한이 없어 Trace로 이동할 수 없습니다.";
+  }
+  if (status === 404) {
+    return "이 정산 건에 대한 Trace 진입 가능한 request_id가 아직 없습니다.";
+  }
+  return message || "Trace 진입 정보를 조회하는 중 오류가 발생했습니다.";
 }
 
 function isRefundAdjustmentPending(refund) {
@@ -124,14 +143,19 @@ function DetailRow({ label, value }) {
 
 export default function SettlementDetailAdminPage() {
   const { settlementId } = useParams();
+  const navigate = useNavigate();
 
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
   const [requestPaidLoading, setRequestPaidLoading] = useState(false);
+  const [traceEntryLoading, setTraceEntryLoading] = useState(true);
+
   const [actionMessage, setActionMessage] = useState("");
   const [actionError, setActionError] = useState("");
+  const [traceEntryError, setTraceEntryError] = useState("");
+  const [traceRequestId, setTraceRequestId] = useState("");
 
   const fetchDetail = useCallback(
     async (signal) => {
@@ -139,13 +163,10 @@ export default function SettlementDetailAdminPage() {
         setLoading(true);
         setLoadError("");
 
-        const response = await axios.get(
-          `/api/admin/settlements/${settlementId}`,
-          {
-            withCredentials: true,
-            signal,
-          }
-        );
+        const response = await axios.get(`/api/admin/settlements/${settlementId}`, {
+          withCredentials: true,
+          signal,
+        });
 
         setDetail(response.data || null);
       } catch (error) {
@@ -161,11 +182,61 @@ export default function SettlementDetailAdminPage() {
     [settlementId]
   );
 
+  const fetchTraceEntry = useCallback(
+    async (signal) => {
+      try {
+        setTraceEntryLoading(true);
+        setTraceEntryError("");
+        setTraceRequestId("");
+
+        const response = await axios.get(
+          `/api/admin/settlements/${settlementId}/trace-entry`,
+          {
+            withCredentials: true,
+            signal,
+          }
+        );
+
+        const requestId =
+          response?.data?.requestId ||
+          response?.data?.traceRequestId ||
+          response?.data?.resolvedRequestId ||
+          "";
+
+        if (!requestId) {
+          setTraceEntryError(
+            "이 정산 건에 대한 Trace 진입 가능한 request_id가 아직 없습니다."
+          );
+          setTraceRequestId("");
+          return;
+        }
+
+        setTraceRequestId(requestId);
+      } catch (error) {
+        if (error?.name === "CanceledError" || error?.code === "ERR_CANCELED") {
+          return;
+        }
+        setTraceRequestId("");
+        setTraceEntryError(mapTraceEntryErrorToMessage(error));
+      } finally {
+        setTraceEntryLoading(false);
+      }
+    },
+    [settlementId]
+  );
+
+  const reloadPageData = useCallback(
+    async (signal) => {
+      await Promise.all([fetchDetail(signal), fetchTraceEntry(signal)]);
+    },
+    [fetchDetail, fetchTraceEntry]
+  );
+
   useEffect(() => {
     const controller = new AbortController();
-    fetchDetail(controller.signal);
+    reloadPageData(controller.signal);
     return () => controller.abort();
-  }, [fetchDetail]);
+  }, [reloadPageData]);
 
   const currentSettlementId = detail?.settlementId || settlementId || "-";
   const merchantId = detail?.merchantId || "-";
@@ -205,6 +276,12 @@ export default function SettlementDetailAdminPage() {
     return false;
   }, [status, holdActive, refund]);
 
+  const traceButtonDisabled = useMemo(() => {
+    if (traceEntryLoading) return true;
+    if (!traceRequestId) return true;
+    return false;
+  }, [traceEntryLoading, traceRequestId]);
+
   const guardMessages = useMemo(() => {
     const messages = [];
 
@@ -242,7 +319,7 @@ export default function SettlementDetailAdminPage() {
       );
 
       setActionMessage("지급 요청이 완료되었습니다.");
-      await fetchDetail();
+      await reloadPageData();
     } catch (error) {
       const statusCode = error?.response?.status;
       const reason = error?.response?.data?.reason;
@@ -261,6 +338,11 @@ export default function SettlementDetailAdminPage() {
     } finally {
       setRequestPaidLoading(false);
     }
+  };
+
+  const handleTraceEntry = () => {
+    if (!traceRequestId) return;
+    navigate(`/admin/audit?requestId=${encodeURIComponent(traceRequestId)}`);
   };
 
   if (loading) {
@@ -332,18 +414,20 @@ export default function SettlementDetailAdminPage() {
         />
       )}
 
-      <GuardNotice
-        title="Trace 연결 안내"
-        tone="info"
-        message="현재 합의 기준상 A4 상세 응답에는 requestId를 포함하지 않으므로 Trace 딥링크는 이 화면에서 제공하지 않습니다."
-      />
-
       {actionMessage ? (
         <GuardNotice title="처리 완료" message={actionMessage} tone="success" />
       ) : null}
 
       {actionError ? (
         <GuardNotice title="요청 실패" message={actionError} tone="danger" />
+      ) : null}
+
+      {!traceEntryLoading && traceEntryError ? (
+        <GuardNotice
+          title="Trace 이동 불가"
+          message={traceEntryError}
+          tone="warning"
+        />
       ) : null}
 
       <SectionCard title="상단 액션">
@@ -357,8 +441,13 @@ export default function SettlementDetailAdminPage() {
             {requestPaidLoading ? "요청 중…" : "지급 요청"}
           </button>
 
-          <button type="button" className="btn btn--secondary" disabled>
-            Trace로 보기
+          <button
+            type="button"
+            className="btn btn--secondary"
+            onClick={handleTraceEntry}
+            disabled={traceButtonDisabled}
+          >
+            {traceEntryLoading ? "확인 중…" : "Trace로 보기"}
           </button>
 
           <Link
@@ -484,7 +573,9 @@ export default function SettlementDetailAdminPage() {
 
           <DetailRow
             label="merchantId"
-            value={merchantId !== "-" ? <InlineCopyValue value={merchantId} /> : "-"}
+            value={
+              merchantId !== "-" ? <InlineCopyValue value={merchantId} /> : "-"
+            }
           />
 
           <DetailRow
@@ -510,7 +601,9 @@ export default function SettlementDetailAdminPage() {
 
           <DetailRow
             label="hold"
-            value={hold?.holdId ? <InlineCopyValue value={hold.holdId} /> : "없음"}
+            value={
+              hold?.holdId ? <InlineCopyValue value={hold.holdId} /> : "없음"
+            }
           />
 
           <DetailRow

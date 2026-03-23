@@ -344,7 +344,7 @@ export default function MyOrdersPage() {
 
                       <td style={{ verticalAlign: "middle" }}>
                         <StatusBadge
-                          status={confirmed ? "CONFIRMED" : "NOT_CONFIRMED"}
+                          status={confirmed ? "CONFIRMED" : "UNCONFIRMED"}
                         />
                       </td>
 
