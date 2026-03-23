@@ -2,14 +2,14 @@ import { copyText } from "../../utils/copyText.js";
 import { showToast } from "../../utils/toast.js";
 
 export default function CopyableId({
-    value,
-    short = false,
-    className = "",
-    disabled = false,
-    title,
-    buttonLabel = "복사",
-    emptyText = "-",
-}) {
+                                       value,
+                                       short = false,
+                                       className = "",
+                                       disabled = false,
+                                       title,
+                                       buttonLabel = "복사",
+                                       emptyText = "-",
+                                   }) {
     if (!value) {
         return <span>{emptyText}</span>;
     }
@@ -38,17 +38,17 @@ export default function CopyableId({
             className={`copyable-id ${className}`.trim()}
             title={resolvedTitle}
         >
-            <span className={textClassName}>{String(value)}</span>
+      <span className={textClassName}>{String(value)}</span>
 
-            <button
-                type="button"
-                className="copyable-id__button"
-                onClick={handleCopy}
-                aria-label="ID 복사"
-                disabled={disabled}
-            >
-                {buttonLabel}
-            </button>
-        </span>
+      <button
+          type="button"
+          className="copyable-id__button"
+          onClick={handleCopy}
+          aria-label="ID 복사"
+          disabled={disabled}
+      >
+        {buttonLabel}
+      </button>
+    </span>
     );
 }
