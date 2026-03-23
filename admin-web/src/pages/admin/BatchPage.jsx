@@ -13,9 +13,7 @@ import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
-import {
-  formatDateTimeWithSeconds,
-} from "../../utils/format.js";
+import { formatDateTimeWithSeconds } from "../../utils/format.js";
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -98,16 +96,36 @@ function extractHistoryResult(row) {
   return "UNKNOWN";
 }
 
-function extractHistoryRunId(row, index) {
+function extractHistoryRunId(row) {
   if (row?.type === "SKIP") {
-    return row?.skip?.runId || `skip-row-${index}`;
+    return row?.skip?.runId || "-";
   }
 
   if (row?.type === "OK_FAIL") {
-    return row?.batch?.runId || row?.batch?.batchId || `okfail-row-${index}`;
+    return row?.batch?.runId || row?.batch?.batchId || "-";
   }
 
-  return `row-${index}`;
+  return "-";
+}
+
+function buildHistoryRowKey(row, index) {
+  if (row?.type === "SKIP") {
+    return `SKIP-${
+      row?.skip?.requestId || row?.skip?.occurredAt || row?.skip?.baseDate || index
+    }`;
+  }
+
+  if (row?.type === "OK_FAIL") {
+    return `OK_FAIL-${
+      row?.batch?.runId ||
+      row?.batch?.batchId ||
+      row?.batch?.requestId ||
+      row?.batch?.batchKey ||
+      index
+    }`;
+  }
+
+  return `ROW-${index}`;
 }
 
 function extractHistoryBaseDate(row) {
@@ -454,21 +472,21 @@ export default function BatchPage() {
 
           <div className="card">
             <div className="card__body">
-              <div className="summary-card__label">OK</div>
+              <div className="summary-card__label">현재 페이지 OK</div>
               <div className="summary-card__value">{summary.okCount}</div>
             </div>
           </div>
 
           <div className="card">
             <div className="card__body">
-              <div className="summary-card__label">FAIL</div>
+              <div className="summary-card__label">현재 페이지 FAIL</div>
               <div className="summary-card__value">{summary.failCount}</div>
             </div>
           </div>
 
           <div className="card">
             <div className="card__body">
-              <div className="summary-card__label">SKIP</div>
+              <div className="summary-card__label">현재 페이지 SKIP</div>
               <div className="summary-card__value">{summary.skipCount}</div>
             </div>
           </div>
@@ -501,7 +519,8 @@ export default function BatchPage() {
               </thead>
               <tbody>
                 {historyRows.map((row, index) => {
-                  const runId = extractHistoryRunId(row, index);
+                  const rowKey = buildHistoryRowKey(row, index);
+                  const runId = extractHistoryRunId(row);
                   const baseDateValue = extractHistoryBaseDate(row);
                   const result = extractHistoryResult(row);
                   const requestId = extractHistoryRequestId(row);
@@ -509,7 +528,7 @@ export default function BatchPage() {
                   const occurredAt = extractHistoryOccurredAt(row);
 
                   return (
-                    <tr key={`${row?.type || "ROW"}-${runId}-${index}`}>
+                    <tr key={rowKey}>
                       <td style={{ verticalAlign: "middle" }}>
                         <CopyableValue value={runId} />
                       </td>
