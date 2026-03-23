@@ -7,6 +7,8 @@ import AuditLogTable from "../../components/audit/AuditLogTable.jsx";
 import AuditLogRowExpand from "../../components/audit/AuditLogRowExpand.jsx";
 import { fetchAuditLogs } from "../../api/auditLogsApi.js";
 import { fetchAuditEvents } from "../../api/auditEventsApi.js";
+import { getMe } from "../../api/meApi.js";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 
 const DEFAULT_PAGE = 0;
 const DEFAULT_SIZE = 20;
@@ -60,7 +62,6 @@ function buildRowKey(item, index) {
   return `${item?.auditId ?? "audit"}-${index}`;
 }
 
-// 최소 수정: date 입력값을 API 호출 직전에만 LocalDateTime 문자열로 변환
 function toFromDateTime(dateValue) {
   if (!dateValue) return undefined;
   return `${dateValue}T00:00:00`;
@@ -71,11 +72,39 @@ function toToDateTime(dateValue) {
   return `${dateValue}T23:59:59`;
 }
 
+function isAdminRole(me) {
+  if (!me) return false;
+
+  if (me.role === "ADMIN" || me.role === "ROLE_ADMIN") {
+    return true;
+  }
+
+  if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_ADMIN")) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+  return {
+    status: error?.status ?? null,
+    message:
+      error?.body?.message ||
+      error?.body?.reason ||
+      fallbackMessage,
+  };
+}
+
 export default function AdminAuditPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const queryState = useMemo(() => parseQuery(location.search), [location.search]);
+
+  const [me, setMe] = useState(null);
+  const [meLoading, setMeLoading] = useState(true);
+  const [meErrorInfo, setMeErrorInfo] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -90,6 +119,49 @@ export default function AdminAuditPage() {
   const items = Array.isArray(result.items) ? result.items : [];
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function loadMe() {
+      try {
+        setMeLoading(true);
+        setMeErrorInfo(null);
+
+        const meData = await getMe();
+
+        if (cancelled) return;
+
+        setMe(meData);
+
+        if (!isAdminRole(meData)) {
+          setMeErrorInfo({
+            status: 403,
+            message: "Admin 권한이 필요한 페이지입니다.",
+          });
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        setMe(null);
+        setMeErrorInfo(buildErrorInfo(error, "권한 정보를 불러오지 못했습니다."));
+      } finally {
+        if (!cancelled) {
+          setMeLoading(false);
+        }
+      }
+    }
+
+    loadMe();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (meLoading || meErrorInfo || !isAdminRole(me)) {
+      return;
+    }
+
     if (!hasSearchKey) {
       setResult(EMPTY_RESULT);
       setErrorMessage("");
@@ -142,7 +214,7 @@ export default function AdminAuditPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasSearchKey, queryState]);
+  }, [meLoading, meErrorInfo, me, hasSearchKey, queryState]);
 
   useEffect(() => {
     if (items.length === 0) {
@@ -174,6 +246,10 @@ export default function AdminAuditPage() {
   }, [items, selectedRowKey]);
 
   useEffect(() => {
+    if (meLoading || meErrorInfo || !isAdminRole(me)) {
+      return;
+    }
+
     const selectedRequestId = selectedItem?.requestId || result.requestId;
 
     if (!selectedItem || !selectedRequestId) {
@@ -212,7 +288,7 @@ export default function AdminAuditPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedItem, result.requestId]);
+  }, [meLoading, meErrorInfo, me, selectedItem, result.requestId]);
 
   function handleSearch(formValues) {
     const nextQuery = buildQuery({
@@ -241,6 +317,65 @@ export default function AdminAuditPage() {
 
   function handleSelectItem(rowKey) {
     setSelectedRowKey(rowKey);
+  }
+
+  if (meLoading) {
+    return (
+      <PageLayout
+        title="Trace / Audit"
+        description="A1 운영대시. requestId 또는 merchantId 기준으로 요청 단위 재현 타임라인을 조회합니다."
+      >
+        <div className="guard-notice">
+          <div className="guard-notice__title">로딩 중</div>
+          <div className="guard-notice__description">
+            권한 정보를 확인하는 중입니다.
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (meErrorInfo?.status === 401) {
+    return (
+      <PageLayout
+        title="Trace / Audit"
+        description="A1 운영대시. requestId 또는 merchantId 기준으로 요청 단위 재현 타임라인을 조회합니다."
+      >
+        <RequireLoginNotice />
+      </PageLayout>
+    );
+  }
+
+  if (meErrorInfo?.status === 403) {
+    return (
+      <PageLayout
+        title="Trace / Audit"
+        description="A1 운영대시. requestId 또는 merchantId 기준으로 요청 단위 재현 타임라인을 조회합니다."
+      >
+        <div className="guard-notice">
+          <div className="guard-notice__title">접근 불가</div>
+          <div className="guard-notice__description">
+            {meErrorInfo.message}
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (meErrorInfo) {
+    return (
+      <PageLayout
+        title="Trace / Audit"
+        description="A1 운영대시. requestId 또는 merchantId 기준으로 요청 단위 재현 타임라인을 조회합니다."
+      >
+        <div className="guard-notice">
+          <div className="guard-notice__title">조회 실패</div>
+          <div className="guard-notice__description">
+            {meErrorInfo.message}
+          </div>
+        </div>
+      </PageLayout>
+    );
   }
 
   return (
@@ -301,7 +436,6 @@ export default function AdminAuditPage() {
                 items={items}
                 requestId={result.requestId}
                 page={result.page ?? DEFAULT_PAGE}
-                size={result.size ?? DEFAULT_SIZE}
                 totalElements={result.totalElements ?? 0}
                 totalPages={result.totalPages ?? 0}
                 visibleCount={items.length}

@@ -1,35 +1,12 @@
-function formatDateTime(value) {
-  if (!value) return "-";
+import CopyableId from "../display/CopyableId.jsx";
+import { formatDateTimeWithSeconds } from "../../utils/format.js";
 
-  try {
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
-    return new Intl.DateTimeFormat("ko-KR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(date);
-  } catch {
-    return value;
-  }
-}
-
-function buildApproveDisabled(item, actionLoading) {
-  if (!item || actionLoading) return true;
-  return false;
-}
-
-function buildReleaseDisabled(item, actionLoading) {
-  if (!item || actionLoading) return true;
-  return false;
+function InfoItem({ label, children }) {
+  return (
+    <div>
+      <strong>{label}</strong> {children}
+    </div>
+  );
 }
 
 export default function HoldDetailPanel({
@@ -43,117 +20,106 @@ export default function HoldDetailPanel({
 }) {
   if (!item) {
     return (
-      <div className="info-list">
-        <div>
-          <strong>상세 패널</strong> 좌측 Hold row를 선택해 주세요.
-        </div>
-        <div>
-          <strong>표시 기준</strong> A5는 hold 1건 = row 1개입니다.
-        </div>
-        <div>
-          <strong>연결 조회</strong> payment 정보는 A4 정산 상세에서 확인합니다.
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: "12px",
+          padding: "16px",
+          background: "#fff",
+        }}
+      >
+        <strong>Hold 상세</strong>
+        <div style={{ marginTop: "8px", color: "#6b7280" }}>
+          좌측에서 Hold row를 선택해 주세요.
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page-section">
-      <div className="table-toolbar">
-        <div>Hold 상세</div>
-        <div className="action-panel">
-          <span className="badge badge--default">A5</span>
-          <span className="badge badge--primary">hold 기준</span>
-        </div>
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: "12px",
+        padding: "16px",
+        background: "#fff",
+      }}
+    >
+      <div style={{ marginBottom: "12px" }}>
+        <strong>Hold 상세</strong>
       </div>
 
-      <div className="kv-list">
-        <div className="kv-item">
-          <div className="kv-item__label">holdId</div>
-          <div className="kv-item__value">
-            <span className="display-field copyable-id__text">
-              {item?.holdId || "-"}
-            </span>
-          </div>
-        </div>
+      <div
+        style={{
+          display: "grid",
+          gap: "8px",
+        }}
+      >
+        <InfoItem label="holdId">
+          <CopyableId value={item?.holdId} />
+        </InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">settlementId</div>
-          <div className="kv-item__value">
-            <span className="display-field copyable-id__text">
-              {item?.settlementId || "-"}
-            </span>
-          </div>
-        </div>
+        <InfoItem label="settlementId">
+          <CopyableId value={item?.settlementId} />
+        </InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">merchantId</div>
-          <div className="kv-item__value">
-            <span className="display-field">{item?.merchantId || "-"}</span>
-          </div>
-        </div>
+        <InfoItem label="merchantId">
+          <CopyableId value={item?.merchantId} />
+        </InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">status</div>
-          <div className="kv-item__value">
-            <span className="display-field">{item?.status || "-"}</span>
-          </div>
-        </div>
+        <InfoItem label="status">{item?.status || "-"}</InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">reasonCode</div>
-          <div className="kv-item__value">
-            <span className="display-field">{item?.reasonCode || "-"}</span>
-          </div>
-        </div>
+        <InfoItem label="reasonCode">{item?.reasonCode || "-"}</InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">createdAt</div>
-          <div className="kv-item__value">
-            <span className="display-field">
-              {formatDateTime(item?.createdAt)}
-            </span>
-          </div>
-        </div>
+        <InfoItem label="createdAt">
+          {formatDateTimeWithSeconds(item?.createdAt)}
+        </InfoItem>
 
-        <div className="kv-item">
-          <div className="kv-item__label">requestedComment</div>
-          <div className="kv-item__value">
-            <span className="display-field">{item?.requestedComment || "-"}</span>
-          </div>
-        </div>
+        <InfoItem label="requestedComment">
+          {item?.requestedComment || "-"}
+        </InfoItem>
       </div>
 
-      <div className="guard-notice" style={{ marginTop: "16px" }}>
-        <div className="guard-notice__title">운영 규칙</div>
-        <div className="guard-notice__description">
-          A5 목록은 hold 단위로만 보여주고, payment 연결 정보는 A4 정산 상세에서
+      <div
+        style={{
+          marginTop: "16px",
+          padding: "12px",
+          border: "1px solid #f1f5f9",
+          borderRadius: "8px",
+          background: "#fff7ed",
+          color: "#9a3412",
+          fontSize: "14px",
+          lineHeight: 1.5,
+        }}
+      >
+        <strong>운영 규칙</strong>
+        <div style={{ marginTop: "6px" }}>
+          A5 목록은 hold 단위로 보여주고, payment 연결 정보는 A4 정산 상세에서
           조회합니다.
         </div>
       </div>
 
-      {actionErrorMessage && (
-        <div className="info-list" style={{ marginTop: "16px" }}>
-          <div>
-            <strong>오류</strong> {actionErrorMessage}
-          </div>
-        </div>
-      )}
-
       {actionSuccessMessage && (
-        <div className="info-list" style={{ marginTop: "16px" }}>
-          <div>
-            <strong>완료</strong> {actionSuccessMessage}
-          </div>
+        <div style={{ marginTop: "16px", color: "#166534" }}>
+          {actionSuccessMessage}
         </div>
       )}
 
-      <div className="action-panel" style={{ marginTop: "16px" }}>
+      {actionErrorMessage && (
+        <div style={{ marginTop: "16px", color: "#b91c1c" }}>
+          {actionErrorMessage}
+        </div>
+      )}
+
+      <div
+        className="action-panel"
+        style={{ marginTop: "20px", display: "flex", gap: "8px", flexWrap: "wrap" }}
+      >
         <button
           type="button"
           className="btn btn--primary"
-          disabled={buildApproveDisabled(item, actionLoading)}
-          onClick={() => onApprove?.()}
+          onClick={onApprove}
+          disabled={actionLoading}
         >
           {actionLoading ? "처리 중..." : "Approve"}
         </button>
@@ -161,8 +127,8 @@ export default function HoldDetailPanel({
         <button
           type="button"
           className="btn btn--secondary"
-          disabled={buildReleaseDisabled(item, actionLoading)}
-          onClick={() => onRelease?.()}
+          onClick={onRelease}
+          disabled={actionLoading}
         >
           {actionLoading ? "처리 중..." : "Release"}
         </button>
@@ -170,8 +136,8 @@ export default function HoldDetailPanel({
         <button
           type="button"
           className="btn btn--secondary"
-          onClick={() => onMoveSettlementDetail?.(item?.settlementId)}
-          disabled={!item?.settlementId || actionLoading}
+          onClick={onMoveSettlementDetail}
+          disabled={!item?.settlementId}
         >
           A4 정산 상세로 이동
         </button>

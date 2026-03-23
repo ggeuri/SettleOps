@@ -72,6 +72,7 @@ public class SecurityConfig {
             auth.requestMatchers("/error", "/api/health").permitAll();
             auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
             auth.requestMatchers("/api/auth/**", "/api/me").permitAll();
+            auth.requestMatchers("/api/admin/**").hasRole("ADMIN");
             auth.anyRequest().authenticated();
         });
 
