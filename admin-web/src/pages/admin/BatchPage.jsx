@@ -13,6 +13,7 @@ import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
 import { formatDateTimeWithSeconds } from "../../utils/format.js";
+import { getMe } from "../../api/meApi.js";
 import {
   getSettlementBatchHistory,
   runSettlementBatch,
@@ -41,6 +42,37 @@ function normalizeHistoryPayload(data) {
     totalElements: Number(page?.totalElements ?? 0),
     numberOfElements: Number(page?.numberOfElements ?? content.length),
   };
+}
+
+function extractRole(payload) {
+  return (
+    payload?.role ||
+    payload?.data?.role ||
+    payload?.user?.role ||
+    payload?.principal?.role ||
+    null
+  );
+}
+
+function buildAuthErrorMessage(error) {
+  const status = error?.status;
+  const message =
+    error?.body?.message ||
+    error?.body?.reason ||
+    error?.message;
+
+  if (status === 401) {
+    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
+  }
+
+  if (status === 403) {
+    return "Admin 권한이 없어 배치 콘솔에 접근할 수 없습니다.";
+  }
+
+  return (
+    message ||
+    "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
+  );
 }
 
 function buildErrorMessage(error) {
@@ -205,6 +237,10 @@ export default function BatchPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [runResult, setRunResult] = useState(null);
 
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState("");
+
   const fetchHistory = useCallback(
     async (nextFromDate, nextToDate) => {
       const queryFrom = nextFromDate ?? fromDate;
@@ -237,11 +273,54 @@ export default function BatchPage() {
   );
 
   useEffect(() => {
+    let mounted = true;
+
+    async function checkAdminRole() {
+      try {
+        setAuthChecking(true);
+        setAuthErrorMessage("");
+        setIsAllowed(false);
+
+        const me = await getMe();
+        const role = String(extractRole(me) || "").toUpperCase();
+
+        if (!mounted) return;
+
+        if (role === "ADMIN") {
+          setIsAllowed(true);
+          return;
+        }
+
+        setIsAllowed(false);
+        setAuthErrorMessage(
+          "Admin 전용 배치 콘솔입니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setIsAllowed(false);
+        setAuthErrorMessage(buildAuthErrorMessage(error));
+      } finally {
+        if (mounted) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    checkAdminRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAllowed) return;
     fetchHistory();
-  }, [fetchHistory]);
+  }, [isAllowed, fetchHistory]);
 
   const handleSearch = async (event) => {
     event.preventDefault();
+    if (!isAllowed) return;
     await fetchHistory();
   };
 
@@ -252,11 +331,12 @@ export default function BatchPage() {
     setFromDate(nextFrom);
     setToDate(nextTo);
 
+    if (!isAllowed) return;
     await fetchHistory(nextFrom, nextTo);
   };
 
   const handleRunBatch = async () => {
-    if (!baseDate) return;
+    if (!isAllowed || !baseDate) return;
 
     try {
       setRunLoading(true);
@@ -289,6 +369,41 @@ export default function BatchPage() {
 
     return { total, okCount, failCount, skipCount };
   }, [historyRows, historyTotal]);
+
+  if (authChecking) {
+    return (
+      <PageLayout
+        title="배치 실행 · 이력"
+        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
+      >
+        <SectionCard title="세션 확인 중">
+          <LoadingBlock
+            title="세션 확인 중"
+            description="현재 로그인 세션의 역할을 확인하고 있습니다."
+          />
+        </SectionCard>
+      </PageLayout>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <PageLayout
+        title="배치 실행 · 이력"
+        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
+      >
+        <GuardNotice
+          title="접근 불가"
+          message={authErrorMessage}
+          tone="danger"
+        />
+        <ErrorState
+          title="Admin 전용 화면"
+          description={authErrorMessage}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout

@@ -7,6 +7,8 @@ import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import InfoRow from "../../components/display/InfoRow.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
+import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import ErrorState from "../../components/feedback/ErrorState.jsx";
 import { getMe } from "../../api/meApi.js";
 import { getMerchantSettlementDetail } from "../../api/merchantSettlementApi.js";
 
@@ -15,6 +17,45 @@ function formatAmount(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
   return `${num.toLocaleString("ko-KR")}원`;
+}
+
+function extractRole(payload) {
+  return (
+    payload?.role ||
+    payload?.data?.role ||
+    payload?.user?.role ||
+    payload?.principal?.role ||
+    null
+  );
+}
+
+function extractMerchantId(payload) {
+  return (
+    payload?.merchantId ||
+    payload?.data?.merchantId ||
+    payload?.user?.merchantId ||
+    payload?.principal?.merchantId ||
+    null
+  );
+}
+
+function buildAuthErrorMessage(error) {
+  const status = error?.status;
+  const message =
+    error?.body?.message ||
+    error?.body?.reason ||
+    error?.message;
+
+  if (status === 401) {
+    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Merchant 세션을 다시 생성해 주세요.";
+  }
+  if (status === 403) {
+    return "Merchant 권한이 없어 정산 상세 화면에 접근할 수 없습니다.";
+  }
+  return (
+    message ||
+    "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Merchant 세션으로 다시 로그인해 주세요."
+  );
 }
 
 function mapDetailErrorToMessage(error) {
@@ -47,16 +88,6 @@ function hasApprovedRefund(refund) {
   );
 }
 
-function extractMerchantId(payload) {
-  return (
-    payload?.merchantId ||
-    payload?.data?.merchantId ||
-    payload?.user?.merchantId ||
-    payload?.principal?.merchantId ||
-    null
-  );
-}
-
 function CopyableValue({ value }) {
   if (!value || value === "-") {
     return <span>-</span>;
@@ -73,25 +104,15 @@ export default function SettlementDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const fetchMerchantId = useCallback(async () => {
-    const response = await getMe();
-    const resolvedMerchantId = extractMerchantId(response);
-
-    if (!resolvedMerchantId) {
-      throw new Error("세션에서 merchantId를 확인할 수 없습니다.");
-    }
-
-    return resolvedMerchantId;
-  }, []);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState("");
 
   const fetchDetail = useCallback(
-    async (signal) => {
+    async (resolvedMerchantId, signal) => {
       try {
         setLoading(true);
         setLoadError("");
-
-        const resolvedMerchantId = merchantId || (await fetchMerchantId());
-        setMerchantId(resolvedMerchantId);
 
         const data = await getMerchantSettlementDetail(
           resolvedMerchantId,
@@ -110,14 +131,68 @@ export default function SettlementDetailPage() {
         setLoading(false);
       }
     },
-    [fetchMerchantId, merchantId, settlementId]
+    [settlementId]
   );
 
   useEffect(() => {
+    let mounted = true;
+
+    async function checkMerchantRole() {
+      try {
+        setAuthChecking(true);
+        setAuthErrorMessage("");
+        setIsAllowed(false);
+        setMerchantId("");
+
+        const me = await getMe();
+        const role = String(extractRole(me) || "").toUpperCase();
+        const resolvedMerchantId = extractMerchantId(me);
+
+        if (!mounted) return;
+
+        if (role !== "MERCHANT") {
+          setIsAllowed(false);
+          setAuthErrorMessage(
+            "Merchant 전용 정산 상세 화면입니다. /auth/dev-login 에서 Merchant 세션으로 다시 로그인해 주세요."
+          );
+          return;
+        }
+
+        if (!resolvedMerchantId) {
+          setIsAllowed(false);
+          setAuthErrorMessage(
+            "세션에서 merchantId를 확인할 수 없습니다. /auth/dev-login 에서 Merchant 세션을 다시 생성해 주세요."
+          );
+          return;
+        }
+
+        setMerchantId(resolvedMerchantId);
+        setIsAllowed(true);
+      } catch (error) {
+        if (!mounted) return;
+        setIsAllowed(false);
+        setAuthErrorMessage(buildAuthErrorMessage(error));
+      } finally {
+        if (mounted) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    checkMerchantRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAllowed || !merchantId) return;
+
     const controller = new AbortController();
-    fetchDetail(controller.signal);
+    fetchDetail(merchantId, controller.signal);
     return () => controller.abort();
-  }, [fetchDetail]);
+  }, [isAllowed, merchantId, fetchDetail]);
 
   const currentSettlementId = detail?.settlementId || settlementId || "-";
   const currentMerchantId = detail?.merchantId || merchantId || "-";
@@ -146,6 +221,41 @@ export default function SettlementDetailPage() {
     if (hasApprovedRefund(refund)) return "APPROVED";
     return "NONE";
   }, [refund]);
+
+  if (authChecking) {
+    return (
+      <PageLayout
+        title="정산 상세"
+        description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
+      >
+        <SectionCard title="세션 확인 중">
+          <LoadingBlock
+            title="세션 확인 중"
+            description="현재 로그인 세션의 역할을 확인하고 있습니다."
+          />
+        </SectionCard>
+      </PageLayout>
+    );
+  }
+
+  if (!isAllowed) {
+    return (
+      <PageLayout
+        title="정산 상세"
+        description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
+      >
+        <GuardNotice
+          title="접근 불가"
+          message={authErrorMessage}
+          tone="danger"
+        />
+        <ErrorState
+          title="Merchant 전용 화면"
+          description={authErrorMessage}
+        />
+      </PageLayout>
+    );
+  }
 
   if (loading) {
     return (
