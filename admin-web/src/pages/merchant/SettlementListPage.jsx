@@ -1,8 +1,5 @@
-// /admin-web/src/pages/merchant/SettlementListPage.jsx
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -14,6 +11,8 @@ import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 import { formatNumber } from "../../utils/format.js";
+import { getMe } from "../../api/meApi.js";
+import { getMerchantSettlements } from "../../api/merchantSettlementApi.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -63,10 +62,10 @@ function extractMerchantId(payload) {
 }
 
 function buildErrorMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -107,11 +106,8 @@ export default function SettlementListPage() {
   const pageTitle = useMemo(() => "정산 리스트", []);
 
   const fetchMerchantId = useCallback(async () => {
-    const response = await axios.get("/api/me", {
-      withCredentials: true,
-    });
-
-    const resolvedMerchantId = extractMerchantId(response.data);
+    const response = await getMe();
+    const resolvedMerchantId = extractMerchantId(response);
 
     if (!resolvedMerchantId) {
       throw new Error("세션에서 merchantId를 확인할 수 없습니다.");
@@ -134,15 +130,8 @@ export default function SettlementListPage() {
         if (nextFromDate) params.from = nextFromDate;
         if (nextToDate) params.to = nextToDate;
 
-        const response = await axios.get(
-          `/api/merchants/${encodeURIComponent(resolvedMerchantId)}/settlements`,
-          {
-            withCredentials: true,
-            params,
-          }
-        );
-
-        setRows(normalizeSettlementList(response.data));
+        const data = await getMerchantSettlements(resolvedMerchantId, params);
+        setRows(normalizeSettlementList(data));
       } catch (error) {
         console.error("U4 정산 리스트 조회 실패", error);
         setRows([]);

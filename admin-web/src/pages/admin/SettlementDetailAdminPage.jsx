@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -8,6 +7,11 @@ import StatusBadge from "../../components/display/StatusBadge.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import InfoRow from "../../components/display/InfoRow.jsx";
+import {
+  getAdminSettlementDetail,
+  getAdminSettlementTraceEntry,
+  requestAdminSettlementPaid,
+} from "../../api/adminSettlementApi.js";
 
 function formatAmount(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -17,10 +21,10 @@ function formatAmount(value) {
 }
 
 function mapDetailErrorToMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -51,10 +55,10 @@ function mapRequestPaidReasonToMessage(reason) {
 }
 
 function mapTraceEntryErrorToMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -128,17 +132,10 @@ export default function SettlementDetailAdminPage() {
         setLoading(true);
         setLoadError("");
 
-        const response = await axios.get(
-          `/api/admin/settlements/${settlementId}`,
-          {
-            withCredentials: true,
-            signal,
-          }
-        );
-
-        setDetail(response.data || null);
+        const data = await getAdminSettlementDetail(settlementId, { signal });
+        setDetail(data || null);
       } catch (error) {
-        if (error?.name === "CanceledError" || error?.code === "ERR_CANCELED") {
+        if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") {
           return;
         }
         setDetail(null);
@@ -157,18 +154,12 @@ export default function SettlementDetailAdminPage() {
         setTraceEntryError("");
         setTraceRequestId("");
 
-        const response = await axios.get(
-          `/api/admin/settlements/${settlementId}/trace-entry`,
-          {
-            withCredentials: true,
-            signal,
-          }
-        );
+        const data = await getAdminSettlementTraceEntry(settlementId, { signal });
 
         const requestId =
-          response?.data?.traceRequestId ||
-          response?.data?.requestId ||
-          response?.data?.resolvedRequestId ||
+          data?.traceRequestId ||
+          data?.requestId ||
+          data?.resolvedRequestId ||
           "";
 
         if (!requestId) {
@@ -181,7 +172,7 @@ export default function SettlementDetailAdminPage() {
 
         setTraceRequestId(requestId);
       } catch (error) {
-        if (error?.name === "CanceledError" || error?.code === "ERR_CANCELED") {
+        if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") {
           return;
         }
         setTraceRequestId("");
@@ -280,17 +271,13 @@ export default function SettlementDetailAdminPage() {
       setActionMessage("");
       setActionError("");
 
-      await axios.patch(
-        `/api/admin/settlements/${detail.settlementId}/request-paid`,
-        {},
-        { withCredentials: true }
-      );
+      await requestAdminSettlementPaid(detail.settlementId);
 
       setActionMessage("지급 요청이 완료되었습니다.");
       await reloadPageData();
     } catch (error) {
-      const statusCode = error?.response?.status;
-      const reason = error?.response?.data?.reason;
+      const statusCode = error?.status;
+      const reason = error?.body?.reason;
 
       if (statusCode === 401) {
         setActionError(

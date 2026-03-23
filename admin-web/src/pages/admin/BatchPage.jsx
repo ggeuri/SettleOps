@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -14,6 +13,10 @@ import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 
 import { formatDateTimeWithSeconds } from "../../utils/format.js";
+import {
+  getSettlementBatchHistory,
+  runSettlementBatch,
+} from "../../api/adminBatchApi.js";
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -41,10 +44,10 @@ function normalizeHistoryPayload(data) {
 }
 
 function buildErrorMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -211,20 +214,14 @@ export default function BatchPage() {
       setErrorMessage("");
 
       try {
-        const response = await axios.get(
-          "/api/admin/settlement-batches/history",
-          {
-            withCredentials: true,
-            params: {
-              from: queryFrom,
-              to: queryTo,
-              page: 0,
-              size: 20,
-            },
-          }
-        );
+        const data = await getSettlementBatchHistory({
+          from: queryFrom,
+          to: queryTo,
+          page: 0,
+          size: 20,
+        });
 
-        const normalized = normalizeHistoryPayload(response.data);
+        const normalized = normalizeHistoryPayload(data);
         setHistoryRows(normalized.rows);
         setHistoryTotal(normalized.totalElements);
       } catch (error) {
@@ -266,16 +263,9 @@ export default function BatchPage() {
       setErrorMessage("");
       setRunResult(null);
 
-      const response = await axios.post(
-        "/api/admin/settlement-batches/run",
-        null,
-        {
-          withCredentials: true,
-          params: { baseDate },
-        }
-      );
+      const data = await runSettlementBatch(baseDate);
 
-      setRunResult(response.data || null);
+      setRunResult(data || null);
       await fetchHistory();
     } catch (error) {
       console.error("A2 배치 실행 실패", error);

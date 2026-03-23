@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -12,6 +11,7 @@ import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 import { formatNumber } from "../../utils/format.js";
+import { getAdminSettlements } from "../../api/adminSettlementListApi.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -37,10 +37,10 @@ function normalizeSettlementList(payload) {
 }
 
 function buildErrorMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -86,12 +86,8 @@ export default function SettlementManagePage() {
         if (nextStatus) params.status = nextStatus;
         if (nextMerchantId.trim()) params.merchantId = nextMerchantId.trim();
 
-        const response = await axios.get("/api/admin/settlements", {
-          withCredentials: true,
-          params,
-        });
-
-        setRows(normalizeSettlementList(response.data));
+        const data = await getAdminSettlements(params);
+        setRows(normalizeSettlementList(data));
       } catch (error) {
         console.error("정산 리스트 조회 실패", error);
         setRows([]);

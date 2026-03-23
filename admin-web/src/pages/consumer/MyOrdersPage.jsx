@@ -1,8 +1,5 @@
-// admin-web/src/pages/consumer/MyOrdersPage.jsx
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -14,6 +11,7 @@ import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 import { formatDateTime } from "../../utils/format.js";
+import { getConsumerOrders } from "../../api/consumerOrderApi.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -37,10 +35,10 @@ function normalizeOrderList(payload) {
 }
 
 function buildErrorMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -122,12 +120,8 @@ export default function MyOrdersPage() {
       const params = {};
       if (nextStatus) params.status = nextStatus;
 
-      const response = await axios.get("/api/consumer/orders", {
-        withCredentials: true,
-        params,
-      });
-
-      setRows(normalizeOrderList(response.data));
+      const data = await getConsumerOrders(params);
+      setRows(normalizeOrderList(data));
     } catch (error) {
       console.error("C3 주문/결제 내역 조회 실패", error);
       setRows([]);
