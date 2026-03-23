@@ -8,6 +8,8 @@ export function getMerchantPayments({
   from,
   to,
   keyword,
+  page,
+  size,
 } = {}) {
   if (!merchantId) {
     throw new Error("merchantId is required");
@@ -26,6 +28,12 @@ export function getMerchantPayments({
   }
   if (keyword?.trim()) {
     searchParams.set("keyword", keyword.trim());
+  }
+  if (Number.isInteger(page)) {
+    searchParams.set("page", String(page));
+  }
+  if (Number.isInteger(size)) {
+    searchParams.set("size", String(size));
   }
 
   const queryString = searchParams.toString();

@@ -14,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -46,11 +49,13 @@ class PaymentQueryServiceTest {
 
         @Test
         @DisplayName("U2_merchant 결제 목록 조회를 repository에 위임")
-        void getMerchantPayments_returns_list() {
+        void getMerchantPayments_returns_page() {
             // given
             MerchantPaymentSearchCondition condition = new MerchantPaymentSearchCondition();
+            condition.setPage(0);
+            condition.setSize(10);
 
-            List<MerchantPaymentListItemResponse> expected = List.of(
+            List<MerchantPaymentListItemResponse> content = List.of(
                     new MerchantPaymentListItemResponse(
                             PAYMENT_ID,
                             "11111111-1111-1111-1111-111111111111",
@@ -66,15 +71,25 @@ class PaymentQueryServiceTest {
                     )
             );
 
+            Page<MerchantPaymentListItemResponse> expected = new PageImpl<>(
+                    content,
+                    PageRequest.of(0, 10),
+                    1
+            );
+
             when(paymentQueryRepository.searchMerchantPayments(MERCHANT_ID, condition))
                     .thenReturn(expected);
 
             // when
-            List<MerchantPaymentListItemResponse> result =
+            Page<MerchantPaymentListItemResponse> result =
                     paymentQueryService.getMerchantPayments(MERCHANT_ID, MERCHANT_ID, condition);
 
             // then
-            assertThat(result).isEqualTo(expected);
+            assertThat(result.getContent()).isEqualTo(content);
+            assertThat(result.getNumber()).isEqualTo(0);
+            assertThat(result.getSize()).isEqualTo(10);
+            assertThat(result.getTotalElements()).isEqualTo(1);
+            assertThat(result.getTotalPages()).isEqualTo(1);
             verify(paymentQueryRepository).searchMerchantPayments(MERCHANT_ID, condition);
         }
 

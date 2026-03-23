@@ -1,5 +1,5 @@
-// /admin-web/src/util/format.js
-// 사용: import { formatDateTime, formatDateTimeWithSeconds, formatKrw } from "../../util/format.js";
+// /admin-web/src/utils/format.js
+// 사용: import { formatDateTime, formatDateTimeWithSeconds, formatKrw } from "../../utils/format.js";
 
 // yyyy-MM-dd HH:mm
 export function formatDateTime(value) {
