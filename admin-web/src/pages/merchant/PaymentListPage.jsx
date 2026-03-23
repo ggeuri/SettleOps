@@ -1,5 +1,6 @@
 // /admin-web/src/pages/merchant/PaymentListPage.jsx
 
+import "../../style/payment-list.css";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { formatDateTime, formatNumber } from "../../utils/format.js";
