@@ -12,9 +12,11 @@ export function createConsumerOrder({ merchantId, buyerId, itemName, amount }) {
   });
 }
 
-// order detail page load TODO: (C3페이지 에서 C2페이지 호출)
+// C2 상세
 export function getConsumerOrderDetail(orderId) {
-  return requestJson(`/api/consumer/orders/${orderId}`);
+  return requestJson(`/api/consumer/orders/${orderId}`, {
+    method: "GET",
+  });
 }
 
 // C3 목록
@@ -42,5 +44,7 @@ export function getConsumerOrders({
     ? `/api/consumer/orders?${queryString}`
     : `/api/consumer/orders`;
 
-  return requestJson(url);
+  return requestJson(url, {
+    method: "GET",
+  });
 }

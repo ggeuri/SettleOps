@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
@@ -8,6 +7,8 @@ import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import InfoRow from "../../components/display/InfoRow.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
+import { getMe } from "../../api/meApi.js";
+import { getMerchantSettlementDetail } from "../../api/merchantSettlementApi.js";
 
 function formatAmount(value) {
   if (value === null || value === undefined || value === "") return "-";
@@ -17,10 +18,10 @@ function formatAmount(value) {
 }
 
 function mapDetailErrorToMessage(error) {
-  const status = error?.response?.status;
+  const status = error?.status;
   const message =
-    error?.response?.data?.message ||
-    error?.response?.data?.reason ||
+    error?.body?.message ||
+    error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
@@ -73,11 +74,8 @@ export default function SettlementDetailPage() {
   const [loadError, setLoadError] = useState("");
 
   const fetchMerchantId = useCallback(async () => {
-    const response = await axios.get("/api/me", {
-      withCredentials: true,
-    });
-
-    const resolvedMerchantId = extractMerchantId(response.data);
+    const response = await getMe();
+    const resolvedMerchantId = extractMerchantId(response);
 
     if (!resolvedMerchantId) {
       throw new Error("세션에서 merchantId를 확인할 수 없습니다.");
@@ -95,19 +93,15 @@ export default function SettlementDetailPage() {
         const resolvedMerchantId = merchantId || (await fetchMerchantId());
         setMerchantId(resolvedMerchantId);
 
-        const response = await axios.get(
-          `/api/merchants/${encodeURIComponent(
-            resolvedMerchantId
-          )}/settlements/${settlementId}`,
-          {
-            withCredentials: true,
-            signal,
-          }
+        const data = await getMerchantSettlementDetail(
+          resolvedMerchantId,
+          settlementId,
+          { signal }
         );
 
-        setDetail(response.data || null);
+        setDetail(data || null);
       } catch (error) {
-        if (error?.name === "CanceledError" || error?.code === "ERR_CANCELED") {
+        if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") {
           return;
         }
         setDetail(null);
