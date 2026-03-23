@@ -2,15 +2,15 @@ import StatusBadge from "../display/StatusBadge.jsx";
 import CopyableId from "../display/CopyableId.jsx";
 
 export default function InfoRow({
-    label,
-    value,
-    children,
-    copyable = false,
-    status = false,
-    emptyText = "-",
-    columns = "160px 1fr",
-    className = "",
-}) {
+                                    label,
+                                    value,
+                                    children,
+                                    copyable = false,
+                                    status = false,
+                                    emptyText = "-",
+                                    columns = "160px 1fr",
+                                    className = "",
+                                }) {
     let content = children ?? value;
 
     if (content === null || content === undefined || content === "") {
