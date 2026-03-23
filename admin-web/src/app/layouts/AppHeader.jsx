@@ -1,7 +1,7 @@
 // src/layouts/AppHeader.jsx
 import { useEffect, useState } from "react";
 import { useLocation, Link } from "react-router-dom";
-import { getMe } from "../api/meApi.js";
+import { getMe } from "../../api/meApi.js";
 
 function resolvePageTitle(pathname) {
   if (pathname === "/consumer/orders/new") return "거래 생성";

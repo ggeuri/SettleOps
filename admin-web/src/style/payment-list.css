@@ -1,0 +1,3 @@
+.table-toolbar .action-panel{flex-wrap:nowrap;min-width:200px}
+.table-toolbar .action-panel .select{max-width:140px}
+.table-toolbar .action-panel button{flex-shrink:0}

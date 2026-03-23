@@ -1,3 +1,5 @@
+//admin-web/src/components/table/Pagination.jsx
+
 import ActionButton from "../layout/ActionButton.jsx";
 
 export default function Pagination({

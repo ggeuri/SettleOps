@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getConsumerOrders } from "../../api/consumerOrderApi.js";
 import { getMe } from "../../api/meApi.js";
-import { formatDateTime, formatNumber } from "../../util/format.js";
+import { formatDateTime, formatNumber } from "../../utils/format.js";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
-import RequireLoginNotice from "../../components/common/RequireLoginNotice.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 
 const PAGE_TITLE = "내 주문/결제 내역";
 const PAGE_DESCRIPTION =
