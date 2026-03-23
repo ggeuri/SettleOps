@@ -1,24 +1,5 @@
-// src/components/AuditLogRowExpand.jsx
-function formatDateTime(value) {
-  if (!value) return "-";
-
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-
-    return new Intl.DateTimeFormat("ko-KR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(date);
-  } catch {
-    return value;
-  }
-}
+import CopyableId from "../display/CopyableId.jsx";
+import { formatDateTimeWithSeconds } from "../../utils/format.js";
 
 function prettyJson(value) {
   if (!value) return "{}";
@@ -53,7 +34,7 @@ function EventRow({ event }) {
         }}
       >
         <div>
-          <strong>시각</strong> {formatDateTime(event?.occurredAt)}
+          <strong>시각</strong> {formatDateTimeWithSeconds(event?.occurredAt)}
         </div>
         <div>
           <strong>이벤트</strong> {event?.eventType || "-"}
@@ -62,7 +43,7 @@ function EventRow({ event }) {
           <strong>엔티티</strong> {event?.entityType || "-"}
         </div>
         <div>
-          <strong>엔티티 ID</strong> {event?.entityId || "-"}
+          <strong>엔티티 ID</strong> <CopyableId value={event?.entityId} />
         </div>
         <div>
           <strong>상태 변경</strong>{" "}
@@ -143,10 +124,11 @@ export default function AuditLogRowExpand({
           }}
         >
           <div>
-            <strong>requestId</strong> {item?.requestId || "-"}
+            <strong>requestId</strong> <CopyableId value={item?.requestId} />
           </div>
           <div>
-            <strong>occurredAt</strong> {formatDateTime(item?.occurredAt)}
+            <strong>occurredAt</strong>{" "}
+            {formatDateTimeWithSeconds(item?.occurredAt)}
           </div>
           <div>
             <strong>actorType</strong> {item?.actorType || "-"}
@@ -161,7 +143,7 @@ export default function AuditLogRowExpand({
             <strong>entityType</strong> {item?.entityType || "-"}
           </div>
           <div>
-            <strong>entityId</strong> {item?.entityId || "-"}
+            <strong>entityId</strong> <CopyableId value={item?.entityId} />
           </div>
           <div>
             <strong>merchantId</strong> {item?.merchantId || "-"}
@@ -206,7 +188,7 @@ export default function AuditLogRowExpand({
         <div style={{ marginBottom: "12px" }}>
           <strong>관련 이벤트</strong>
           <div style={{ marginTop: "6px", color: "#6b7280", fontSize: "14px" }}>
-            requestId: {eventRequestId || item?.requestId || "-"}
+            requestId: <CopyableId value={eventRequestId || item?.requestId} />
           </div>
         </div>
 
