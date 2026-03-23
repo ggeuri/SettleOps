@@ -42,23 +42,23 @@ class RefundReadRepositoryTest {
         // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 10, 0, 0);
 
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-001", "payment-001", "merchant-1", "buyer-1", 1000L, "REQUESTED",
                 base.minusMinutes(1), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-002", "payment-002", "merchant-1", "buyer-2", 2000L, "REQUESTED",
                 base.minusMinutes(2), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-003", "payment-003", "merchant-1", "buyer-3", 3000L, "REQUESTED",
                 base.minusMinutes(3), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-004", "payment-004", "merchant-1", "buyer-4", 4000L, "REQUESTED",
                 base.minusMinutes(4), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-005", "payment-005", "merchant-1", "buyer-5", 5000L, "REQUESTED",
                 base.minusMinutes(5), null
         );
@@ -93,23 +93,23 @@ class RefundReadRepositoryTest {
         // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 11, 0, 0);
 
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a1", "payment-a1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
                 base.minusMinutes(1), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a2", "payment-a2", "merchant-1", "buyer-2", 2000L, "REQUESTED",
                 base.minusMinutes(2), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a3", "payment-a3", "merchant-1", "buyer-3", 3000L, "REQUESTED",
                 base.minusMinutes(3), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-b1", "payment-b1", "merchant-1", "buyer-4", 4000L, "APPROVED",
                 base.minusMinutes(4), base.minusMinutes(3)
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-b2", "payment-b2", "merchant-1", "buyer-5", 5000L, "REJECTED",
                 base.minusMinutes(5), base.minusMinutes(4)
         );
@@ -138,7 +138,7 @@ class RefundReadRepositoryTest {
                 .containsExactly("refund-a1", "refund-a2");
     }
 
-    private void insertRefund(
+    private void insertPaymentAndRefund(
             String refundId,
             String paymentId,
             String merchantId,
@@ -151,13 +151,31 @@ class RefundReadRepositoryTest {
         String now = LocalDateTime.now().format(MYSQL_DT6);
 
         jdbcTemplate.update("""
-                insert into refund (
-                    refund_id, payment_id, merchant_id, buyer_id,
-                    amount, currency, status, reason_text,
-                    requested_at, decided_at, created_at, updated_at
-                )
-                values (?, ?, ?, ?, ?, 'KRW', ?, 'test reason', ?, ?, ?, ?)
-                """,
+            insert into payment (
+                payment_id, order_id, merchant_id, buyer_id,
+                currency, requested_amount, captured_amount, status,
+                created_at, updated_at
+            )
+            values (?, ?, ?, ?, 'KRW', ?, ?, 'CAPTURED', ?, ?)
+            """,
+                paymentId,
+                "order-" + paymentId,
+                merchantId,
+                buyerId,
+                amount * 10,
+                amount * 10,
+                now,
+                now
+        );
+
+        jdbcTemplate.update("""
+            insert into refund (
+                refund_id, payment_id, merchant_id, buyer_id,
+                amount, currency, status, reason_text,
+                requested_at, decided_at, created_at, updated_at
+            )
+            values (?, ?, ?, ?, ?, 'KRW', ?, 'test reason', ?, ?, ?, ?)
+            """,
                 refundId,
                 paymentId,
                 merchantId,

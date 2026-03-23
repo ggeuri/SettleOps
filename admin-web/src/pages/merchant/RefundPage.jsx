@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { getMe } from "../../api/meApi.js";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
@@ -10,10 +12,7 @@ import {
     createRefund,
     getMyRefunds,
 } from "../../api/refundApi.js";
-import {
-    formatDateTime,
-    formatDateTimeWithSeconds,
-} from "../../utils/format.js";
+import { formatDateTime } from "../../utils/format.js";
 
 const INITIAL_FORM = {
     paymentId: "",
@@ -32,6 +31,35 @@ const INITIAL_SORT = {
     key: "requestedAt",
     direction: "desc",
 };
+
+function isMerchantRole(me) {
+    if (!me) {
+        return false;
+    }
+
+    if (me.role === "MERCHANT" || me.role === "ROLE_MERCHANT") {
+        return true;
+    }
+
+    if (
+        Array.isArray(me.authorities) &&
+        me.authorities.includes("ROLE_MERCHANT")
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+    return {
+        status: error?.status ?? null,
+        message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            fallbackMessage,
+    };
+}
 
 function formatShortId(value, head = 8, tail = 4) {
     if (!value) return "-";
@@ -143,9 +171,7 @@ function ContextRow({ label, value, isStatus = false }) {
                 fontSize: "13px",
             }}
         >
-            <span style={{ color: "#667085", fontWeight: 600 }}>
-                {label}
-            </span>
+            <span style={{ color: "#667085", fontWeight: 600 }}>{label}</span>
 
             <span
                 style={{
@@ -172,11 +198,14 @@ export default function RefundPage() {
     const [sort, setSort] = useState(INITIAL_SORT);
     const [refundContext, setRefundContext] = useState(null);
     const [refunds, setRefunds] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [loadingContext, setLoadingContext] = useState(false);
     const [loadingRefunds, setLoadingRefunds] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [errorInfo, setErrorInfo] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+    const [selectedRefundId, setSelectedRefundId] = useState("");
     const [searchParams] = useSearchParams();
     const location = useLocation();
     const [page, setPage] = useState(0);
@@ -188,21 +217,94 @@ export default function RefundPage() {
         "";
 
     useEffect(() => {
-        loadMyRefunds();
-    }, []);
+        async function loadPage() {
+            try {
+                setLoading(true);
+                setErrorInfo(null);
+                setErrorMessage("");
+                setSuccessMessage("");
 
-    useEffect(() => {
-        if (!initialPaymentId) return;
+                const meData = await getMe();
 
-        setForm((prev) => ({
-            ...prev,
-            paymentId: initialPaymentId,
-        }));
+                if (!isMerchantRole(meData)) {
+                    setRefunds([]);
+                    setRefundContext(null);
+                    setErrorInfo({
+                        status: 403,
+                        message: "Merchant 권한이 필요한 페이지입니다.",
+                    });
+                    return;
+                }
+
+                await loadMyRefunds();
+
+                if (initialPaymentId) {
+                    setForm({
+                        paymentId: initialPaymentId,
+                        amount: "",
+                        reasonText: "",
+                    });
+                    await loadRefundContextByPaymentId(initialPaymentId);
+                } else {
+                    setForm(INITIAL_FORM);
+                    setRefundContext(null);
+                }
+            } catch (error) {
+                setRefunds([]);
+                setRefundContext(null);
+                setErrorInfo(
+                    buildErrorInfo(error, "환불 요청 · 현황 화면을 불러오지 못했습니다.")
+                );
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadPage();
     }, [initialPaymentId]);
 
     useEffect(() => {
         setPage(0);
     }, [filter, sort]);
+
+    async function loadMyRefunds() {
+        setLoadingRefunds(true);
+
+        try {
+            const response = await getMyRefunds();
+            setRefunds(Array.isArray(response) ? response : []);
+        } catch (error) {
+            setRefunds([]);
+            setErrorMessage(
+                error?.body?.message || "내 환불 내역 조회에 실패했습니다."
+            );
+        } finally {
+            setLoadingRefunds(false);
+        }
+    }
+
+    async function loadRefundContextByPaymentId(paymentId) {
+        if (!paymentId) {
+            setRefundContext(null);
+            return;
+        }
+
+        setLoadingContext(true);
+
+        try {
+            const response = await getRefundContext(paymentId);
+            setRefundContext(response);
+        } catch (error) {
+            setRefundContext(null);
+            setErrorMessage(
+                error?.body?.message ||
+                error?.body?.reason ||
+                "refund-context 조회에 실패했습니다."
+            );
+        } finally {
+            setLoadingContext(false);
+        }
+    }
 
     function handleChange(event) {
         const { name, value } = event.target;
@@ -234,36 +336,9 @@ export default function RefundPage() {
             return;
         }
 
-        setLoadingContext(true);
         setErrorMessage("");
         setSuccessMessage("");
-
-        try {
-            const response = await getRefundContext(paymentId);
-            setRefundContext(response);
-        } catch (error) {
-            setRefundContext(null);
-            setErrorMessage(
-                error?.body?.message || "refund-context 조회에 실패했습니다."
-            );
-        } finally {
-            setLoadingContext(false);
-        }
-    }
-
-    async function loadMyRefunds() {
-        setLoadingRefunds(true);
-
-        try {
-            const response = await getMyRefunds();
-            setRefunds(Array.isArray(response) ? response : []);
-        } catch (error) {
-            setErrorMessage(
-                error?.body?.message || "내 환불 내역 조회에 실패했습니다."
-            );
-        } finally {
-            setLoadingRefunds(false);
-        }
+        await loadRefundContextByPaymentId(paymentId);
     }
 
     const filteredRefunds = useMemo(() => {
@@ -275,7 +350,9 @@ export default function RefundPage() {
             const matchesStatus =
                 filter.status === "ALL" || rowStatus === filter.status;
 
-            const requestedDate = rowRequestedAt ? rowRequestedAt.slice(0, 10) : "";
+            const requestedDate = rowRequestedAt
+                ? rowRequestedAt.slice(0, 10)
+                : "";
 
             const matchesFrom =
                 !filter.from || (requestedDate && requestedDate >= filter.from);
@@ -357,6 +434,25 @@ export default function RefundPage() {
         }
     }, [page, totalPages]);
 
+    async function handleSelectRefund(row) {
+        setSelectedRefundId(row.refundId);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        setForm((prev) => ({
+            ...prev,
+            paymentId: row.paymentId || "",
+            amount: row.amount != null ? String(row.amount) : prev.amount,
+            reasonText: row.reasonText || prev.reasonText,
+        }));
+
+        await loadRefundContextByPaymentId(row.paymentId || "");
+    }
+
+    function handleClearSelectedRefund() {
+        setSelectedRefundId("");
+    }
+
     async function handleSubmit(event) {
         event.preventDefault();
 
@@ -394,6 +490,13 @@ export default function RefundPage() {
             return;
         }
 
+        if (paymentId !== refundContext.paymentId) {
+            setErrorMessage(
+                "paymentId를 변경한 경우 refund-context를 다시 조회해 주세요."
+            );
+            return;
+        }
+
         if (amount > refundContext.refundableAmount) {
             setErrorMessage("refundableAmount를 초과할 수 없습니다.");
             return;
@@ -409,12 +512,15 @@ export default function RefundPage() {
             });
 
             setSuccessMessage("환불 요청이 등록되었습니다.");
+            setSelectedRefundId("");
             setForm((prev) => ({
                 ...prev,
                 amount: "",
                 reasonText: "",
             }));
+
             await loadMyRefunds();
+            await loadRefundContextByPaymentId(paymentId);
         } catch (error) {
             if (error?.body?.reason) {
                 setErrorMessage(`환불 요청 실패: ${error.body.reason}`);
@@ -426,6 +532,65 @@ export default function RefundPage() {
         } finally {
             setSubmitting(false);
         }
+    }
+
+    if (loading) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">로딩 중</div>
+                    <div className="guard-notice__description">
+                        환불 요청 · 현황 화면을 불러오는 중입니다.
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo?.status === 401) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <RequireLoginNotice />
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo?.status === 403) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">접근 불가</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">조회 실패</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
     }
 
     return (
@@ -509,7 +674,15 @@ export default function RefundPage() {
                             />
                         </div>
 
-                        <div className="button-row" style={{ marginTop: "10px" }}>
+                        <div
+                            className="button-row"
+                            style={{
+                                marginTop: "10px",
+                                display: "flex",
+                                gap: "8px",
+                                flexWrap: "wrap",
+                            }}
+                        >
                             <ActionButton
                                 type="button"
                                 onClick={handleSubmit}
@@ -517,7 +690,28 @@ export default function RefundPage() {
                             >
                                 {submitting ? "요청 중..." : "환불 요청"}
                             </ActionButton>
+
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={handleClearSelectedRefund}
+                                disabled={!selectedRefundId}
+                            >
+                                선택 해제
+                            </ActionButton>
                         </div>
+
+                        {selectedRefundId ? (
+                            <div
+                                style={{
+                                    marginTop: "10px",
+                                    fontSize: "12px",
+                                    color: "#667085",
+                                }}
+                            >
+                                선택된 환불: {selectedRefundId}
+                            </div>
+                        ) : null}
                     </div>
 
                     <div style={{ alignSelf: "start" }}>
@@ -541,8 +735,15 @@ export default function RefundPage() {
                                 refund-context
                             </h3>
 
-                            <ContextRow label="paymentId" value={refundContext?.paymentId} />
-                            <ContextRow label="status" value={refundContext?.status} isStatus />
+                            <ContextRow
+                                label="paymentId"
+                                value={refundContext?.paymentId}
+                            />
+                            <ContextRow
+                                label="status"
+                                value={refundContext?.status}
+                                isStatus
+                            />
                             <ContextRow
                                 label="capturedAmount"
                                 value={formatAmount(refundContext?.capturedAmount)}
@@ -551,9 +752,17 @@ export default function RefundPage() {
                                 label="refundableAmount"
                                 value={formatAmount(refundContext?.refundableAmount)}
                             />
-                            <ContextRow label="currency" value={refundContext?.currency} />
-                            <ContextRow label="merchantId" value={refundContext?.merchantId} />
-                            <ContextRow label="capturedAt" value={formatDateTime(refundContext?.capturedAt)}
+                            <ContextRow
+                                label="currency"
+                                value={refundContext?.currency}
+                            />
+                            <ContextRow
+                                label="merchantId"
+                                value={refundContext?.merchantId}
+                            />
+                            <ContextRow
+                                label="capturedAt"
+                                value={formatDateTime(refundContext?.capturedAt)}
                             />
                         </div>
                     </div>
@@ -655,6 +864,9 @@ export default function RefundPage() {
                         <table className="data-table">
                             <thead>
                             <tr>
+                                <th style={{ width: "52px", padding: "12px 12px" }}>
+                                    선택
+                                </th>
                                 <SortHeader
                                     label="refundId"
                                     columnKey="refundId"
@@ -700,37 +912,97 @@ export default function RefundPage() {
                             </tr>
                             </thead>
                             <tbody>
-                            {pagedRefunds.map((row) => (
-                                <tr key={row.refundId}>
-                                    <td
-                                        title={row.refundId}
-                                        style={{ padding: "10px 18px", lineHeight: 1.2 }}
+                            {pagedRefunds.map((row) => {
+                                const isSelected = selectedRefundId === row.refundId;
+
+                                return (
+                                    <tr
+                                        key={row.refundId}
+                                        onClick={() => handleSelectRefund(row)}
+                                        style={{
+                                            background: isSelected
+                                                ? "#eff6ff"
+                                                : "#ffffff",
+                                            cursor: "pointer",
+                                        }}
                                     >
-                                        {formatShortId(row.refundId)}
-                                    </td>
-                                    <td
-                                        title={row.paymentId}
-                                        style={{ padding: "10px 18px", lineHeight: 1.2 }}
-                                    >
-                                        {formatShortId(row.paymentId, 10, 6)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatAmount(row.amount)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        <StatusBadge status={row.status} />
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {getDerivedLabel(row)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatDateTime(row.requestedAt)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatDateTime(row.decidedAt)}
-                                    </td>
-                                </tr>
-                            ))}
+                                        <td
+                                            style={{
+                                                padding: "10px 12px",
+                                                textAlign: "center",
+                                            }}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="selectedRefund"
+                                                checked={isSelected}
+                                                onChange={() => handleSelectRefund(row)}
+                                                onClick={(event) =>
+                                                    event.stopPropagation()
+                                                }
+                                            />
+                                        </td>
+                                        <td
+                                            title={row.refundId}
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatShortId(row.refundId)}
+                                        </td>
+                                        <td
+                                            title={row.paymentId}
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatShortId(row.paymentId, 10, 6)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatAmount(row.amount)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            <StatusBadge status={row.status} />
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {getDerivedLabel(row)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatDateTime(row.requestedAt)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatDateTime(row.decidedAt)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             </tbody>
                         </table>
 

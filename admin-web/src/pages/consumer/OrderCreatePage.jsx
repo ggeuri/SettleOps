@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import { createConsumerOrder } from "../../api/consumerOrderApi.js";
 import OrderCreatePreviewModal from "./OrderCreatePreviewModal.jsx";
 import { getMe } from "../../api/meApi.js";
@@ -14,15 +15,85 @@ const INITIAL_FORM = {
     amount: "",
 };
 
+function isConsumerRole(me) {
+    if (!me) {
+        return false;
+    }
+
+    if (me.role === "CONSUMER" || me.role === "ROLE_CONSUMER") {
+        return true;
+    }
+
+    if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_CONSUMER")) {
+        return true;
+    }
+
+    return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+    return {
+        status: error?.status ?? null,
+        message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            fallbackMessage,
+    };
+}
+
 export default function OrderCreatePage() {
     const [form, setForm] = useState(INITIAL_FORM);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [errorInfo, setErrorInfo] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [previewOpen, setPreviewOpen] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
-    const [meLoading, setMeLoading] = useState(true);
 
     const navigate = useNavigate();
+
+    useEffect(() => {
+        async function loadPage() {
+            try {
+                setLoading(true);
+                setErrorInfo(null);
+                setErrorMessage("");
+                setPreviewOpen(false);
+
+                const response = await getMe();
+
+                if (!isConsumerRole(response)) {
+                    setForm(INITIAL_FORM);
+                    setErrorInfo({
+                        status: 403,
+                        message: "Consumer 권한이 필요한 페이지입니다.",
+                    });
+                    return;
+                }
+
+                const buyerId = response.buyerId ?? "";
+
+                setForm({
+                    merchantId: "",
+                    buyerId,
+                    itemName: "",
+                    amount: "",
+                });
+
+                if (!buyerId) {
+                    setErrorMessage("로그인 사용자 식별자(buyerId)를 확인할 수 없습니다.");
+                }
+            } catch (error) {
+                setForm(INITIAL_FORM);
+                setErrorInfo(
+                    buildErrorInfo(error, "로그인 사용자 정보를 불러오지 못했습니다.")
+                );
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadPage();
+    }, []);
 
     function handleChange(event) {
         const { name, value } = event.target;
@@ -53,6 +124,7 @@ export default function OrderCreatePage() {
         }
 
         const amount = Number(rawAmount);
+
         if (!Number.isSafeInteger(amount) || amount <= 0) {
             return "amount는 1 이상의 정수여야 합니다.";
         }
@@ -64,6 +136,7 @@ export default function OrderCreatePage() {
         event.preventDefault();
 
         const validationMessage = validateForm();
+
         if (validationMessage) {
             setErrorMessage(validationMessage);
             return;
@@ -88,7 +161,6 @@ export default function OrderCreatePage() {
         const amount = Number(form.amount.trim());
 
         setSubmitting(true);
-        setLoading(true);
         setErrorMessage("");
 
         try {
@@ -114,48 +186,67 @@ export default function OrderCreatePage() {
             );
         } finally {
             setSubmitting(false);
-            setLoading(false);
         }
     }
 
-    useEffect(() => {
-        let cancelled = false;
+    if (loading) {
+        return (
+            <PageLayout
+                title="거래 생성"
+                description="seed 거래 최소 스펙만 입력합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">로딩 중</div>
+                    <div className="guard-notice__description">
+                        거래 생성 화면을 불러오는 중입니다.
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
 
-        async function fetchMe() {
-            try {
-                const response = await getMe();
+    if (errorInfo?.status === 401) {
+        return (
+            <PageLayout
+                title="거래 생성"
+                description="seed 거래 최소 스펙만 입력합니다."
+            >
+                <RequireLoginNotice />
+            </PageLayout>
+        );
+    }
 
-                if (cancelled) {
-                    return;
-                }
+    if (errorInfo?.status === 403) {
+        return (
+            <PageLayout
+                title="거래 생성"
+                description="seed 거래 최소 스펙만 입력합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">접근 불가</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
 
-                setForm((prev) => ({
-                    ...prev,
-                    buyerId: response.buyerId ?? "",
-                }));
-
-                if (!response.buyerId) {
-                    setErrorMessage("로그인 사용자 식별자(buyerId)를 확인할 수 없습니다.");
-                }
-            } catch (error) {
-                if (cancelled) {
-                    return;
-                }
-
-                setErrorMessage("로그인 사용자 정보를 불러오지 못했습니다.");
-            } finally {
-                if (!cancelled) {
-                    setMeLoading(false);
-                }
-            }
-        }
-
-        fetchMe();
-
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    if (errorInfo) {
+        return (
+            <PageLayout
+                title="거래 생성"
+                description="seed 거래 최소 스펙만 입력합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">조회 실패</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
 
     return (
         <PageLayout
@@ -216,8 +307,11 @@ export default function OrderCreatePage() {
                     ) : null}
 
                     <div className="button-row">
-                        <ActionButton type="submit" disabled={loading || submitting || meLoading || !form.buyerId}>
-                            {loading ? "생성 중..." : "주문 생성"}
+                        <ActionButton
+                            type="submit"
+                            disabled={submitting || !form.buyerId}
+                        >
+                            {submitting ? "생성 중..." : "주문 생성"}
                         </ActionButton>
                     </div>
                 </form>

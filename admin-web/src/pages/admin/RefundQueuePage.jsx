@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getMe } from "../../api/meApi.js";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
@@ -30,6 +32,30 @@ const INITIAL_SORT = {
     key: "requestedAt",
     direction: "desc",
 };
+
+function isAdminRole(me) {
+    if (!me) return false;
+
+    if (me.role === "ADMIN" || me.role === "ROLE_ADMIN") {
+        return true;
+    }
+
+    if (Array.isArray(me.authorities) && me.authorities.includes("ROLE_ADMIN")) {
+        return true;
+    }
+
+    return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+    return {
+        status: error?.status ?? null,
+        message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            fallbackMessage,
+    };
+}
 
 function getAmountValue(row, primaryKey, fallbackKeys = []) {
     const keys = [primaryKey, ...fallbackKeys];
@@ -64,6 +90,10 @@ export default function RefundQueuePage() {
     const [appliedFilters, setAppliedFilters] = useState(INITIAL_FILTERS);
     const [sortState, setSortState] = useState(INITIAL_SORT);
 
+    const [me, setMe] = useState(null);
+    const [meLoading, setMeLoading] = useState(true);
+    const [meErrorInfo, setMeErrorInfo] = useState(null);
+
     const [refunds, setRefunds] = useState([]);
     const [pageInfo, setPageInfo] = useState({
         page: 0,
@@ -84,59 +114,115 @@ export default function RefundQueuePage() {
     const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
-        loadRefunds(page);
-    }, [page, size, appliedFilters, sortState]);
+        let cancelled = false;
 
-    async function loadRefunds(targetPage = 0) {
-        setLoading(true);
-        setErrorMessage("");
+        async function loadMe() {
+            try {
+                setMeLoading(true);
+                setMeErrorInfo(null);
 
-        try {
-            const response = await getAdminRefunds({
-                status: appliedFilters.status,
-                from: appliedFilters.from,
-                to: appliedFilters.to,
-                keyword: appliedFilters.keyword,
-                sortKey: sortState.key,
-                sortDirection: sortState.direction,
-                page: targetPage,
-                size,
-            });
+                const meData = await getMe();
 
-            const items = Array.isArray(response?.items) ? response.items : [];
-            setRefunds(items);
+                if (cancelled) return;
 
-            setPageInfo({
-                page: response?.page ?? targetPage,
-                size: response?.size ?? size,
-                totalElements: response?.totalElements ?? items.length,
-                totalPages: response?.totalPages ?? 0,
-                hasNext: response?.hasNext ?? false,
-                hasPrevious: response?.hasPrevious ?? false,
-            });
+                setMe(meData);
 
-            if (selectedRefundId) {
-                const exists = items.some((row) => row.refundId === selectedRefundId);
-                if (!exists) {
-                    setSelectedRefundId("");
-                    setComment("");
+                if (!isAdminRole(meData)) {
+                    setMeErrorInfo({
+                        status: 403,
+                        message: "Admin 권한이 필요한 페이지입니다.",
+                    });
+                }
+            } catch (error) {
+                if (cancelled) return;
+
+                setMe(null);
+                setMeErrorInfo(buildErrorInfo(error, "권한 정보를 불러오지 못했습니다."));
+            } finally {
+                if (!cancelled) {
+                    setMeLoading(false);
                 }
             }
-        } catch (error) {
-            setErrorMessage(error?.body?.message || "환불 큐 조회에 실패했습니다.");
-            setRefunds([]);
-            setPageInfo({
-                page: targetPage,
-                size,
-                totalElements: 0,
-                totalPages: 0,
-                hasNext: false,
-                hasPrevious: false,
-            });
-        } finally {
-            setLoading(false);
         }
-    }
+
+        loadMe();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (meLoading || meErrorInfo || !isAdminRole(me)) {
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadRefunds(targetPage = 0) {
+            try {
+                setLoading(true);
+                setErrorMessage("");
+
+                const response = await getAdminRefunds({
+                    status: appliedFilters.status,
+                    from: appliedFilters.from,
+                    to: appliedFilters.to,
+                    keyword: appliedFilters.keyword,
+                    sortKey: sortState.key,
+                    sortDirection: sortState.direction,
+                    page: targetPage,
+                    size,
+                });
+
+                if (cancelled) return;
+
+                const items = Array.isArray(response?.items) ? response.items : [];
+                setRefunds(items);
+
+                setPageInfo({
+                    page: response?.page ?? targetPage,
+                    size: response?.size ?? size,
+                    totalElements: response?.totalElements ?? items.length,
+                    totalPages: response?.totalPages ?? 0,
+                    hasNext: response?.hasNext ?? false,
+                    hasPrevious: response?.hasPrevious ?? false,
+                });
+
+                if (selectedRefundId) {
+                    const exists = items.some((row) => row.refundId === selectedRefundId);
+                    if (!exists) {
+                        setSelectedRefundId("");
+                        setComment("");
+                    }
+                }
+            } catch (error) {
+                if (cancelled) return;
+
+                setErrorMessage(error?.body?.message || "환불 큐 조회에 실패했습니다.");
+                setRefunds([]);
+                setPageInfo({
+                    page,
+                    size,
+                    totalElements: 0,
+                    totalPages: 0,
+                    hasNext: false,
+                    hasPrevious: false,
+                });
+                setSelectedRefundId("");
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadRefunds(page);
+
+        return () => {
+            cancelled = true;
+        };
+    }, [meLoading, meErrorInfo, me, page, size, appliedFilters, sortState, selectedRefundId]);
 
     const selectedRow =
         refunds.find((row) => row.refundId === selectedRefundId) || null;
@@ -149,8 +235,6 @@ export default function RefundQueuePage() {
         String(comment).trim().length > 0;
 
     const canMoveToSettlement = Boolean(selectedRow?.settlementId);
-    const canMoveToTrace =
-        Boolean(lastActionResult?.requestId) || Boolean(selectedRow?.settlementId);
 
     function handleDraftFilterChange(event) {
         const { name, value } = event.target;
@@ -174,10 +258,7 @@ export default function RefundQueuePage() {
 
         if (page !== 0) {
             resetPage();
-            return;
         }
-
-        loadRefunds(0);
     }
 
     function handleSelectRefund(row) {
@@ -213,6 +294,30 @@ export default function RefundQueuePage() {
     function renderSortArrow(sortKey) {
         if (sortState.key !== sortKey) return "↕";
         return sortState.direction === "asc" ? "↑" : "↓";
+    }
+
+    async function reloadCurrentPage() {
+        const response = await getAdminRefunds({
+            status: appliedFilters.status,
+            from: appliedFilters.from,
+            to: appliedFilters.to,
+            keyword: appliedFilters.keyword,
+            sortKey: sortState.key,
+            sortDirection: sortState.direction,
+            page,
+            size,
+        });
+
+        const items = Array.isArray(response?.items) ? response.items : [];
+        setRefunds(items);
+        setPageInfo({
+            page: response?.page ?? page,
+            size: response?.size ?? size,
+            totalElements: response?.totalElements ?? items.length,
+            totalPages: response?.totalPages ?? 0,
+            hasNext: response?.hasNext ?? false,
+            hasPrevious: response?.hasPrevious ?? false,
+        });
     }
 
     async function handleDecision(actionType) {
@@ -253,7 +358,7 @@ export default function RefundQueuePage() {
             });
 
             setComment("");
-            await loadRefunds(page);
+            await reloadCurrentPage();
             setSelectedRefundId("");
         } catch (error) {
             if (error?.body?.reason) {
@@ -267,9 +372,8 @@ export default function RefundQueuePage() {
     }
 
     function moveToSettlementDetail() {
-        const settlementId = selectedRow?.settlementId;
-        if (!settlementId) return;
-        navigate(`/admin/settlements/${settlementId}`);
+        if (!selectedRow?.settlementId) return;
+        navigate(`/admin/settlements/${selectedRow.settlementId}`);
     }
 
     async function moveToTrace() {
@@ -308,52 +412,291 @@ export default function RefundQueuePage() {
         }
     }
 
+    if (meLoading) {
+        return (
+            <PageLayout
+                title="환불 큐"
+                description="A6 환불 큐 단일 선택 승인/거절 화면입니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">로딩 중</div>
+                    <div className="guard-notice__description">
+                        권한 정보를 확인하는 중입니다.
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (meErrorInfo?.status === 401) {
+        return (
+            <PageLayout
+                title="환불 큐"
+                description="A6 환불 큐 단일 선택 승인/거절 화면입니다."
+            >
+                <RequireLoginNotice />
+            </PageLayout>
+        );
+    }
+
+    if (meErrorInfo?.status === 403) {
+        return (
+            <PageLayout
+                title="환불 큐"
+                description="A6 환불 큐 단일 선택 승인/거절 화면입니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">접근 불가</div>
+                    <div className="guard-notice__description">
+                        {meErrorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (meErrorInfo) {
+        return (
+            <PageLayout
+                title="환불 큐"
+                description="A6 환불 큐 단일 선택 승인/거절 화면입니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">조회 실패</div>
+                    <div className="guard-notice__description">
+                        {meErrorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
     return (
         <PageLayout
             title="환불 큐"
             description="A6 환불 큐 단일 선택 승인/거절 화면입니다."
         >
             <style>{`
-                .refund-queue-one-page {
+                .refund-queue-page {
                     display: flex;
                     flex-direction: column;
-                    gap: 18px;
-                }
-
-                .refund-queue-layout {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 18px;
-                }
-
-                .refund-queue-panel {
+                    gap: 14px;
+                    width: 100%;
+                    max-width: 1240px;
+                    margin: 0 auto;
                     min-width: 0;
                 }
 
-                .refund-queue-toolbar {
-                    display: grid;
-                    grid-template-columns: 1fr;
-                    gap: 12px;
-                    align-items: end;
-                    margin-bottom: 12px;
+                .refund-queue-stack {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 14px;
+                    width: 100%;
+                    min-width: 0;
                 }
 
-                .refund-queue-toolbar .form-field__label {
+                .refund-queue-guide {
+                    margin-bottom: 10px;
+                    padding: 10px 12px;
+                    border: 1px solid #d0d5dd;
+                    border-radius: 10px;
+                    background: #f8fafc;
+                    color: #667085;
+                    font-size: 12px;
+                    line-height: 1.45;
+                }
+
+                .refund-queue-result {
+                    margin-bottom: 10px;
+                    padding: 10px 12px;
+                    border: 1px solid #d0d5dd;
+                    border-radius: 10px;
+                    background: #f8fafc;
+                }
+
+                .refund-queue-result-title {
+                    font-size: 13px;
+                    font-weight: 800;
+                    color: #101828;
+                    margin-bottom: 6px;
+                }
+
+                .refund-queue-result-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 8px 12px;
+                    margin-bottom: 10px;
+                }
+
+                .refund-queue-result-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    min-width: 0;
+                    font-size: 13px;
+                }
+
+                .refund-queue-result-item strong {
+                    color: #475467;
+                    font-weight: 700;
+                    flex: 0 0 auto;
+                }
+
+                .refund-queue-result-item span {
+                    color: #101828;
+                    min-width: 0;
+                    word-break: break-word;
+                }
+
+                .refund-queue-card {
+                    border: 1px solid var(--color-border);
+                    border-radius: var(--radius-lg);
+                    background: var(--color-surface);
+                    padding: 12px;
+                    overflow: hidden;
+                }
+
+                .refund-queue-detail-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, minmax(0, 1fr));
+                    gap: 8px 10px;
+                    margin-bottom: 10px;
+                }
+
+                .refund-queue-detail-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    min-width: 0;
+                    padding: 9px 12px;
+                    border: 1px solid var(--color-border);
+                    border-radius: 10px;
+                    background: #fcfcfd;
+                }
+
+                .refund-queue-detail-item--wide {
+                    grid-column: span 2;
+                }
+
+                .refund-queue-detail-item--memo {
+                    grid-column: span 3;
+                }
+
+                .refund-queue-detail-item--compact .refund-queue-detail-value {
+                    white-space: nowrap;
+                }
+
+                .refund-queue-detail-label {
+                    flex: 0 0 88px;
+                    font-size: 12px;
+                    font-weight: 700;
+                    color: #667085;
+                }
+
+                .refund-queue-detail-value {
+                    min-width: 0;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #101828;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    flex-wrap: wrap;
+                }
+
+                .refund-queue-detail-value .copyable-id {
+                    display: inline-grid;
+                    grid-template-columns: minmax(0, 1fr) auto;
+                    align-items: center;
+                    gap: 8px;
+                    width: 100%;
+                    max-width: 100%;
+                }
+
+                .refund-queue-detail-value .copyable-id__text {
+                    min-width: 0;
+                    white-space: normal;
+                    overflow: visible;
+                    text-overflow: unset;
+                    word-break: break-all;
+                    overflow-wrap: anywhere;
+                }
+
+                .refund-queue-detail-value .amount-text {
+                    font-size: 14px;
+                }
+
+                .refund-queue-detail-value .status-badge {
+                    vertical-align: middle;
+                }
+
+                .refund-queue-comment-block {
+                    margin-top: 0;
+                }
+
+                .refund-queue-comment-label {
                     display: block;
                     margin-bottom: 6px;
                     font-size: 13px;
+                    font-weight: 800;
+                    color: #344054;
+                }
+
+                .refund-queue-comment-label .required {
+                    color: #d92d20;
+                }
+
+                .refund-queue-comment-textarea {
+                    width: 100%;
+                    min-height: 68px;
+                    resize: vertical;
+                    box-sizing: border-box;
+                }
+
+                .refund-queue-actions {
+                    display: grid;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 8px;
+                    margin-top: 10px;
+                }
+
+                .refund-queue-meta-note {
+                    margin-top: 8px;
+                    font-size: 12px;
+                    color: #667085;
+                    line-height: 1.45;
+                }
+
+                .refund-queue-toolbar {
+                    display: flex;
+                    align-items: end;
+                    justify-content: space-between;
+                    gap: 10px;
+                    margin-bottom: 10px;
+                    flex-wrap: wrap;
+                }
+
+                .refund-queue-search {
+                    flex: 1 1 340px;
+                    max-width: 480px;
+                }
+
+                .refund-queue-search .form-field__label {
+                    display: block;
+                    margin-bottom: 6px;
+                    font-size: 12px;
                     font-weight: 700;
                     color: #475467;
                 }
 
-                .refund-queue-toolbar .input {
-                    width: 80%;
+                .refund-queue-search .input {
+                    width: 100%;
                 }
 
                 .refund-queue-toolbar-actions {
                     display: flex;
                     gap: 8px;
-                    margin-bottom: 14px;
+                    flex: 0 0 auto;
                 }
 
                 .refund-queue-table-wrap {
@@ -363,11 +706,12 @@ export default function RefundQueuePage() {
                     border: 1px solid var(--color-border);
                     border-radius: var(--radius-lg);
                     background: var(--color-surface);
+                    box-sizing: border-box;
                 }
 
                 .refund-queue-table {
                     width: 100%;
-                    min-width: 1280px;
+                    min-width: 940px;
                     border-collapse: separate;
                     border-spacing: 0;
                     table-layout: fixed;
@@ -375,50 +719,18 @@ export default function RefundQueuePage() {
 
                 .refund-queue-table th,
                 .refund-queue-table td {
-                    padding: 11px 12px;
+                    padding: 9px 10px;
                     border-bottom: 1px solid var(--color-border);
                     vertical-align: middle;
-                }
-
-                .refund-queue-table th {
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
-                }
-
-                .refund-queue-table td {
-                    overflow: hidden;
                 }
 
                 .refund-queue-table thead th {
                     background: #f8fafc;
                     color: #475467;
-                    font-size: 13px;
-                    font-weight: 700;
-                    text-align: left;
-                }
-
-                .refund-queue-sort-button {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    padding: 0;
-                    border: 0;
-                    background: transparent;
-                    color: inherit;
-                    font: inherit;
-                    font-weight: 700;
-                    cursor: pointer;
-                }
-
-                .refund-queue-sort-button:hover {
-                    color: #101828;
-                }
-
-                .refund-queue-sort-arrow {
                     font-size: 12px;
-                    color: #667085;
-                    line-height: 1;
+                    font-weight: 800;
+                    text-align: left;
+                    white-space: nowrap;
                 }
 
                 .refund-queue-table tbody tr {
@@ -434,40 +746,46 @@ export default function RefundQueuePage() {
                     background: #eff6ff;
                 }
 
+                .refund-queue-sort-button {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 0;
+                    border: 0;
+                    background: transparent;
+                    color: inherit;
+                    font: inherit;
+                    font-weight: 800;
+                    cursor: pointer;
+                }
+
+                .refund-queue-sort-arrow {
+                    font-size: 11px;
+                    color: #667085;
+                    line-height: 1;
+                }
+
                 .refund-queue-radio-col {
-                    width: 72px;
+                    width: 58px;
                 }
 
-                .refund-queue-id-col {
-                    width: 17%;
-                }
-
-                .refund-queue-payment-col {
-                    width: 17%;
-                }
-
+                .refund-queue-id-col,
                 .refund-queue-settlement-col {
-                    width: 17%;
+                    width: 190px;
                 }
 
                 .refund-queue-merchant-col {
-                    width: 12%;
+                    width: 140px;
                 }
 
-                .refund-queue-amount-col {
-                    width: 10%;
-                }
-
-                .refund-queue-captured-col {
-                    width: 10%;
-                }
-
+                .refund-queue-amount-col,
+                .refund-queue-captured-col,
                 .refund-queue-refundable-col {
-                    width: 10%;
+                    width: 110px;
                 }
 
                 .refund-queue-datetime-col {
-                    width: 12%;
+                    width: 150px;
                     color: #667085;
                     font-variant-numeric: tabular-nums;
                 }
@@ -484,6 +802,24 @@ export default function RefundQueuePage() {
                     cursor: pointer;
                 }
 
+                .refund-queue-table-cell-copy .copyable-id {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    max-width: 100%;
+                    flex-wrap: nowrap;
+                    white-space: nowrap;
+                }
+
+                .refund-queue-table-cell-copy .copyable-id__text {
+                    display: inline-block;
+                    min-width: 0;
+                    max-width: calc(100% - 56px);
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
                 .refund-queue-note {
                     margin-top: 8px;
                     font-size: 12px;
@@ -493,601 +829,403 @@ export default function RefundQueuePage() {
                 .refund-queue-pagination {
                     display: flex;
                     justify-content: center;
-                    margin-top: 14px;
-                }
-
-                .refund-queue-detail-card {
-                    border: 1px solid var(--color-border);
-                    border-radius: var(--radius-lg);
-                    background: var(--color-surface);
-                    padding: 14px;
-                }
-
-                .refund-queue-guide {
-                    padding: 9px 12px;
-                    border: 1px solid #d0d5dd;
-                    border-radius: 10px;
-                    background: #f8fafc;
-                    color: #667085;
-                    font-size: 12px;
-                    line-height: 1.4;
-                    margin-bottom: 12px;
-                }
-
-                .refund-queue-result {
-                    margin-bottom: 12px;
-                    padding: 10px 12px;
-                    border: 1px solid #d0d5dd;
-                    border-radius: 10px;
-                    background: #f8fafc;
-                }
-
-                .refund-queue-summary-grid {
-                    display: grid;
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
-                    gap: 10px;
-                    margin-bottom: 10px;
-                }
-
-                .refund-queue-summary-card {
-                    border: 1px solid var(--color-border);
-                    border-radius: 10px;
-                    background: #fcfcfd;
-                    padding: 10px 12px;
-                    min-width: 0;
-                }
-
-                .refund-queue-summary-label {
-                    font-size: 11px;
-                    color: #667085;
-                    margin-bottom: 4px;
-                }
-
-                .refund-queue-summary-value {
-                    font-size: 14px;
-                    font-weight: 700;
-                    color: #101828;
-                    min-width: 0;
-                    word-break: break-word;
-                    overflow-wrap: anywhere;
-                }
-
-                .refund-queue-summary-value .copyable-id {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    max-width: 100%;
-                    flex-wrap: wrap;
-                }
-
-                .refund-queue-summary-value .copyable-id__text {
-                    min-width: 0;
-                    max-width: 100%;
-                    white-space: normal;
-                    overflow: visible;
-                    text-overflow: unset;
-                    word-break: break-word;
-                    overflow-wrap: anywhere;
-                }
-
-                .refund-queue-inline-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, minmax(0, 1fr));
-                    gap: 8px;
-                    margin-bottom: 10px;
-                }
-
-                .refund-queue-inline-item {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    min-width: 0;
-                    border: 1px solid var(--color-border);
-                    border-radius: 10px;
-                    background: #fcfcfd;
-                    padding: 9px 12px;
-                }
-
-                .refund-queue-inline-item--wide {
-                    grid-column: 1 / -1;
-                }
-
-                .refund-queue-inline-label {
-                    flex: 0 0 auto;
-                    font-size: 12px;
-                    color: #667085;
-                    font-weight: 600;
-                }
-
-                .refund-queue-inline-value {
-                    min-width: 0;
-                    font-size: 13px;
-                    color: #101828;
-                    font-weight: 600;
-                    word-break: break-word;
-                    overflow-wrap: anywhere;
-                }
-
-                .refund-queue-inline-value .amount-text {
-                    font-size: 13px;
-                }
-
-                .refund-queue-inline-value .status-badge {
-                    vertical-align: middle;
-                }
-
-                .refund-queue-comment-block {
-                    margin-top: 0;
-                }
-
-                .refund-queue-comment-label {
-                    display: block;
-                    margin-bottom: 8px;
-                    font-size: 13px;
-                    font-weight: 700;
-                    color: #344054;
-                }
-
-                .refund-queue-comment-label .required {
-                    color: #d92d20;
-                }
-
-                .refund-queue-comment-textarea {
-                    width: 100%;
-                    min-height: 72px;
-                    resize: vertical;
-                    box-sizing: border-box;
-                }
-
-                .refund-queue-detail-actions {
-                    display: flex;
-                    gap: 8px;
-                    align-items: center;
                     margin-top: 12px;
-                    flex-wrap: wrap;
-                }
-
-                .refund-queue-detail-actions > * {
-                    flex: 1 1 0;
-                    min-width: 0;
-                }
-
-                .refund-queue-meta-note {
-                    margin-top: 10px;
-                    font-size: 12px;
-                    color: #667085;
-                    white-space: pre-wrap;
-                    line-height: 1.5;
-                }
-
-                .refund-queue-table-cell-copy .copyable-id {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 6px;
-                    max-width: 100%;
-                }
-
-                .refund-queue-table-cell-copy .copyable-id__text {
-                    display: inline-block;
-                    max-width: 100%;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    white-space: nowrap;
                 }
 
                 @media (max-width: 1200px) {
-                    .refund-queue-summary-grid,
-                    .refund-queue-inline-grid {
+                    .refund-queue-detail-grid {
                         grid-template-columns: repeat(2, minmax(0, 1fr));
                     }
 
-                    .refund-queue-inline-item--wide {
+                    .refund-queue-detail-item--wide,
+                    .refund-queue-detail-item--memo {
                         grid-column: 1 / -1;
                     }
                 }
 
+                @media (max-width: 1080px) {
+                    .refund-queue-result-grid,
+                    .refund-queue-actions {
+                        grid-template-columns: 1fr;
+                    }
+                }
+
                 @media (max-width: 768px) {
-                    .refund-queue-toolbar-actions,
-                    .refund-queue-detail-actions {
-                        flex-direction: column;
+                    .refund-queue-toolbar {
+                        align-items: stretch;
                     }
 
-                    .refund-queue-detail-actions > * {
+                    .refund-queue-toolbar-actions {
                         width: 100%;
                     }
 
-                    .refund-queue-summary-grid,
-                    .refund-queue-inline-grid {
+                    .refund-queue-toolbar-actions > * {
+                        flex: 1 1 0;
+                    }
+
+                    .refund-queue-detail-grid {
                         grid-template-columns: 1fr;
                     }
 
-                    .refund-queue-inline-item,
-                    .refund-queue-inline-item--wide {
+                    .refund-queue-detail-item,
+                    .refund-queue-detail-item--wide,
+                    .refund-queue-detail-item--memo {
                         grid-column: auto;
+                    }
+
+                    .refund-queue-table {
+                        min-width: 900px;
                     }
                 }
             `}</style>
 
-            <div className="refund-queue-one-page">
+            <div className="refund-queue-page">
                 {errorMessage ? <ErrorState message={errorMessage} /> : null}
 
-                <div className="refund-queue-layout">
-                    <div className="refund-queue-panel">
-                        <SectionCard title="선택 상세/결정">
-                            <div className="refund-queue-guide">
-                                선택된 1건을 승인/거절합니다. 이미 결정된 건 재호출은
-                                no-op 200(+status, decidedAt) 규격입니다.
-                            </div>
+                <div className="refund-queue-stack">
+                    <SectionCard title="선택 상세/결정">
+                        <div className="refund-queue-guide">
+                            선택된 1건을 승인/거절합니다. 이미 결정된 건 재호출은
+                            no-op 200(+status, decidedAt) 규격입니다.
+                        </div>
 
-                            {lastActionResult ? (
-                                <div className="refund-queue-result">
-                                    <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                                        처리 결과
-                                    </div>
-                                    <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-                                        <div>refundId: {lastActionResult.refundId}</div>
-                                        <div>status: {lastActionResult.status || "-"}</div>
-                                        <div>decidedAt: {renderDate(lastActionResult.decidedAt)}</div>
-                                    </div>
+                        {lastActionResult ? (
+                            <div className="refund-queue-result">
+                                <div className="refund-queue-result-title">처리 결과</div>
 
-                                    <div className="refund-queue-detail-actions">
-                                        <ActionButton
-                                            type="button"
-                                            variant="secondary"
-                                            onClick={moveToTrace}
-                                            disabled={!lastActionResult.requestId || traceLoading}
-                                        >
-                                            {traceLoading ? "조회 중..." : "Trace로 보기(A1)"}
-                                        </ActionButton>
+                                <div className="refund-queue-result-grid">
+                                    <div className="refund-queue-result-item">
+                                        <strong>refundId</strong>
+                                        <span>{lastActionResult.refundId}</span>
                                     </div>
-                                </div>
-                            ) : null}
-
-                            <div className="refund-queue-detail-card">
-                                <div className="refund-queue-summary-grid">
-                                    <div className="refund-queue-summary-card">
-                                        <div className="refund-queue-summary-label">refundId</div>
-                                        <div className="refund-queue-summary-value">
-                                            {selectedRow ? (
-                                                <CopyableId value={selectedRow.refundId} short />
-                                            ) : (
-                                                "-"
-                                            )}
-                                        </div>
+                                    <div className="refund-queue-result-item">
+                                        <strong>status</strong>
+                                        <span>{lastActionResult.status || "-"}</span>
                                     </div>
-
-                                    <div className="refund-queue-summary-card">
-                                        <div className="refund-queue-summary-label">paymentId</div>
-                                        <div className="refund-queue-summary-value">
-                                            {selectedRow ? (
-                                                <CopyableId value={selectedRow.paymentId} short />
-                                            ) : (
-                                                "-"
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="refund-queue-summary-card">
-                                        <div className="refund-queue-summary-label">settlementId</div>
-                                        <div className="refund-queue-summary-value">
-                                            {selectedRow?.settlementId ? (
-                                                <CopyableId value={selectedRow.settlementId} short />
-                                            ) : (
-                                                "-"
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="refund-queue-summary-card">
-                                        <div className="refund-queue-summary-label">merchantId</div>
-                                        <div className="refund-queue-summary-value">
-                                            {renderText(selectedRow?.merchantId)}
-                                        </div>
+                                    <div className="refund-queue-result-item">
+                                        <strong>decidedAt</strong>
+                                        <span>{renderDate(lastActionResult.decidedAt)}</span>
                                     </div>
                                 </div>
 
-                                <div className="refund-queue-inline-grid">
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">status</span>
-                                        <span className="refund-queue-inline-value">
-                                            {selectedRow ? <StatusBadge status={selectedRow.status} /> : "-"}
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">requestedAt</span>
-                                        <span className="refund-queue-inline-value">
-                                            {renderDate(selectedRow?.requestedAt)}
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">decidedAt</span>
-                                        <span className="refund-queue-inline-value">
-                                            {renderDate(selectedRow?.decidedAt)}
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">captured</span>
-                                        <span className="refund-queue-inline-value">
-                                            <AmountText value={getAmountValue(selectedRow, "capturedAmount")} />
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">refundable</span>
-                                        <span className="refund-queue-inline-value">
-                                            <AmountText value={getAmountValue(selectedRow, "refundableAmount")} />
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item">
-                                        <span className="refund-queue-inline-label">refund</span>
-                                        <span className="refund-queue-inline-value">
-                                            <AmountText
-                                                value={getAmountValue(selectedRow, "amount", ["refundAmount"])}
-                                            />
-                                        </span>
-                                    </div>
-
-                                    <div className="refund-queue-inline-item refund-queue-inline-item--wide">
-                                        <span className="refund-queue-inline-label">요청 메모</span>
-                                        <span className="refund-queue-inline-value">
-                                            {renderText(selectedRow?.reasonText)}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="refund-queue-comment-block">
-                                    <label className="refund-queue-comment-label">
-                                        운영 메모(comment) <span className="required">(필수)</span>
-                                    </label>
-                                    <textarea
-                                        className="textarea refund-queue-comment-textarea"
-                                        value={comment}
-                                        onChange={(event) => setComment(event.target.value)}
-                                        placeholder="승인/거절 사유를 입력하세요."
-                                        disabled={acting || selectedStatus !== "REQUESTED"}
-                                    />
-                                </div>
-
-                                <div className="refund-queue-detail-actions">
+                                <div className="refund-queue-actions" style={{ marginTop: 0 }}>
                                     <ActionButton
                                         type="button"
                                         variant="secondary"
-                                        disabled={!canMoveToSettlement}
-                                        onClick={moveToSettlementDetail}
-                                    >
-                                        정산 상세(A4)
-                                    </ActionButton>
-
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        disabled={!canMoveToTrace || traceLoading}
                                         onClick={moveToTrace}
+                                        disabled={!lastActionResult.requestId || traceLoading}
                                     >
                                         {traceLoading ? "조회 중..." : "Trace로 보기(A1)"}
                                     </ActionButton>
-
-                                    <ActionButton
-                                        type="button"
-                                        disabled={!canAct}
-                                        onClick={() => handleDecision("approve")}
-                                    >
-                                        {acting ? "처리 중..." : "승인(Approve)"}
-                                    </ActionButton>
-
-                                    <ActionButton
-                                        type="button"
-                                        variant="danger"
-                                        disabled={!canAct}
-                                        onClick={() => handleDecision("reject")}
-                                    >
-                                        {acting ? "처리 중..." : "거절(Reject)"}
-                                    </ActionButton>
-                                </div>
-
-                                <div className="refund-queue-meta-note">
-                                    {`* 409 포맷: {"code":"RULE_VIOLATION","reason":"INSUFFICIENT_REFUNDABLE"}`}
                                 </div>
                             </div>
-                        </SectionCard>
-                    </div>
+                        ) : null}
 
-                    <div className="refund-queue-panel">
-                        <SectionCard title="대기 큐(REQUESTED)">
-                            <form onSubmit={handleSearch}>
-                                <div className="refund-queue-toolbar">
-                                    <div>
-                                        <label className="form-field__label">
-                                            키워드(환불ID/결제ID)
-                                        </label>
-                                        <input
-                                            className="input"
-                                            type="text"
-                                            name="keyword"
-                                            value={draftFilters.keyword}
-                                            onChange={handleDraftFilterChange}
-                                            placeholder="예: RFD-20001 또는 PAY-90011"
-                                        />
-                                    </div>
-
-                                    <div className="refund-queue-toolbar-actions">
-                                        <ActionButton type="submit" disabled={loading}>
-                                            조회
-                                        </ActionButton>
-                                        <ActionButton
-                                            type="button"
-                                            variant="secondary"
-                                            onClick={handleClearSelection}
-                                            disabled={!selectedRefundId && !comment}
-                                        >
-                                            선택 해제
-                                        </ActionButton>
-                                    </div>
+                        <div className="refund-queue-card">
+                            <div className="refund-queue-detail-grid">
+                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
+                                    <span className="refund-queue-detail-label">refundId</span>
+                                    <span className="refund-queue-detail-value">
+                                        {selectedRow ? <CopyableId value={selectedRow.refundId} /> : "-"}
+                                    </span>
                                 </div>
-                            </form>
 
-                            {loading ? (
-                                <LoadingBlock
-                                    title="로딩 중"
-                                    description="환불 대기 큐를 불러오고 있습니다."
-                                />
-                            ) : refunds.length === 0 ? (
-                                <EmptyState
-                                    title="대기 환불 없음"
-                                    description="REQUESTED 상태의 환불이 없습니다."
-                                />
-                            ) : (
-                                <>
-                                    <div className="refund-queue-table-wrap">
-                                        <table className="refund-queue-table">
-                                            <thead>
-                                            <tr>
-                                                <th className="refund-queue-radio-col">선택</th>
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">captured</span>
+                                    <span className="refund-queue-detail-value">
+                                        <AmountText value={getAmountValue(selectedRow, "capturedAmount")} />
+                                    </span>
+                                </div>
 
-                                                <th className="refund-queue-id-col">
-                                                    <button
-                                                        type="button"
-                                                        className="refund-queue-sort-button"
-                                                        onClick={() => handleSort("refundId")}
-                                                    >
-                                                        refundId
-                                                        <span className="refund-queue-sort-arrow">
+                                <div className="refund-queue-detail-item">
+                                    <span className="refund-queue-detail-label">merchantId</span>
+                                    <span className="refund-queue-detail-value">
+                                        {renderText(selectedRow?.merchantId)}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
+                                    <span className="refund-queue-detail-label">paymentId</span>
+                                    <span className="refund-queue-detail-value">
+                                        {selectedRow ? <CopyableId value={selectedRow.paymentId} /> : "-"}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">refund</span>
+                                    <span className="refund-queue-detail-value">
+                                        <AmountText
+                                            value={getAmountValue(selectedRow, "amount", ["refundAmount"])}
+                                        />
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">status</span>
+                                    <span className="refund-queue-detail-value">
+                                        {selectedRow ? <StatusBadge status={selectedRow.status} /> : "-"}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
+                                    <span className="refund-queue-detail-label">settlementId</span>
+                                    <span className="refund-queue-detail-value">
+                                        {selectedRow?.settlementId ? (
+                                            <CopyableId value={selectedRow.settlementId} />
+                                        ) : (
+                                            "-"
+                                        )}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">refundable</span>
+                                    <span className="refund-queue-detail-value">
+                                        <AmountText value={getAmountValue(selectedRow, "refundableAmount")} />
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">requestedAt</span>
+                                    <span className="refund-queue-detail-value">
+                                        {renderDate(selectedRow?.requestedAt)}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--memo">
+                                    <span className="refund-queue-detail-label">요청 메모</span>
+                                    <span className="refund-queue-detail-value">
+                                        {renderText(selectedRow?.reasonText)}
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                    <span className="refund-queue-detail-label">decidedAt</span>
+                                    <span className="refund-queue-detail-value">
+                                        {renderDate(selectedRow?.decidedAt)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="refund-queue-comment-block">
+                                <label className="refund-queue-comment-label">
+                                    운영 메모(comment) <span className="required">(필수)</span>
+                                </label>
+                                <textarea
+                                    className="textarea refund-queue-comment-textarea"
+                                    value={comment}
+                                    onChange={(event) => setComment(event.target.value)}
+                                    placeholder="승인/거절 사유를 입력하세요."
+                                    disabled={acting || selectedStatus !== "REQUESTED"}
+                                />
+                            </div>
+
+                            <div className="refund-queue-actions">
+                                <ActionButton
+                                    type="button"
+                                    variant="secondary"
+                                    disabled={!canMoveToSettlement}
+                                    onClick={moveToSettlementDetail}
+                                >
+                                    정산 상세(A4)
+                                </ActionButton>
+
+                                <ActionButton
+                                    type="button"
+                                    disabled={!canAct}
+                                    onClick={() => handleDecision("approve")}
+                                >
+                                    {acting ? "처리 중..." : "승인(Approve)"}
+                                </ActionButton>
+
+                                <ActionButton
+                                    type="button"
+                                    variant="danger"
+                                    disabled={!canAct}
+                                    onClick={() => handleDecision("reject")}
+                                >
+                                    {acting ? "처리 중..." : "거절(Reject)"}
+                                </ActionButton>
+                            </div>
+
+                            <div className="refund-queue-meta-note">
+                                * 409 포맷: {"{`{\"code\":\"RULE_VIOLATION\",\"reason\":\"INSUFFICIENT_REFUNDABLE\"}`}"}
+                            </div>
+                        </div>
+                    </SectionCard>
+
+                    <SectionCard title="대기 큐(REQUESTED)">
+                        <form onSubmit={handleSearch}>
+                            <div className="refund-queue-toolbar">
+                                <div className="refund-queue-search">
+                                    <label className="form-field__label">
+                                        키워드(환불ID/결제ID)
+                                    </label>
+                                    <input
+                                        className="input"
+                                        type="text"
+                                        name="keyword"
+                                        value={draftFilters.keyword}
+                                        onChange={handleDraftFilterChange}
+                                        placeholder="예: RFD-20001 또는 PAY-90011"
+                                    />
+                                </div>
+
+                                <div className="refund-queue-toolbar-actions">
+                                    <ActionButton type="submit" disabled={loading}>
+                                        조회
+                                    </ActionButton>
+                                    <ActionButton
+                                        type="button"
+                                        variant="secondary"
+                                        onClick={handleClearSelection}
+                                        disabled={!selectedRefundId && !comment}
+                                    >
+                                        선택 해제
+                                    </ActionButton>
+                                </div>
+                            </div>
+                        </form>
+
+                        {loading ? (
+                            <LoadingBlock
+                                title="로딩 중"
+                                description="환불 대기 큐를 불러오고 있습니다."
+                            />
+                        ) : refunds.length === 0 ? (
+                            <EmptyState
+                                title="대기 환불 없음"
+                                description="REQUESTED 상태의 환불이 없습니다."
+                            />
+                        ) : (
+                            <>
+                                <div className="refund-queue-table-wrap">
+                                    <table className="refund-queue-table">
+                                        <thead>
+                                        <tr>
+                                            <th className="refund-queue-radio-col">선택</th>
+
+                                            <th className="refund-queue-id-col">
+                                                <button
+                                                    type="button"
+                                                    className="refund-queue-sort-button"
+                                                    onClick={() => handleSort("refundId")}
+                                                >
+                                                    refundId
+                                                    <span className="refund-queue-sort-arrow">
                                                             {renderSortArrow("refundId")}
                                                         </span>
-                                                    </button>
-                                                </th>
+                                                </button>
+                                            </th>
 
-                                                <th className="refund-queue-payment-col">
-                                                    <button
-                                                        type="button"
-                                                        className="refund-queue-sort-button"
-                                                        onClick={() => handleSort("paymentId")}
-                                                    >
-                                                        paymentId
-                                                        <span className="refund-queue-sort-arrow">
-                                                            {renderSortArrow("paymentId")}
-                                                        </span>
-                                                    </button>
-                                                </th>
+                                            <th className="refund-queue-settlement-col">settlementId</th>
+                                            <th className="refund-queue-merchant-col">merchantId</th>
 
-                                                <th className="refund-queue-settlement-col">settlementId</th>
-
-                                                <th className="refund-queue-merchant-col">merchantId</th>
-
-                                                <th className="refund-queue-amount-col">
-                                                    <button
-                                                        type="button"
-                                                        className="refund-queue-sort-button"
-                                                        onClick={() => handleSort("amount")}
-                                                    >
-                                                        amount
-                                                        <span className="refund-queue-sort-arrow">
+                                            <th className="refund-queue-amount-col">
+                                                <button
+                                                    type="button"
+                                                    className="refund-queue-sort-button"
+                                                    onClick={() => handleSort("amount")}
+                                                >
+                                                    amount
+                                                    <span className="refund-queue-sort-arrow">
                                                             {renderSortArrow("amount")}
                                                         </span>
-                                                    </button>
-                                                </th>
+                                                </button>
+                                            </th>
 
-                                                <th className="refund-queue-captured-col">captured</th>
-                                                <th className="refund-queue-refundable-col">refundable</th>
+                                            <th className="refund-queue-captured-col">captured</th>
+                                            <th className="refund-queue-refundable-col">refundable</th>
 
-                                                <th className="refund-queue-datetime-col">
-                                                    <button
-                                                        type="button"
-                                                        className="refund-queue-sort-button"
-                                                        onClick={() => handleSort("requestedAt")}
-                                                    >
-                                                        requestedAt
-                                                        <span className="refund-queue-sort-arrow">
+                                            <th className="refund-queue-datetime-col">
+                                                <button
+                                                    type="button"
+                                                    className="refund-queue-sort-button"
+                                                    onClick={() => handleSort("requestedAt")}
+                                                >
+                                                    requestedAt
+                                                    <span className="refund-queue-sort-arrow">
                                                             {renderSortArrow("requestedAt")}
                                                         </span>
-                                                    </button>
-                                                </th>
-                                            </tr>
-                                            </thead>
+                                                </button>
+                                            </th>
+                                        </tr>
+                                        </thead>
 
-                                            <tbody>
-                                            {refunds.map((row) => {
-                                                const isSelected = row.refundId === selectedRefundId;
+                                        <tbody>
+                                        {refunds.map((row) => {
+                                            const isSelected = row.refundId === selectedRefundId;
 
-                                                return (
-                                                    <tr
-                                                        key={row.refundId}
-                                                        className={isSelected ? "is-selected" : ""}
-                                                        onClick={() => handleSelectRefund(row)}
-                                                    >
-                                                        <td className="refund-queue-radio-col">
-                                                            <div className="refund-queue-radio">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="refundSelection"
-                                                                    checked={isSelected}
-                                                                    onChange={() => handleSelectRefund(row)}
-                                                                    onClick={(event) => event.stopPropagation()}
-                                                                    aria-label={`${row.refundId} 선택`}
-                                                                />
-                                                            </div>
-                                                        </td>
-
-                                                        <td className="refund-queue-id-col refund-queue-table-cell-copy">
-                                                            <CopyableId value={row.refundId} short />
-                                                        </td>
-
-                                                        <td className="refund-queue-payment-col refund-queue-table-cell-copy">
-                                                            <CopyableId value={row.paymentId} short />
-                                                        </td>
-
-                                                        <td className="refund-queue-settlement-col refund-queue-table-cell-copy">
-                                                            <CopyableId value={row.settlementId} short />
-                                                        </td>
-
-                                                        <td className="refund-queue-merchant-col">
-                                                            {renderText(row.merchantId)}
-                                                        </td>
-
-                                                        <td className="refund-queue-amount-col">
-                                                            <AmountText
-                                                                value={getAmountValue(row, "amount", ["refundAmount"])}
+                                            return (
+                                                <tr
+                                                    key={row.refundId}
+                                                    className={isSelected ? "is-selected" : ""}
+                                                    onClick={() => handleSelectRefund(row)}
+                                                >
+                                                    <td className="refund-queue-radio-col">
+                                                        <div className="refund-queue-radio">
+                                                            <input
+                                                                type="radio"
+                                                                name="refundSelection"
+                                                                checked={isSelected}
+                                                                onChange={() => handleSelectRefund(row)}
+                                                                onClick={(event) => event.stopPropagation()}
+                                                                aria-label={`${row.refundId} 선택`}
                                                             />
-                                                        </td>
+                                                        </div>
+                                                    </td>
 
-                                                        <td className="refund-queue-captured-col">
-                                                            <AmountText value={getAmountValue(row, "capturedAmount")} />
-                                                        </td>
+                                                    <td className="refund-queue-id-col refund-queue-table-cell-copy">
+                                                        <CopyableId value={row.refundId} short />
+                                                    </td>
 
-                                                        <td className="refund-queue-refundable-col">
-                                                            <AmountText value={getAmountValue(row, "refundableAmount")} />
-                                                        </td>
+                                                    <td className="refund-queue-settlement-col refund-queue-table-cell-copy">
+                                                        <CopyableId value={row.settlementId} short />
+                                                    </td>
 
-                                                        <td className="refund-queue-datetime-col">
-                                                            {renderDate(row.requestedAt)}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                                    <td className="refund-queue-merchant-col">
+                                                        {renderText(row.merchantId)}
+                                                    </td>
 
-                                    <div className="refund-queue-note">
-                                        * 라디오를 직접 클릭해도 되고, 행 아무데나 클릭해도 선택됩니다.
-                                    </div>
+                                                    <td className="refund-queue-amount-col">
+                                                        <AmountText
+                                                            value={getAmountValue(row, "amount", ["refundAmount"])}
+                                                        />
+                                                    </td>
 
-                                    <div className="refund-queue-pagination">
-                                        <Pagination
-                                            page={pageInfo.page}
-                                            totalPages={pageInfo.totalPages}
-                                            onPageChange={setPage}
-                                            disabled={loading}
-                                        />
-                                    </div>
-                                </>
-                            )}
-                        </SectionCard>
-                    </div>
+                                                    <td className="refund-queue-captured-col">
+                                                        <AmountText value={getAmountValue(row, "capturedAmount")} />
+                                                    </td>
+
+                                                    <td className="refund-queue-refundable-col">
+                                                        <AmountText value={getAmountValue(row, "refundableAmount")} />
+                                                    </td>
+
+                                                    <td className="refund-queue-datetime-col">
+                                                        {renderDate(row.requestedAt)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="refund-queue-note">
+                                    * 라디오를 직접 클릭해도 되고, 행 아무데나 클릭해도 선택됩니다.
+                                </div>
+
+                                <div className="refund-queue-pagination">
+                                    <Pagination
+                                        page={pageInfo.page}
+                                        totalPages={pageInfo.totalPages}
+                                        onPageChange={setPage}
+                                        disabled={loading}
+                                    />
+                                </div>
+                            </>
+                        )}
+                    </SectionCard>
                 </div>
             </div>
         </PageLayout>
