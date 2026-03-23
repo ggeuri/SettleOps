@@ -1,5 +1,3 @@
-// /admin-web/src/pages/merchant/SettlementDetailPage.jsx
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import axios from "axios";
@@ -8,6 +6,7 @@ import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
+import InfoRow from "../../components/display/InfoRow.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
 
 function formatAmount(value) {
@@ -57,48 +56,12 @@ function extractMerchantId(payload) {
   );
 }
 
-function InlineCopyValue({ value }) {
+function CopyableValue({ value }) {
   if (!value || value === "-") {
     return <span>-</span>;
   }
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        maxWidth: "100%",
-        verticalAlign: "middle",
-      }}
-    >
-      <CopyableId value={value} short />
-    </span>
-  );
-}
-
-function DetailRow({ label, value }) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "160px 1fr",
-        gap: "12px",
-        alignItems: "start",
-        padding: "6px 0",
-      }}
-    >
-      <div
-        style={{
-          color: "var(--color-text-muted, #6b7280)",
-          fontWeight: 600,
-          lineHeight: 1.5,
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ lineHeight: 1.5, minWidth: 0 }}>{value}</div>
-    </div>
-  );
+  return <CopyableId value={value} short />;
 }
 
 export default function SettlementDetailPage() {
@@ -257,7 +220,7 @@ export default function SettlementDetailPage() {
             <div className="card__body">
               <div className="summary-card__label">settlementId</div>
               <div className="summary-card__value">
-                <InlineCopyValue value={currentSettlementId} />
+                <CopyableValue value={currentSettlementId} />
               </div>
             </div>
           </div>
@@ -275,7 +238,7 @@ export default function SettlementDetailPage() {
             <div className="card__body">
               <div className="summary-card__label">merchantId</div>
               <div className="summary-card__value">
-                <InlineCopyValue value={currentMerchantId} />
+                <CopyableValue value={currentMerchantId} />
               </div>
             </div>
           </div>
@@ -291,30 +254,26 @@ export default function SettlementDetailPage() {
 
       <div className="page-grid-2">
         <SectionCard title="정산 상세">
-          <DetailRow label="baseDate" value={baseDate} />
-          <DetailRow label="gross" value={formatAmount(gross)} />
-          <DetailRow label="fee" value={formatAmount(fee)} />
-          <DetailRow label="vat" value={formatAmount(vat)} />
-          <DetailRow label="net" value={formatAmount(net)} />
+          <InfoRow label="baseDate">{baseDate}</InfoRow>
+          <InfoRow label="gross">{formatAmount(gross)}</InfoRow>
+          <InfoRow label="fee">{formatAmount(fee)}</InfoRow>
+          <InfoRow label="vat">{formatAmount(vat)}</InfoRow>
+          <InfoRow label="net">{formatAmount(net)}</InfoRow>
         </SectionCard>
 
         <SectionCard title="정산 상태 참고">
-          <DetailRow
-            label="hold"
-            value={hold?.status ? <StatusBadge status={hold.status} /> : "없음"}
-          />
-          <DetailRow
-            label="approved refund"
-            value={hasApprovedRefund(refund) ? "예" : "아니오"}
-          />
-          <DetailRow
-            label="adjustment pending"
-            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
-          />
-          <DetailRow
-            label="refund status"
-            value={<StatusBadge status={refundStatus} />}
-          />
+          <InfoRow label="hold">
+            {hold?.status ? <StatusBadge status={hold.status} /> : "없음"}
+          </InfoRow>
+          <InfoRow label="approved refund">
+            {hasApprovedRefund(refund) ? "예" : "아니오"}
+          </InfoRow>
+          <InfoRow label="adjustment pending">
+            {isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+          </InfoRow>
+          <InfoRow label="refund status">
+            <StatusBadge status={refundStatus} />
+          </InfoRow>
         </SectionCard>
       </div>
 
@@ -334,109 +293,84 @@ export default function SettlementDetailPage() {
       </SectionCard>
 
       <SectionCard title="연결 정보">
-        <div
-          style={{
-            display: "grid",
-            gap: "12px",
-          }}
-        >
-          <DetailRow
-            label="settlementId"
-            value={<InlineCopyValue value={currentSettlementId} />}
-          />
+        <div style={{ display: "grid", gap: "12px" }}>
+          <InfoRow label="settlementId">
+            <CopyableValue value={currentSettlementId} />
+          </InfoRow>
 
-          <DetailRow
-            label="merchantId"
-            value={
-              currentMerchantId !== "-" ? (
-                <InlineCopyValue value={currentMerchantId} />
-              ) : (
-                "-"
-              )
-            }
-          />
+          <InfoRow label="merchantId">
+            {currentMerchantId !== "-" ? (
+              <CopyableValue value={currentMerchantId} />
+            ) : (
+              "-"
+            )}
+          </InfoRow>
 
-          <DetailRow
-            label="paymentIds"
-            value={
-              paymentIds.length === 0 ? (
-                "-"
-              ) : (
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                  }}
-                >
-                  {paymentIds.map((paymentId) => (
-                    <InlineCopyValue key={paymentId} value={paymentId} />
-                  ))}
-                </div>
-              )
-            }
-          />
+          <InfoRow label="paymentIds">
+            {paymentIds.length === 0 ? (
+              "-"
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                {paymentIds.map((paymentId) => (
+                  <CopyableValue key={paymentId} value={paymentId} />
+                ))}
+              </div>
+            )}
+          </InfoRow>
 
-          <DetailRow
-            label="hold"
-            value={hold?.holdId ? <InlineCopyValue value={hold.holdId} /> : "없음"}
-          />
+          <InfoRow label="hold">
+            {hold?.holdId ? <CopyableValue value={hold.holdId} /> : "없음"}
+          </InfoRow>
 
-          <DetailRow
-            label="refund"
-            value={
-              hasApprovedRefund(refund) ? (
-                <StatusBadge status={refundStatus} />
-              ) : (
-                "없음"
-              )
-            }
-          />
+          <InfoRow label="refund">
+            {hasApprovedRefund(refund) ? (
+              <StatusBadge status={refundStatus} />
+            ) : (
+              "없음"
+            )}
+          </InfoRow>
         </div>
       </SectionCard>
 
       <div className="page-grid-2">
         <SectionCard title="Hold 요약">
-          <DetailRow
-            label="holdId"
-            value={hold?.holdId ? <InlineCopyValue value={hold.holdId} /> : "-"}
-          />
-          <DetailRow
-            label="status"
-            value={hold?.status ? <StatusBadge status={hold.status} /> : "-"}
-          />
-          <DetailRow label="reason" value={hold?.reasonCode || "-"} />
-          <DetailRow
-            label="comment"
-            value={hold?.requestedComment || hold?.comment || "-"}
-          />
-          <DetailRow
-            label="approvedBy"
-            value={hold?.approvedBy || hold?.decidedBy || "-"}
-          />
-          <DetailRow
-            label="createdAt"
-            value={hold?.createdAt || hold?.requestedAt || "-"}
-          />
+          <InfoRow label="holdId">
+            {hold?.holdId ? <CopyableValue value={hold.holdId} /> : "-"}
+          </InfoRow>
+          <InfoRow label="status">
+            {hold?.status ? <StatusBadge status={hold.status} /> : "-"}
+          </InfoRow>
+          <InfoRow label="reason">{hold?.reasonCode || "-"}</InfoRow>
+          <InfoRow label="comment">
+            {hold?.requestedComment || hold?.comment || "-"}
+          </InfoRow>
+          <InfoRow label="approvedBy">
+            {hold?.approvedBy || hold?.decidedBy || "-"}
+          </InfoRow>
+          <InfoRow label="createdAt">
+            {hold?.createdAt || hold?.requestedAt || "-"}
+          </InfoRow>
         </SectionCard>
 
         <SectionCard title="Refund 요약">
-          <DetailRow
-            label="approved refund"
-            value={hasApprovedRefund(refund) ? "예" : "아니오"}
-          />
-          <DetailRow
-            label="adjustment pending"
-            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
-          />
-          <DetailRow
-            label="status"
-            value={<StatusBadge status={refundStatus} />}
-          />
-          <DetailRow
-            label="refund line amount"
-            value={refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}
-          />
+          <InfoRow label="approved refund">
+            {hasApprovedRefund(refund) ? "예" : "아니오"}
+          </InfoRow>
+          <InfoRow label="adjustment pending">
+            {isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+          </InfoRow>
+          <InfoRow label="status">
+            <StatusBadge status={refundStatus} />
+          </InfoRow>
+          <InfoRow label="refund line amount">
+            {refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}
+          </InfoRow>
         </SectionCard>
       </div>
 
@@ -464,14 +398,14 @@ export default function SettlementDetailPage() {
                   return (
                     <tr key={lineId}>
                       <td style={{ verticalAlign: "middle" }}>
-                        <InlineCopyValue value={lineId} />
+                        <CopyableValue value={lineId} />
                       </td>
                       <td style={{ verticalAlign: "middle" }}>
                         <StatusBadge status={line?.type || "UNKNOWN"} />
                       </td>
                       <td style={{ verticalAlign: "middle" }}>
                         {line?.paymentId ? (
-                          <InlineCopyValue value={line.paymentId} />
+                          <CopyableValue value={line.paymentId} />
                         ) : (
                           "-"
                         )}

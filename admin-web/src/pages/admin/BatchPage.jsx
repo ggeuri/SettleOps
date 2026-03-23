@@ -4,12 +4,18 @@ import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
+import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
+import InfoRow from "../../components/display/InfoRow.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+
+import {
+  formatDateTimeWithSeconds,
+} from "../../util/format.js";
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
@@ -23,22 +29,6 @@ function getDefaultFrom() {
 
 function getDefaultTo() {
   return formatDate(new Date());
-}
-
-function formatDateTime(value) {
-  if (!value) return "-";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
 }
 
 function normalizeHistoryPayload(data) {
@@ -173,6 +163,14 @@ function extractHistoryOccurredAt(row) {
   return row?.occurredAt || null;
 }
 
+function CopyableValue({ value }) {
+  if (!value || value === "-") {
+    return <span>-</span>;
+  }
+
+  return <CopyableId value={value} short />;
+}
+
 export default function BatchPage() {
   const [baseDate, setBaseDate] = useState(getDefaultTo());
   const [fromDate, setFromDate] = useState(getDefaultFrom());
@@ -233,14 +231,14 @@ export default function BatchPage() {
   };
 
   const handleReset = async () => {
-  const nextFrom = getDefaultFrom();
-  const nextTo = getDefaultTo();
+    const nextFrom = getDefaultFrom();
+    const nextTo = getDefaultTo();
 
-  setFromDate(nextFrom);
-  setToDate(nextTo);
+    setFromDate(nextFrom);
+    setToDate(nextTo);
 
-  await fetchHistory(nextFrom, nextTo);
-};
+    await fetchHistory(nextFrom, nextTo);
+  };
 
   const handleRunBatch = async () => {
     if (!baseDate) return;
@@ -291,6 +289,7 @@ export default function BatchPage() {
     >
       <SectionCard title="배치 실행">
         <div
+          className="filter-bar"
           style={{
             display: "flex",
             flexWrap: "wrap",
@@ -315,7 +314,7 @@ export default function BatchPage() {
           </div>
 
           <div
-            className="button-row"
+            className="button-row action-panel"
             style={{
               display: "flex",
               alignItems: "center",
@@ -323,14 +322,14 @@ export default function BatchPage() {
               flexWrap: "wrap",
             }}
           >
-            <button
+            <ActionButton
               type="button"
-              className="btn btn--primary"
+              variant="primary"
               onClick={handleRunBatch}
               disabled={runLoading || !baseDate}
             >
               {runLoading ? "배치 실행 중..." : "배치 실행"}
-            </button>
+            </ActionButton>
 
             <Link to="/admin/settlements" className="btn btn--secondary">
               정산 관리(A3)
@@ -345,25 +344,20 @@ export default function BatchPage() {
           tone="success"
           message={
             <div className="info-list">
-              <div>
-                <strong>result</strong>{" "}
+              <InfoRow label="result">
                 <StatusBadge status={extractRunResult(runResult)} />
-              </div>
-              <div>
-                <strong>baseDate</strong>{" "}
+              </InfoRow>
+              <InfoRow label="baseDate">
                 {extractRunBaseDate(runResult, baseDate)}
-              </div>
-              <div>
-                <strong>runId</strong> {extractRunId(runResult)}
-              </div>
-              <div>
-                <strong>requestId</strong>{" "}
+              </InfoRow>
+              <InfoRow label="runId">{extractRunId(runResult)}</InfoRow>
+              <InfoRow label="requestId">
                 {extractRunRequestId(runResult) ? (
-                  <CopyableId value={extractRunRequestId(runResult)} short />
+                  <CopyableValue value={extractRunRequestId(runResult)} />
                 ) : (
                   "-"
                 )}
-              </div>
+              </InfoRow>
             </div>
           }
         />
@@ -379,6 +373,7 @@ export default function BatchPage() {
       <SectionCard title="이력 검색 조건">
         <form onSubmit={handleSearch}>
           <div
+            className="filter-bar"
             style={{
               display: "flex",
               flexWrap: "wrap",
@@ -419,7 +414,7 @@ export default function BatchPage() {
             </div>
 
             <div
-              className="button-row"
+              className="button-row action-panel"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -427,22 +422,22 @@ export default function BatchPage() {
                 flexWrap: "wrap",
               }}
             >
-              <button
+              <ActionButton
                 type="submit"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={loading}
               >
                 {loading ? "조회 중..." : "조회"}
-              </button>
+              </ActionButton>
 
-              <button
+              <ActionButton
                 type="button"
-                className="btn btn--secondary"
+                variant="secondary"
                 onClick={handleReset}
                 disabled={loading}
               >
                 초기화
-              </button>
+              </ActionButton>
             </div>
           </div>
         </form>
@@ -515,22 +510,20 @@ export default function BatchPage() {
 
                   return (
                     <tr key={`${row?.type || "ROW"}-${runId}-${index}`}>
-                      <td>
-                        <CopyableId value={runId} short />
+                      <td style={{ verticalAlign: "middle" }}>
+                        <CopyableValue value={runId} />
                       </td>
-                      <td>{baseDateValue}</td>
-                      <td>
+                      <td style={{ verticalAlign: "middle" }}>{baseDateValue}</td>
+                      <td style={{ verticalAlign: "middle" }}>
                         <StatusBadge status={result} />
                       </td>
-                      <td>
-                        {requestId ? (
-                          <CopyableId value={requestId} short />
-                        ) : (
-                          "-"
-                        )}
+                      <td style={{ verticalAlign: "middle" }}>
+                        {requestId ? <CopyableValue value={requestId} /> : "-"}
                       </td>
-                      <td>{triggeredBy}</td>
-                      <td>{formatDateTime(occurredAt)}</td>
+                      <td style={{ verticalAlign: "middle" }}>{triggeredBy}</td>
+                      <td style={{ verticalAlign: "middle" }}>
+                        {formatDateTimeWithSeconds(occurredAt)}
+                      </td>
                     </tr>
                   );
                 })}

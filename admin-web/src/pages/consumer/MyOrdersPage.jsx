@@ -6,12 +6,14 @@ import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
+import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import { formatDateTime } from "../../util/format.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -24,21 +26,6 @@ function formatAmount(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
   return `${num.toLocaleString("ko-KR")}원`;
-}
-
-function formatDateTime(value) {
-  if (!value) return "-";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mi = String(date.getMinutes()).padStart(2, "0");
-
-  return `${yyyy}-${mm}-${dd} ${hh}:${mi}`;
 }
 
 function normalizeOrderList(payload) {
@@ -112,18 +99,7 @@ function CopyableCell({ value }) {
     return <span>-</span>;
   }
 
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        maxWidth: "100%",
-        verticalAlign: "middle",
-      }}
-    >
-      <CopyableId value={value} short />
-    </div>
-  );
+  return <CopyableId value={value} short />;
 }
 
 export default function MyOrdersPage() {
@@ -232,22 +208,18 @@ export default function MyOrdersPage() {
                 flexWrap: "wrap",
               }}
             >
-              <button
-                type="submit"
-                className="btn btn--primary"
-                disabled={loading}
-              >
+              <ActionButton type="submit" variant="primary" disabled={loading}>
                 {loading ? "조회 중..." : "조회"}
-              </button>
+              </ActionButton>
 
-              <button
+              <ActionButton
                 type="button"
-                className="btn btn--secondary"
+                variant="secondary"
                 onClick={handleReset}
                 disabled={loading}
               >
                 초기화
-              </button>
+              </ActionButton>
             </div>
           </div>
         </form>
@@ -288,12 +260,12 @@ export default function MyOrdersPage() {
                   <th>orderId</th>
                   <th>paymentId</th>
                   <th>itemName</th>
-                  <th>amount</th>
-                  <th>order status</th>
-                  <th>payment status</th>
-                  <th>confirmed</th>
-                  <th>createdAt</th>
-                  <th>상세</th>
+                  <th style={{ textAlign: "center" }}>amount</th>
+                  <th style={{ textAlign: "center" }}>order status</th>
+                  <th style={{ textAlign: "center" }}>payment status</th>
+                  <th style={{ textAlign: "center" }}>confirmed</th>
+                  <th style={{ textAlign: "center" }}>createdAt</th>
+                  <th style={{ textAlign: "center" }}>상세</th>
                 </tr>
               </thead>
               <tbody>
@@ -326,15 +298,30 @@ export default function MyOrdersPage() {
                         {getItemName(row)}
                       </td>
 
-                      <td style={{ verticalAlign: "middle" }}>
+                      <td
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                        }}
+                      >
                         {formatAmount(row?.amount)}
                       </td>
 
-                      <td style={{ verticalAlign: "middle" }}>
+                      <td
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                        }}
+                      >
                         <StatusBadge status={getOrderStatus(row)} />
                       </td>
 
-                      <td style={{ verticalAlign: "middle" }}>
+                      <td
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                        }}
+                      >
                         {getPaymentStatus(row) === "-" ? (
                           "-"
                         ) : (
@@ -342,29 +329,42 @@ export default function MyOrdersPage() {
                         )}
                       </td>
 
-                      <td style={{ verticalAlign: "middle" }}>
+                      <td
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                        }}
+                      >
                         <StatusBadge
                           status={confirmed ? "CONFIRMED" : "UNCONFIRMED"}
                         />
                       </td>
 
-                      <td style={{ verticalAlign: "middle" }}>
+                      <td
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {formatDateTime(getCreatedAt(row))}
                       </td>
 
                       <td
                         onClick={(event) => event.stopPropagation()}
-                        style={{ verticalAlign: "middle" }}
+                        style={{
+                          verticalAlign: "middle",
+                          textAlign: "center",
+                        }}
                       >
-                        <button
+                        <ActionButton
                           type="button"
-                          className="btn btn--secondary"
+                          variant="secondary"
                           onClick={() => handleRowClick(orderId)}
                           disabled={!orderId}
-                          style={{ whiteSpace: "nowrap" }}
                         >
                           상세조회
-                        </button>
+                        </ActionButton>
                       </td>
                     </tr>
                   );

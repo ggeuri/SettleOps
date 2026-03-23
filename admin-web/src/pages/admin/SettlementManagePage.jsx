@@ -4,12 +4,14 @@ import axios from "axios";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
+import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import { formatNumber } from "../../util/format.js";
 
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
@@ -23,7 +25,7 @@ function formatAmount(value) {
   if (value === null || value === undefined || value === "") return "-";
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
-  return `${num.toLocaleString("ko-KR")}원`;
+  return `${formatNumber(num)}원`;
 }
 
 function normalizeSettlementList(payload) {
@@ -56,25 +58,6 @@ function buildErrorMessage(error) {
   return (
     message ||
     "정산 리스트를 불러오지 못했습니다. 백엔드 연결 상태와 API 응답 구조를 확인해 주세요."
-  );
-}
-
-function CopyableCell({ value }) {
-  if (!value || value === "-") {
-    return <span>-</span>;
-  }
-
-  return (
-    <div
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        maxWidth: "100%",
-        verticalAlign: "middle",
-      }}
-    >
-      <CopyableId value={value} short />
-    </div>
   );
 }
 
@@ -213,22 +196,22 @@ export default function SettlementManagePage() {
                 flexWrap: "wrap",
               }}
             >
-              <button
+              <ActionButton
                 type="submit"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={loading}
               >
                 {loading ? "조회 중..." : "조회"}
-              </button>
+              </ActionButton>
 
-              <button
+              <ActionButton
                 type="button"
-                className="btn btn--secondary"
+                variant="secondary"
                 onClick={handleReset}
                 disabled={loading}
               >
                 초기화
-              </button>
+              </ActionButton>
 
               <Link
                 to="/admin/settlement-batches"
@@ -294,7 +277,7 @@ export default function SettlementManagePage() {
                         onClick={(event) => event.stopPropagation()}
                         style={{ verticalAlign: "middle" }}
                       >
-                        <CopyableCell value={settlementId} />
+                        <CopyableId value={settlementId} short />
                       </td>
 
                       <td style={{ verticalAlign: "middle" }}>
@@ -309,7 +292,7 @@ export default function SettlementManagePage() {
                         onClick={(event) => event.stopPropagation()}
                         style={{ verticalAlign: "middle" }}
                       >
-                        <CopyableCell value={rowMerchantId} />
+                        <CopyableId value={rowMerchantId} short />
                       </td>
 
                       <td style={{ verticalAlign: "middle" }}>
@@ -329,15 +312,14 @@ export default function SettlementManagePage() {
                         onClick={(event) => event.stopPropagation()}
                         style={{ verticalAlign: "middle" }}
                       >
-                        <button
+                        <ActionButton
                           type="button"
-                          className="btn btn--secondary"
+                          variant="secondary"
                           onClick={() => handleRowClick(settlementId)}
                           disabled={!settlementId}
-                          style={{ whiteSpace: "nowrap" }}
                         >
                           상세조회
-                        </button>
+                        </ActionButton>
                       </td>
                     </tr>
                   );
