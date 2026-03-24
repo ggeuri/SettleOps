@@ -232,8 +232,6 @@ export default function RefundQueuePage() {
         !acting &&
         String(comment).trim().length > 0;
 
-    const canMoveToSettlement = Boolean(selectedRow?.settlementId);
-
     function handleDraftFilterChange(event) {
         const { name, value } = event.target;
         setDraftFilters((prev) => ({
@@ -367,11 +365,6 @@ export default function RefundQueuePage() {
         } finally {
             setActing(false);
         }
-    }
-
-    function moveToSettlementDetail() {
-        if (!selectedRow?.settlementId) return;
-        navigate(`/admin/settlements/${selectedRow.settlementId}`);
     }
 
     function moveToTrace() {
@@ -743,11 +736,10 @@ export default function RefundQueuePage() {
                     width: 58px;
                 }
 
-                .refund-queue-id-col,
-                .refund-queue-settlement-col {
+                .refund-queue-id-col {
                     width: 190px;
                 }
-
+                
                 .refund-queue-merchant-col {
                     width: 140px;
                 }
@@ -941,17 +933,6 @@ export default function RefundQueuePage() {
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
-                                    <span className="refund-queue-detail-label">settlementId</span>
-                                    <span className="refund-queue-detail-value">
-                                        {selectedRow?.settlementId ? (
-                                            <CopyableId value={selectedRow.settlementId} />
-                                        ) : (
-                                            "-"
-                                        )}
-                                    </span>
-                                </div>
-
                                 <div className="refund-queue-detail-item refund-queue-detail-item--compact">
                                     <span className="refund-queue-detail-label">refundable</span>
                                     <span className="refund-queue-detail-value">
@@ -995,14 +976,6 @@ export default function RefundQueuePage() {
                             </div>
 
                             <div className="refund-queue-actions">
-                                <ActionButton
-                                    type="button"
-                                    variant="secondary"
-                                    disabled={!canMoveToSettlement}
-                                    onClick={moveToSettlementDetail}
-                                >
-                                    정산 상세(A4)
-                                </ActionButton>
 
                                 <ActionButton
                                     type="button"
@@ -1092,7 +1065,6 @@ export default function RefundQueuePage() {
                                                 </button>
                                             </th>
 
-                                            <th className="refund-queue-settlement-col">settlementId</th>
                                             <th className="refund-queue-merchant-col">merchantId</th>
 
                                             <th className="refund-queue-amount-col">
@@ -1151,10 +1123,6 @@ export default function RefundQueuePage() {
 
                                                     <td className="refund-queue-id-col refund-queue-table-cell-copy">
                                                         <CopyableId value={row.refundId} short />
-                                                    </td>
-
-                                                    <td className="refund-queue-settlement-col refund-queue-table-cell-copy">
-                                                        <CopyableId value={row.settlementId} short />
                                                     </td>
 
                                                     <td className="refund-queue-merchant-col">
