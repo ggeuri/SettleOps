@@ -17,6 +17,7 @@ import {
   getAdminSettlementDetail,
   getAdminSettlementTraceEntry,
   requestAdminSettlementPaid,
+  approveAdminSettlementPaid,
 } from "../../api/adminSettlementApi.js";
 
 function formatAmount(value) {
@@ -94,6 +95,19 @@ function mapRequestPaidReasonToMessage(reason) {
   }
 }
 
+function mapApprovePaidReasonToMessage(reason) {
+  switch (reason) {
+    case "SAME_APPROVER_NOT_ALLOWED":
+      return "4-eyes 규칙 위반입니다. 지급 요청자와 다른 Admin이 승인해야 합니다.";
+    case "PAY_REQUESTED_REQUIRED":
+      return "PAY_REQUESTED 상태에서만 지급 승인할 수 있습니다.";
+    case "IN_PROGRESS":
+      return "다른 승인 요청이 처리 중입니다. 잠시 후 다시 시도해 주세요.";
+    default:
+      return "현재 상태에서는 지급 승인이 불가능합니다.";
+  }
+}
+
 function mapTraceEntryErrorToMessage(error) {
   const status = error?.status;
   const message =
@@ -162,6 +176,7 @@ export default function SettlementDetailAdminPage() {
   const [loadError, setLoadError] = useState("");
 
   const [requestPaidLoading, setRequestPaidLoading] = useState(false);
+  const [approvePaidLoading, setApprovePaidLoading] = useState(false);
   const [traceEntryLoading, setTraceEntryLoading] = useState(true);
 
   const [actionMessage, setActionMessage] = useState("");
@@ -325,29 +340,44 @@ export default function SettlementDetailAdminPage() {
     return false;
   }, [status, holdActive, refund]);
 
+  const approvePaidDisabled = useMemo(() => {
+    return status !== "PAY_REQUESTED";
+  }, [status]);
+
   const traceButtonDisabled = useMemo(() => {
     if (traceEntryLoading) return true;
     if (!traceRequestId) return true;
     return false;
   }, [traceEntryLoading, traceRequestId]);
 
+  const primaryActionMode = useMemo(() => {
+    if (status === "PAY_REQUESTED") return "APPROVE";
+    return "REQUEST";
+  }, [status]);
+
   const guardMessages = useMemo(() => {
     const messages = [];
 
-    if (holdActive) {
-      messages.push(
-        "Hold가 ACTIVE라 지급요청 불가입니다. Hold 큐(A5)에서 Release 후 다시 시도해야 합니다."
-      );
+    if (status === "READY") {
+      if (holdActive) {
+        messages.push(
+          "Hold가 ACTIVE라 지급요청 불가입니다. Hold 큐(A5)에서 Release 후 다시 시도해야 합니다."
+        );
+      }
+
+      if (isRefundAdjustmentPending(refund)) {
+        messages.push(
+          "승인된 환불이 있어 차감정산 반영 전입니다. 다음 배치 실행 후 다시 시도해야 합니다."
+        );
+      }
     }
 
-    if (isRefundAdjustmentPending(refund)) {
-      messages.push(
-        "승인된 환불이 있어 차감정산 반영 전입니다. 다음 배치 실행 후 다시 시도해야 합니다."
-      );
+    if (status !== "READY" && status !== "PAY_REQUESTED" && status !== "PAID") {
+      messages.push("현재 상태에서는 지급 요청/지급 승인을 진행할 수 없습니다.");
     }
 
-    if (status !== "READY") {
-      messages.push("READY 상태에서만 지급 요청이 가능합니다.");
+    if (status === "PAID") {
+      messages.push("이미 지급 완료된 정산입니다.");
     }
 
     return messages;
@@ -382,6 +412,38 @@ export default function SettlementDetailAdminPage() {
       }
     } finally {
       setRequestPaidLoading(false);
+    }
+  }
+
+  async function handleApprovePaid() {
+    if (!isAllowed || !detail?.settlementId) return;
+
+    try {
+      setApprovePaidLoading(true);
+      setActionMessage("");
+      setActionError("");
+
+      await approveAdminSettlementPaid(detail.settlementId);
+
+      setActionMessage("지급 승인이 완료되었습니다.");
+      await reloadPageData();
+    } catch (error) {
+      const statusCode = error?.status;
+      const reason = error?.body?.reason;
+
+      if (statusCode === 401) {
+        setActionError(
+          "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요."
+        );
+      } else if (statusCode === 403) {
+        setActionError("Admin 권한이 없어 지급 승인을 수행할 수 없습니다.");
+      } else if (statusCode === 409) {
+        setActionError(mapApprovePaidReasonToMessage(reason));
+      } else {
+        setActionError("지급 승인 중 오류가 발생했습니다.");
+      }
+    } finally {
+      setApprovePaidLoading(false);
     }
   }
 
@@ -487,25 +549,29 @@ export default function SettlementDetailAdminPage() {
       title="정산 상세"
       description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
     >
-      {guardMessages.length > 0 ? (
-        <GuardNotice
-          title="가드레일 안내"
-          tone="warning"
-          message={
-            <div>
-              {guardMessages.map((message) => (
-                <div key={message}>{message}</div>
-              ))}
-            </div>
-          }
-        />
-      ) : (
-        <GuardNotice
-          title="지급 요청 가능"
-          tone="info"
-          message="현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
-        />
-      )}
+     {guardMessages.length > 0 ? (
+       <GuardNotice
+         title="가드레일 안내"
+         tone="warning"
+         message={
+           <div>
+             {guardMessages.map((message) => (
+               <div key={message}>{message}</div>
+             ))}
+           </div>
+         }
+       />
+     ) : (
+       <GuardNotice
+         title={status === "PAY_REQUESTED" ? "지급 승인 가능" : "지급 요청 가능"}
+         tone="info"
+         message={
+           status === "PAY_REQUESTED"
+             ? "현재 정산 건은 지급 승인 단계입니다. 요청자와 다른 Admin 계정으로 승인해야 합니다."
+             : "현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
+         }
+       />
+     )}
 
       {actionMessage ? (
         <GuardNotice title="처리 완료" message={actionMessage} tone="success" />
@@ -525,14 +591,25 @@ export default function SettlementDetailAdminPage() {
 
       <SectionCard title="상단 액션">
         <div className="action-panel">
-          <ActionButton
-            type="button"
-            variant="primary"
-            onClick={handleRequestPaid}
-            disabled={requestPaidDisabled || requestPaidLoading}
-          >
-            {requestPaidLoading ? "요청 중…" : "지급 요청"}
-          </ActionButton>
+          {primaryActionMode === "APPROVE" ? (
+            <ActionButton
+              type="button"
+              variant="primary"
+              onClick={handleApprovePaid}
+              disabled={approvePaidDisabled || approvePaidLoading}
+            >
+              {approvePaidLoading ? "승인 중…" : "지급 승인"}
+            </ActionButton>
+          ) : (
+            <ActionButton
+              type="button"
+              variant="primary"
+              onClick={handleRequestPaid}
+              disabled={requestPaidDisabled || requestPaidLoading}
+            >
+              {requestPaidLoading ? "요청 중…" : "지급 요청"}
+            </ActionButton>
+          )}
 
           <ActionButton
             type="button"
@@ -574,13 +651,13 @@ export default function SettlementDetailAdminPage() {
             <GuardNotice
               title="Trace 진입 정보"
               tone="info"
-              message="아래 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
+              message="현재 정산 건 기준 최신 운영 requestId입니다. 연결 정보의 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
             />
           ) : (
             <GuardNotice
               title="Trace 진입 정보"
               tone="info"
-              message="현재 정산 건의 Trace 진입 requestId를 확인 중이거나, 아직 재현 가능한 requestId가 없습니다."
+              message="현재 정산 건에서 Trace 진입에 사용할 최신 requestId가 아직 없습니다."
             />
           )}
         </div>
