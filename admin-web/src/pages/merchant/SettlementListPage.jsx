@@ -10,6 +10,8 @@ import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+
 import { formatNumber } from "../../utils/format.js";
 import { getMe } from "../../api/meApi.js";
 import { getMerchantSettlements } from "../../api/merchantSettlementApi.js";
@@ -231,7 +233,7 @@ export default function SettlementListPage() {
     fetchSettlements(merchantId, nextStatus, nextFromDate, nextToDate);
   }, [searchParams, fetchSettlements, isAllowed, merchantId]);
 
-  const handleSearch = (event) => {
+  function handleSearch(event) {
     event.preventDefault();
     if (!isAllowed) return;
 
@@ -241,9 +243,9 @@ export default function SettlementListPage() {
     if (toDate) nextParams.to = toDate;
 
     setSearchParams(nextParams);
-  };
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     const nextFrom = getDefaultFrom();
     const nextTo = getDefaultTo();
 
@@ -257,12 +259,12 @@ export default function SettlementListPage() {
       from: nextFrom,
       to: nextTo,
     });
-  };
+  }
 
-  const handleRowClick = (settlementId) => {
+  function handleRowClick(settlementId) {
     if (!isAllowed || !settlementId) return;
     navigate(`/merchant/settlements/${settlementId}`);
-  };
+  }
 
   if (authChecking) {
     return (
@@ -281,6 +283,23 @@ export default function SettlementListPage() {
   }
 
   if (!isAllowed) {
+    if (
+      authErrorMessage.includes("로그인") ||
+      authErrorMessage.includes("인증")
+    ) {
+      return (
+        <PageLayout
+          title={pageTitle}
+          description="판매자 기준으로 정산 내역을 조회하고 settlementId 앵커로 상세 화면(U5)으로 이동합니다."
+        >
+          <RequireLoginNotice
+            title="Merchant 전용 화면"
+            message={authErrorMessage}
+          />
+        </PageLayout>
+      );
+    }
+
     return (
       <PageLayout
         title={pageTitle}
@@ -291,10 +310,7 @@ export default function SettlementListPage() {
           message={authErrorMessage}
           tone="danger"
         />
-        <ErrorState
-          title="Merchant 전용 화면"
-          description={authErrorMessage}
-        />
+        <ErrorState message={authErrorMessage} />
       </PageLayout>
     );
   }
@@ -416,15 +432,16 @@ export default function SettlementListPage() {
 
       {errorMessage ? (
         <>
-          <GuardNotice title="조회 실패" message={errorMessage} tone="danger" />
-          <ErrorState
-            title="정산 리스트 조회 실패"
-            description={errorMessage}
+          <GuardNotice
+            title="조회 실패"
+            message={errorMessage}
+            tone="danger"
           />
+          <ErrorState message={errorMessage} />
         </>
       ) : null}
 
-      <SectionCard title="정산 리스트" description={`총 ${rows.length}건`}>
+      <SectionCard title={`정산 리스트 (${rows.length}건)`}>
         {loading ? (
           <LoadingBlock
             title="로딩 중"

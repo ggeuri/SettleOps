@@ -11,6 +11,7 @@ import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 
 import { formatDateTimeWithSeconds } from "../../utils/format.js";
 import { getMe } from "../../api/meApi.js";
@@ -54,25 +55,33 @@ function extractRole(payload) {
   );
 }
 
-function buildAuthErrorMessage(error) {
-  const status = error?.status;
+function buildAuthErrorInfo(error) {
+  const status = error?.status ?? null;
   const message =
     error?.body?.message ||
     error?.body?.reason ||
     error?.message;
 
   if (status === 401) {
-    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
+    return {
+      status: 401,
+      message: "로그인이 필요합니다. 개발용 로그인 페이지에서 세션을 생성해주세요.",
+    };
   }
 
   if (status === 403) {
-    return "Admin 권한이 없어 배치 콘솔에 접근할 수 없습니다.";
+    return {
+      status: 403,
+      message: "Admin 권한이 필요한 페이지입니다.",
+    };
   }
 
-  return (
-    message ||
-    "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
-  );
+  return {
+    status,
+    message:
+      message ||
+      "현재 세션의 역할을 확인할 수 없습니다. 개발용 로그인 페이지에서 다시 로그인해 주세요.",
+  };
 }
 
 function buildErrorMessage(error) {
@@ -83,7 +92,7 @@ function buildErrorMessage(error) {
     error?.message;
 
   if (status === 401) {
-    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
+    return "인증이 만료되었거나 로그인되지 않았습니다. 개발용 로그인 페이지에서 세션을 다시 생성해 주세요.";
   }
 
   if (status === 403) {
@@ -239,7 +248,7 @@ export default function BatchPage() {
 
   const [authChecking, setAuthChecking] = useState(true);
   const [isAllowed, setIsAllowed] = useState(false);
-  const [authErrorMessage, setAuthErrorMessage] = useState("");
+  const [authErrorInfo, setAuthErrorInfo] = useState(null);
 
   const fetchHistory = useCallback(
     async (nextFromDate, nextToDate) => {
@@ -278,7 +287,7 @@ export default function BatchPage() {
     async function checkAdminRole() {
       try {
         setAuthChecking(true);
-        setAuthErrorMessage("");
+        setAuthErrorInfo(null);
         setIsAllowed(false);
 
         const me = await getMe();
@@ -292,13 +301,14 @@ export default function BatchPage() {
         }
 
         setIsAllowed(false);
-        setAuthErrorMessage(
-          "Admin 전용 배치 콘솔입니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
-        );
+        setAuthErrorInfo({
+          status: 403,
+          message: "Admin 권한이 필요한 페이지입니다.",
+        });
       } catch (error) {
         if (!mounted) return;
         setIsAllowed(false);
-        setAuthErrorMessage(buildAuthErrorMessage(error));
+        setAuthErrorInfo(buildAuthErrorInfo(error));
       } finally {
         if (mounted) {
           setAuthChecking(false);
@@ -318,13 +328,13 @@ export default function BatchPage() {
     fetchHistory();
   }, [isAllowed, fetchHistory]);
 
-  const handleSearch = async (event) => {
+  async function handleSearch(event) {
     event.preventDefault();
     if (!isAllowed) return;
     await fetchHistory();
-  };
+  }
 
-  const handleReset = async () => {
+  async function handleReset() {
     const nextFrom = getDefaultFrom();
     const nextTo = getDefaultTo();
 
@@ -333,9 +343,9 @@ export default function BatchPage() {
 
     if (!isAllowed) return;
     await fetchHistory(nextFrom, nextTo);
-  };
+  }
 
-  const handleRunBatch = async () => {
+  async function handleRunBatch() {
     if (!isAllowed || !baseDate) return;
 
     try {
@@ -353,7 +363,7 @@ export default function BatchPage() {
     } finally {
       setRunLoading(false);
     }
-  };
+  }
 
   const summary = useMemo(() => {
     const total = historyTotal;
@@ -386,7 +396,18 @@ export default function BatchPage() {
     );
   }
 
-  if (!isAllowed) {
+  if (authErrorInfo?.status === 401) {
+    return (
+      <PageLayout
+        title="배치 실행 · 이력"
+        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
+      >
+        <RequireLoginNotice />
+      </PageLayout>
+    );
+  }
+
+  if (authErrorInfo?.status === 403) {
     return (
       <PageLayout
         title="배치 실행 · 이력"
@@ -394,15 +415,32 @@ export default function BatchPage() {
       >
         <GuardNotice
           title="접근 불가"
-          message={authErrorMessage}
+          message={authErrorInfo.message}
           tone="danger"
         />
-        <ErrorState
-          title="Admin 전용 화면"
-          description={authErrorMessage}
-        />
+        <ErrorState message={authErrorInfo.message} />
       </PageLayout>
     );
+  }
+
+  if (authErrorInfo) {
+    return (
+      <PageLayout
+        title="배치 실행 · 이력"
+        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
+      >
+        <GuardNotice
+          title="조회 실패"
+          message={authErrorInfo.message}
+          tone="danger"
+        />
+        <ErrorState message={authErrorInfo.message} />
+      </PageLayout>
+    );
+  }
+
+  if (!isAllowed) {
+    return null;
   }
 
   return (
@@ -470,10 +508,11 @@ export default function BatchPage() {
               <InfoRow label="result">
                 <StatusBadge status={extractRunResult(runResult)} />
               </InfoRow>
-              <InfoRow label="baseDate">
-                {extractRunBaseDate(runResult, baseDate)}
-              </InfoRow>
-              <InfoRow label="runId">{extractRunId(runResult)}</InfoRow>
+              <InfoRow
+                label="baseDate"
+                value={extractRunBaseDate(runResult, baseDate)}
+              />
+              <InfoRow label="runId" value={extractRunId(runResult)} />
               <InfoRow label="requestId">
                 {extractRunRequestId(runResult) ? (
                   <CopyableValue value={extractRunRequestId(runResult)} />
@@ -489,7 +528,7 @@ export default function BatchPage() {
       {errorMessage ? (
         <>
           <GuardNotice title="처리 실패" message={errorMessage} tone="danger" />
-          <ErrorState title="배치 콘솔 처리 실패" description={errorMessage} />
+          <ErrorState message={errorMessage} />
         </>
       ) : null}
 
@@ -598,7 +637,7 @@ export default function BatchPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="배치 이력" description={`총 ${historyTotal}건`}>
+      <SectionCard title={`배치 이력 (${historyTotal}건)`}>
         {loading ? (
           <LoadingBlock
             title="로딩 중"

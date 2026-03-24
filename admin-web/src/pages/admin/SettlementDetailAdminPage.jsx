@@ -3,12 +3,15 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
+import ActionButton from "../../components/layout/ActionButton.jsx";
 import StatusBadge from "../../components/display/StatusBadge.jsx";
-import GuardNotice from "../../components/common/GuardNotice.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import InfoRow from "../../components/display/InfoRow.jsx";
+import GuardNotice from "../../components/common/GuardNotice.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+
 import { getMe } from "../../api/meApi.js";
 import {
   getAdminSettlementDetail,
@@ -43,9 +46,11 @@ function buildAuthErrorMessage(error) {
   if (status === 401) {
     return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
   }
+
   if (status === 403) {
     return "Admin 권한이 없어 정산 상세 화면에 접근할 수 없습니다.";
   }
+
   return (
     message ||
     "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
@@ -62,12 +67,15 @@ function mapDetailErrorToMessage(error) {
   if (status === 401) {
     return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
   }
+
   if (status === 403) {
     return "Admin 권한이 없어 정산 상세를 조회할 수 없습니다.";
   }
+
   if (status === 404) {
     return "정산 정보를 찾을 수 없습니다.";
   }
+
   return message || "정산 상세 조회 중 오류가 발생했습니다.";
 }
 
@@ -96,12 +104,15 @@ function mapTraceEntryErrorToMessage(error) {
   if (status === 401) {
     return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
   }
+
   if (status === 403) {
     return "Admin 권한이 없어 Trace로 이동할 수 없습니다.";
   }
+
   if (status === 404) {
     return "이 정산 건에 대한 Trace 진입 가능한 request_id가 아직 없습니다.";
   }
+
   return message || "Trace 진입 정보를 조회하는 중 오류가 발생했습니다.";
 }
 
@@ -342,7 +353,7 @@ export default function SettlementDetailAdminPage() {
     return messages;
   }, [holdActive, refund, status]);
 
-  const handleRequestPaid = async () => {
+  async function handleRequestPaid() {
     if (!isAllowed || !detail?.settlementId) return;
 
     try {
@@ -372,12 +383,12 @@ export default function SettlementDetailAdminPage() {
     } finally {
       setRequestPaidLoading(false);
     }
-  };
+  }
 
-  const handleTraceEntry = () => {
+  function handleTraceEntry() {
     if (!isAllowed || !traceRequestId) return;
     navigate(`/admin/audit?requestId=${encodeURIComponent(traceRequestId)}`);
-  };
+  }
 
   if (authChecking) {
     return (
@@ -396,6 +407,23 @@ export default function SettlementDetailAdminPage() {
   }
 
   if (!isAllowed) {
+    if (
+      authErrorMessage.includes("로그인") ||
+      authErrorMessage.includes("인증")
+    ) {
+      return (
+        <PageLayout
+          title="정산 상세"
+          description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
+        >
+          <RequireLoginNotice
+            title="Admin 전용 화면"
+            message={authErrorMessage}
+          />
+        </PageLayout>
+      );
+    }
+
     return (
       <PageLayout
         title="정산 상세"
@@ -406,10 +434,7 @@ export default function SettlementDetailAdminPage() {
           message={authErrorMessage}
           tone="danger"
         />
-        <ErrorState
-          title="Admin 전용 화면"
-          description={authErrorMessage}
-        />
+        <ErrorState message={authErrorMessage} />
       </PageLayout>
     );
   }
@@ -421,12 +446,10 @@ export default function SettlementDetailAdminPage() {
         description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
       >
         <SectionCard title="로딩 중">
-          <div className="state-block">
-            <div className="state-block__title">로딩 중</div>
-            <div className="state-block__description">
-              정산 상세 데이터를 불러오고 있습니다.
-            </div>
-          </div>
+          <LoadingBlock
+            title="로딩 중"
+            description="정산 상세 데이터를 불러오고 있습니다."
+          />
         </SectionCard>
       </PageLayout>
     );
@@ -439,6 +462,7 @@ export default function SettlementDetailAdminPage() {
         description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
       >
         <GuardNotice title="조회 실패" message={loadError} tone="danger" />
+        <ErrorState message={loadError} />
       </PageLayout>
     );
   }
@@ -501,23 +525,23 @@ export default function SettlementDetailAdminPage() {
 
       <SectionCard title="상단 액션">
         <div className="action-panel">
-          <button
+          <ActionButton
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             onClick={handleRequestPaid}
             disabled={requestPaidDisabled || requestPaidLoading}
           >
             {requestPaidLoading ? "요청 중…" : "지급 요청"}
-          </button>
+          </ActionButton>
 
-          <button
+          <ActionButton
             type="button"
-            className="btn btn--secondary"
+            variant="secondary"
             onClick={handleTraceEntry}
             disabled={traceButtonDisabled}
           >
             {traceEntryLoading ? "확인 중…" : "Trace로 보기"}
-          </button>
+          </ActionButton>
 
           <Link
             to={buildHoldCreateLink(currentSettlementId)}
@@ -621,9 +645,7 @@ export default function SettlementDetailAdminPage() {
             label="adjustment pending"
             value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
           />
-          <InfoRow label="refund status">
-            <StatusBadge status={refundStatus} />
-          </InfoRow>
+          <InfoRow label="refund status" status value={refundStatus} />
         </SectionCard>
       </div>
 
@@ -643,17 +665,9 @@ export default function SettlementDetailAdminPage() {
       </SectionCard>
 
       <SectionCard title="연결 정보">
-        <InfoRow label="settlementId">
-          <CopyableValue value={currentSettlementId} />
-        </InfoRow>
-
-        <InfoRow label="requestId">
-          {traceRequestId ? <CopyableValue value={traceRequestId} /> : "-"}
-        </InfoRow>
-
-        <InfoRow label="merchantId">
-          {merchantId !== "-" ? <CopyableValue value={merchantId} /> : "-"}
-        </InfoRow>
+        <InfoRow label="settlementId" copyable value={currentSettlementId} />
+        <InfoRow label="requestId" copyable value={traceRequestId || "-"} />
+        <InfoRow label="merchantId" copyable value={merchantId} />
 
         <InfoRow label="paymentIds">
           {paymentIds.length === 0 ? (
@@ -726,9 +740,7 @@ export default function SettlementDetailAdminPage() {
             label="adjustment pending"
             value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
           />
-          <InfoRow label="status">
-            <StatusBadge status={refundStatus} />
-          </InfoRow>
+          <InfoRow label="status" status value={refundStatus} />
           <InfoRow
             label="refund line amount"
             value={refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}

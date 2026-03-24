@@ -10,6 +10,8 @@ import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+
 import { formatNumber } from "../../utils/format.js";
 import { getMe } from "../../api/meApi.js";
 import { getAdminSettlements } from "../../api/adminSettlementListApi.js";
@@ -34,6 +36,7 @@ function normalizeSettlementList(payload) {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.page?.content)) return payload.page.content;
   return [];
 }
 
@@ -55,7 +58,7 @@ function buildAuthErrorMessage(error) {
     error?.message;
 
   if (status === 401) {
-    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Admin 세션을 다시 생성해 주세요.";
+    return "로그인이 필요합니다. 개발용 로그인 페이지에서 세션을 생성해주세요.";
   }
 
   if (status === 403) {
@@ -187,28 +190,26 @@ export default function SettlementManagePage() {
     fetchSettlements(nextStatus, nextMerchantId);
   }, [searchParams, fetchSettlements, isAllowed]);
 
-  const handleSearch = (event) => {
+  function handleSearch(event) {
     event.preventDefault();
-    if (!isAllowed) return;
 
     const nextParams = {};
     if (status) nextParams.status = status;
     if (merchantId.trim()) nextParams.merchantId = merchantId.trim();
 
     setSearchParams(nextParams);
-  };
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     setStatus("");
     setMerchantId("");
-    if (!isAllowed) return;
     setSearchParams({});
-  };
+  }
 
-  const handleRowClick = (settlementId) => {
-    if (!isAllowed || !settlementId) return;
+  function handleRowClick(settlementId) {
+    if (!settlementId) return;
     navigate(`/admin/settlements/${settlementId}`);
-  };
+  }
 
   if (authChecking) {
     return (
@@ -227,6 +228,23 @@ export default function SettlementManagePage() {
   }
 
   if (!isAllowed) {
+    if (
+      authErrorMessage.includes("로그인") ||
+      authErrorMessage.includes("인증")
+    ) {
+      return (
+        <PageLayout
+          title={pageTitle}
+          description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
+        >
+          <RequireLoginNotice
+            title="인증 필요"
+            message={authErrorMessage}
+          />
+        </PageLayout>
+      );
+    }
+
     return (
       <PageLayout
         title={pageTitle}
@@ -237,10 +255,7 @@ export default function SettlementManagePage() {
           message={authErrorMessage}
           tone="danger"
         />
-        <ErrorState
-          title="Admin 전용 화면"
-          description={authErrorMessage}
-        />
+        <ErrorState message={authErrorMessage} />
       </PageLayout>
     );
   }
@@ -339,14 +354,21 @@ export default function SettlementManagePage() {
       {errorMessage ? (
         <>
           <GuardNotice title="조회 실패" message={errorMessage} tone="danger" />
-          <ErrorState
-            title="정산 리스트 조회 실패"
-            description={errorMessage}
-          />
+          <ErrorState message={errorMessage} />
         </>
       ) : null}
 
-      <SectionCard title="정산 리스트" description={`총 ${rows.length}건`}>
+      <SectionCard title="정산 리스트">
+        <div
+          style={{
+            marginBottom: "12px",
+            color: "var(--color-text-muted, #6b7280)",
+            fontSize: "14px",
+          }}
+        >
+          총 {rows.length}건
+        </div>
+
         {loading ? (
           <LoadingBlock
             title="로딩 중"
