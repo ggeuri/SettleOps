@@ -3,7 +3,6 @@ package com.settleops.domain.refund.api;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
-import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -28,15 +27,12 @@ class AdminRefundControllerPaginationTest {
         RefundAdminService refundAdminService = mock(RefundAdminService.class);
         RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
         RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
-        RefundTraceEntryQueryService refundTraceEntryQueryService =
-                mock(RefundTraceEntryQueryService.class);
 
         AdminRefundController controller =
                 new AdminRefundController(
                         refundAdminService,
                         refundAdminQueryService,
-                        requestIdResolver,
-                        refundTraceEntryQueryService
+                        requestIdResolver
                 );
 
         AdminRefundListItemDTO item = new AdminRefundListItemDTO(
@@ -55,11 +51,29 @@ class AdminRefundControllerPaginationTest {
 
         PageRequest pageable = PageRequest.of(0, 20);
 
-        Mockito.when(refundAdminQueryService.list(null, null, null, pageable))
-                .thenReturn(new PageImpl<>(List.of(item), pageable, 1));
+        Mockito.when(refundAdminQueryService.list(
+                null,
+                null,
+                null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        )).thenReturn(new PageImpl<>(List.of(item), pageable, 1));
 
         ResponseEntity<PageResponse<AdminRefundListItemDTO>> response =
-                controller.list(null, null, null, 0, 20);
+                controller.list(
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "requestedAt",
+                        "desc",
+                        0,
+                        20
+                );
 
         assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
         assertThat(response.getBody()).isNotNull();
@@ -72,5 +86,59 @@ class AdminRefundControllerPaginationTest {
         assertThat(body.totalPages()).isEqualTo(1);
         assertThat(body.hasNext()).isFalse();
         assertThat(body.hasPrevious()).isFalse();
+    }
+
+    @Test
+    @DisplayName("환불 큐 조회는 settlementId를 service로 그대로 전달한다")
+    void list_should_pass_settlementId() {
+        RefundAdminService refundAdminService = mock(RefundAdminService.class);
+        RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
+        RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
+
+        AdminRefundController controller =
+                new AdminRefundController(
+                        refundAdminService,
+                        refundAdminQueryService,
+                        requestIdResolver
+                );
+
+        PageRequest pageable = PageRequest.of(0, 20);
+
+        Mockito.when(refundAdminQueryService.list(
+                null,
+                null,
+                null,
+                "S1",
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        )).thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        ResponseEntity<PageResponse<AdminRefundListItemDTO>> response =
+                controller.list(
+                        null,
+                        null,
+                        null,
+                        "S1",
+                        null,
+                        "requestedAt",
+                        "desc",
+                        0,
+                        20
+                );
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+
+        Mockito.verify(refundAdminQueryService).list(
+                null,
+                null,
+                null,
+                "S1",
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        );
     }
 }

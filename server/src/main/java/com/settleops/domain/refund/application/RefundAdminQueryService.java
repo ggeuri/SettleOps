@@ -13,12 +13,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Locale;
 
-/**
- * A6 운영 큐 조회(READ).
- * - status/from/to 옵션 파라미터를 "조회 조건"으로 정리해서 QueryDSL Repository로 전달한다.
- * - 기준 시각 SoT: refund.requestedAt (DB: requested_at)
- * - status는 enum(@Enumerated STRING)이라 enum으로 파싱 후 전달한다.
- */
 @Service
 @RequiredArgsConstructor
 public class RefundAdminQueryService {
@@ -29,6 +23,10 @@ public class RefundAdminQueryService {
             String status,
             LocalDate from,
             LocalDate to,
+            String settlementId,
+            String keyword,
+            String sortKey,
+            String sortDirection,
             Pageable pageable
     ) {
         RefundStatus parsedStatus = parseStatus(status);
@@ -37,10 +35,26 @@ public class RefundAdminQueryService {
             throw new BadRequestException("from must be <= to");
         }
 
+        String normalizedSettlementId = settlementId == null ? null : settlementId.trim();
+        String normalizedKeyword = keyword == null ? null : keyword.trim();
+
+        if (normalizedSettlementId != null && normalizedSettlementId.isEmpty()) {
+            throw new BadRequestException("settlementId is invalid");
+        }
+
         LocalDateTime fromDt = (from == null) ? null : from.atStartOfDay();
         LocalDateTime toDt = (to == null) ? null : to.atTime(23, 59, 59, 999_999_000);
 
-        return refundReadRepository.findAdminRefundQueue(parsedStatus, fromDt, toDt, pageable);
+        return refundReadRepository.findAdminRefundQueue(
+                parsedStatus,
+                fromDt,
+                toDt,
+                normalizedSettlementId,
+                normalizedKeyword,
+                sortKey,
+                sortDirection,
+                pageable
+        );
     }
 
     private RefundStatus parseStatus(String status) {

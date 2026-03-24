@@ -3,10 +3,8 @@ package com.settleops.domain.refund.api;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
-import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
-import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -30,40 +28,33 @@ public class AdminRefundController {
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
     private final RequestIdResolver requestIdResolver;
-    private final RefundTraceEntryQueryService refundTraceEntryQueryService;
 
-    /**
-     * A6 운영 큐 조회(READ).
-     * - status/from/to는 옵션.
-     * - 기준 시각: requestedAt
-     */
     @GetMapping
     public ResponseEntity<PageResponse<AdminRefundListItemDTO>> list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String settlementId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "requestedAt") String sortKey,
+            @RequestParam(required = false, defaultValue = "desc") String sortDirection,
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size
     ) {
         Pageable pageable = PageableUtils.validateAndCreate(page, size);
 
-        Page<AdminRefundListItemDTO> result =
-                refundAdminQueryService.list(status, from, to, pageable);
+        Page<AdminRefundListItemDTO> result = refundAdminQueryService.list(
+                status,
+                from,
+                to,
+                settlementId,
+                keyword,
+                sortKey,
+                sortDirection,
+                pageable
+        );
 
         return ResponseEntity.ok(PageResponse.from(result));
-    }
-
-    /**
-     * A6 상세에서 A1 Trace 진입용 requestId를 조회한다.
-     * 기본 기준은 최신 non-no-op refund audit requestId 이다.
-     */
-    @GetMapping("/{refundId}/trace-entry")
-    public ResponseEntity<RefundTraceEntryResponseDTO> getRefundTraceEntry(
-            @PathVariable String refundId
-    ) {
-        return ResponseEntity.ok(
-                refundTraceEntryQueryService.getRefundTraceEntry(refundId)
-        );
     }
 
     @PatchMapping("/{refundId}/approve")
