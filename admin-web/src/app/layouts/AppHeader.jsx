@@ -15,7 +15,7 @@ function resolvePageTitle(pathname) {
   if (pathname === "/merchant/refunds") return "환불 현황";
 
   if (pathname === "/admin/audit") return "Trace / Audit";
-  if (pathname === "/admin/batches") return "배치 실행";
+  if (pathname === "/admin/settlement-batches") return "배치 실행";
   if (pathname === "/admin/settlements") return "정산 관리";
   if (pathname.startsWith("/admin/settlements/")) return "정산 상세";
   if (pathname === "/admin/holds") return "Hold 큐";
