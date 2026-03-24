@@ -19,11 +19,6 @@ export function getMyRefunds(params = {}) {
     }
     if (params.from) searchParams.set("from", params.from);
     if (params.to) searchParams.set("to", params.to);
-    if (params.keyword) searchParams.set("keyword", params.keyword);
-    if (params.sortKey) searchParams.set("sortKey", params.sortKey);
-    if (params.sortDirection) {
-        searchParams.set("sortDirection", params.sortDirection);
-    }
 
     searchParams.set("page", String(params.page ?? 0));
     searchParams.set("size", String(params.size ?? 20));
@@ -62,5 +57,11 @@ export function rejectRefund(refundId, comment) {
     return requestJson(`/api/admin/refunds/${refundId}/reject`, {
         method: "PATCH",
         body: JSON.stringify({ comment }),
+    });
+}
+
+export function getAdminRefundTraceEntry(refundId) {
+    return requestJson(`/api/admin/refunds/${refundId}/trace-entry`, {
+        method: "GET",
     });
 }
