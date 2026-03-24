@@ -7,6 +7,10 @@ import StatusBadge from "../../components/display/StatusBadge.jsx";
 import CopyableId from "../../components/display/CopyableId.jsx";
 import InfoRow from "../../components/display/InfoRow.jsx";
 import GuardNotice from "../../components/common/GuardNotice.jsx";
+import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import ErrorState from "../../components/feedback/ErrorState.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+
 import { getMe } from "../../api/meApi.js";
 import { getMerchantSettlementDetail } from "../../api/merchantSettlementApi.js";
 
@@ -15,6 +19,47 @@ function formatAmount(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return String(value);
   return `${num.toLocaleString("ko-KR")}원`;
+}
+
+function extractRole(payload) {
+  return (
+    payload?.role ||
+    payload?.data?.role ||
+    payload?.user?.role ||
+    payload?.principal?.role ||
+    null
+  );
+}
+
+function extractMerchantId(payload) {
+  return (
+    payload?.merchantId ||
+    payload?.data?.merchantId ||
+    payload?.user?.merchantId ||
+    payload?.principal?.merchantId ||
+    null
+  );
+}
+
+function buildAuthErrorMessage(error) {
+  const status = error?.status;
+  const message =
+    error?.body?.message ||
+    error?.body?.reason ||
+    error?.message;
+
+  if (status === 401) {
+    return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Merchant 세션을 다시 생성해 주세요.";
+  }
+
+  if (status === 403) {
+    return "Merchant 권한이 없어 정산 상세 화면에 접근할 수 없습니다.";
+  }
+
+  return (
+    message ||
+    "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Merchant 세션으로 다시 로그인해 주세요."
+  );
 }
 
 function mapDetailErrorToMessage(error) {
@@ -27,12 +72,15 @@ function mapDetailErrorToMessage(error) {
   if (status === 401) {
     return "인증이 만료되었거나 로그인되지 않았습니다. /auth/dev-login 에서 Merchant 세션을 다시 생성해 주세요.";
   }
+
   if (status === 403) {
     return "Merchant 권한이 없어 정산 상세를 조회할 수 없습니다.";
   }
+
   if (status === 404) {
     return "정산 정보를 찾을 수 없습니다.";
   }
+
   return message || "정산 상세 조회 중 오류가 발생했습니다.";
 }
 
@@ -44,16 +92,6 @@ function hasApprovedRefund(refund) {
   return (
     refund?.hasApprovedRefund === true ||
     refund?.approvedRefundExists === true
-  );
-}
-
-function extractMerchantId(payload) {
-  return (
-    payload?.merchantId ||
-    payload?.data?.merchantId ||
-    payload?.user?.merchantId ||
-    payload?.principal?.merchantId ||
-    null
   );
 }
 
@@ -73,25 +111,15 @@ export default function SettlementDetailPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
-  const fetchMerchantId = useCallback(async () => {
-    const response = await getMe();
-    const resolvedMerchantId = extractMerchantId(response);
-
-    if (!resolvedMerchantId) {
-      throw new Error("세션에서 merchantId를 확인할 수 없습니다.");
-    }
-
-    return resolvedMerchantId;
-  }, []);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState("");
 
   const fetchDetail = useCallback(
-    async (signal) => {
+    async (resolvedMerchantId, signal) => {
       try {
         setLoading(true);
         setLoadError("");
-
-        const resolvedMerchantId = merchantId || (await fetchMerchantId());
-        setMerchantId(resolvedMerchantId);
 
         const data = await getMerchantSettlementDetail(
           resolvedMerchantId,
@@ -104,20 +132,76 @@ export default function SettlementDetailPage() {
         if (error?.name === "AbortError" || error?.code === "ERR_CANCELED") {
           return;
         }
+
         setDetail(null);
         setLoadError(mapDetailErrorToMessage(error));
       } finally {
         setLoading(false);
       }
     },
-    [fetchMerchantId, merchantId, settlementId]
+    [settlementId]
   );
 
   useEffect(() => {
+    let mounted = true;
+
+    async function checkMerchantRole() {
+      try {
+        setAuthChecking(true);
+        setAuthErrorMessage("");
+        setIsAllowed(false);
+        setMerchantId("");
+
+        const me = await getMe();
+        const role = String(extractRole(me) || "").toUpperCase();
+        const resolvedMerchantId = extractMerchantId(me);
+
+        if (!mounted) return;
+
+        if (role !== "MERCHANT") {
+          setIsAllowed(false);
+          setAuthErrorMessage(
+            "Merchant 전용 정산 상세 화면입니다. /auth/dev-login 에서 Merchant 세션으로 다시 로그인해 주세요."
+          );
+          return;
+        }
+
+        if (!resolvedMerchantId) {
+          setIsAllowed(false);
+          setAuthErrorMessage(
+            "세션에서 merchantId를 확인할 수 없습니다. /auth/dev-login 에서 Merchant 세션을 다시 생성해 주세요."
+          );
+          return;
+        }
+
+        setMerchantId(resolvedMerchantId);
+        setIsAllowed(true);
+      } catch (error) {
+        if (!mounted) return;
+        setIsAllowed(false);
+        setAuthErrorMessage(buildAuthErrorMessage(error));
+      } finally {
+        if (mounted) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    checkMerchantRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAllowed || !merchantId) return;
+
     const controller = new AbortController();
-    fetchDetail(controller.signal);
+    fetchDetail(merchantId, controller.signal);
+
     return () => controller.abort();
-  }, [fetchDetail]);
+  }, [isAllowed, merchantId, fetchDetail]);
 
   const currentSettlementId = detail?.settlementId || settlementId || "-";
   const currentMerchantId = detail?.merchantId || merchantId || "-";
@@ -147,6 +231,52 @@ export default function SettlementDetailPage() {
     return "NONE";
   }, [refund]);
 
+  if (authChecking) {
+    return (
+      <PageLayout
+        title="정산 상세"
+        description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
+      >
+        <SectionCard title="세션 확인 중">
+          <LoadingBlock
+            title="세션 확인 중"
+            description="현재 로그인 세션의 역할을 확인하고 있습니다."
+          />
+        </SectionCard>
+      </PageLayout>
+    );
+  }
+
+  if (!isAllowed) {
+    if (authErrorMessage.includes("로그인") || authErrorMessage.includes("인증")) {
+      return (
+        <PageLayout
+          title="정산 상세"
+          description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
+        >
+          <RequireLoginNotice
+            title="Merchant 전용 화면"
+            message={authErrorMessage}
+          />
+        </PageLayout>
+      );
+    }
+
+    return (
+      <PageLayout
+        title="정산 상세"
+        description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
+      >
+        <GuardNotice
+          title="접근 불가"
+          message={authErrorMessage}
+          tone="danger"
+        />
+        <ErrorState message={authErrorMessage} />
+      </PageLayout>
+    );
+  }
+
   if (loading) {
     return (
       <PageLayout
@@ -154,12 +284,10 @@ export default function SettlementDetailPage() {
         description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
       >
         <SectionCard title="로딩 중">
-          <div className="state-block">
-            <div className="state-block__title">로딩 중</div>
-            <div className="state-block__description">
-              정산 상세 데이터를 불러오고 있습니다.
-            </div>
-          </div>
+          <LoadingBlock
+            title="로딩 중"
+            description="정산 상세 데이터를 불러오고 있습니다."
+          />
         </SectionCard>
       </PageLayout>
     );
@@ -172,6 +300,7 @@ export default function SettlementDetailPage() {
         description="판매자 기준으로 settlement 상세와 라인 내역을 조회하는 화면입니다."
       >
         <GuardNotice title="조회 실패" message={loadError} tone="danger" />
+        <ErrorState message={loadError} />
       </PageLayout>
     );
   }
@@ -248,26 +377,23 @@ export default function SettlementDetailPage() {
 
       <div className="page-grid-2">
         <SectionCard title="정산 상세">
-          <InfoRow label="baseDate">{baseDate}</InfoRow>
-          <InfoRow label="gross">{formatAmount(gross)}</InfoRow>
-          <InfoRow label="fee">{formatAmount(fee)}</InfoRow>
-          <InfoRow label="vat">{formatAmount(vat)}</InfoRow>
-          <InfoRow label="net">{formatAmount(net)}</InfoRow>
+          <InfoRow label="baseDate" value={baseDate} />
+          <InfoRow label="gross" value={formatAmount(gross)} />
+          <InfoRow label="fee" value={formatAmount(fee)} />
+          <InfoRow label="vat" value={formatAmount(vat)} />
+          <InfoRow label="net" value={formatAmount(net)} />
         </SectionCard>
 
         <SectionCard title="정산 상태 참고">
           <InfoRow label="hold">
             {hold?.status ? <StatusBadge status={hold.status} /> : "없음"}
           </InfoRow>
-          <InfoRow label="approved refund">
-            {hasApprovedRefund(refund) ? "예" : "아니오"}
-          </InfoRow>
-          <InfoRow label="adjustment pending">
-            {isRefundAdjustmentPending(refund) ? "예" : "아니오"}
-          </InfoRow>
-          <InfoRow label="refund status">
-            <StatusBadge status={refundStatus} />
-          </InfoRow>
+          <InfoRow label="approved refund" value={hasApprovedRefund(refund) ? "예" : "아니오"} />
+          <InfoRow
+            label="adjustment pending"
+            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+          />
+          <InfoRow label="refund status" status value={refundStatus} />
         </SectionCard>
       </div>
 
@@ -288,17 +414,8 @@ export default function SettlementDetailPage() {
 
       <SectionCard title="연결 정보">
         <div style={{ display: "grid", gap: "12px" }}>
-          <InfoRow label="settlementId">
-            <CopyableValue value={currentSettlementId} />
-          </InfoRow>
-
-          <InfoRow label="merchantId">
-            {currentMerchantId !== "-" ? (
-              <CopyableValue value={currentMerchantId} />
-            ) : (
-              "-"
-            )}
-          </InfoRow>
+          <InfoRow label="settlementId" copyable value={currentSettlementId} />
+          <InfoRow label="merchantId" copyable value={currentMerchantId} />
 
           <InfoRow label="paymentIds">
             {paymentIds.length === 0 ? (
@@ -340,31 +457,26 @@ export default function SettlementDetailPage() {
           <InfoRow label="status">
             {hold?.status ? <StatusBadge status={hold.status} /> : "-"}
           </InfoRow>
-          <InfoRow label="reason">{hold?.reasonCode || "-"}</InfoRow>
-          <InfoRow label="comment">
-            {hold?.requestedComment || hold?.comment || "-"}
-          </InfoRow>
-          <InfoRow label="approvedBy">
-            {hold?.approvedBy || hold?.decidedBy || "-"}
-          </InfoRow>
-          <InfoRow label="createdAt">
-            {hold?.createdAt || hold?.requestedAt || "-"}
-          </InfoRow>
+          <InfoRow label="reason" value={hold?.reasonCode || "-"} />
+          <InfoRow
+            label="comment"
+            value={hold?.requestedComment || hold?.comment || "-"}
+          />
+          <InfoRow label="approvedBy" value={hold?.approvedBy || hold?.decidedBy || "-"} />
+          <InfoRow label="createdAt" value={hold?.createdAt || hold?.requestedAt || "-"} />
         </SectionCard>
 
         <SectionCard title="Refund 요약">
-          <InfoRow label="approved refund">
-            {hasApprovedRefund(refund) ? "예" : "아니오"}
-          </InfoRow>
-          <InfoRow label="adjustment pending">
-            {isRefundAdjustmentPending(refund) ? "예" : "아니오"}
-          </InfoRow>
-          <InfoRow label="status">
-            <StatusBadge status={refundStatus} />
-          </InfoRow>
-          <InfoRow label="refund line amount">
-            {refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}
-          </InfoRow>
+          <InfoRow label="approved refund" value={hasApprovedRefund(refund) ? "예" : "아니오"} />
+          <InfoRow
+            label="adjustment pending"
+            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+          />
+          <InfoRow label="status" status value={refundStatus} />
+          <InfoRow
+            label="refund line amount"
+            value={refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}
+          />
         </SectionCard>
       </div>
 
