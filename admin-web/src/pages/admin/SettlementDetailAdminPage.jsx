@@ -372,12 +372,6 @@ export default function SettlementDetailAdminPage() {
       }
     }
 
-    if (status === "PAY_REQUESTED") {
-      messages.push(
-        "현재 정산 건은 PAY_REQUESTED 상태입니다. 4-eyes 규칙에 따라 지급 요청자와 다른 Admin이 지급 승인해야 합니다."
-      );
-    }
-
     if (status !== "READY" && status !== "PAY_REQUESTED" && status !== "PAID") {
       messages.push("현재 상태에서는 지급 요청/지급 승인을 진행할 수 없습니다.");
     }
@@ -555,29 +549,29 @@ export default function SettlementDetailAdminPage() {
       title="정산 상세"
       description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
     >
-      {guardMessages.length > 0 ? (
-        <GuardNotice
-          title="가드레일 안내"
-          tone="warning"
-          message={
-            <div>
-              {guardMessages.map((message) => (
-                <div key={message}>{message}</div>
-              ))}
-            </div>
-          }
-        />
-      ) : (
-        <GuardNotice
-          title={status === "PAY_REQUESTED" ? "지급 승인 가능" : "지급 요청 가능"}
-          tone="info"
-          message={
-            status === "PAY_REQUESTED"
-              ? "현재 정산 건은 지급 승인 단계입니다. 요청자와 다른 Admin 계정으로 승인해야 합니다."
-              : "현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
-          }
-        />
-      )}
+     {guardMessages.length > 0 ? (
+       <GuardNotice
+         title="가드레일 안내"
+         tone="warning"
+         message={
+           <div>
+             {guardMessages.map((message) => (
+               <div key={message}>{message}</div>
+             ))}
+           </div>
+         }
+       />
+     ) : (
+       <GuardNotice
+         title={status === "PAY_REQUESTED" ? "지급 승인 가능" : "지급 요청 가능"}
+         tone="info"
+         message={
+           status === "PAY_REQUESTED"
+             ? "현재 정산 건은 지급 승인 단계입니다. 요청자와 다른 Admin 계정으로 승인해야 합니다."
+             : "현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
+         }
+       />
+     )}
 
       {actionMessage ? (
         <GuardNotice title="처리 완료" message={actionMessage} tone="success" />
@@ -657,13 +651,13 @@ export default function SettlementDetailAdminPage() {
             <GuardNotice
               title="Trace 진입 정보"
               tone="info"
-              message="아래 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
+              message="현재 정산 건 기준 최신 운영 requestId입니다. 연결 정보의 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
             />
           ) : (
             <GuardNotice
               title="Trace 진입 정보"
               tone="info"
-              message="현재 정산 건의 Trace 진입 requestId를 확인 중이거나, 아직 재현 가능한 requestId가 없습니다."
+              message="현재 정산 건에서 Trace 진입에 사용할 최신 requestId가 아직 없습니다."
             />
           )}
         </div>
