@@ -2,6 +2,7 @@ package com.settleops.domain.settlement.application;
 
 import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
 import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
+import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementRepository;
 import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ForbiddenException;
@@ -12,6 +13,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -20,13 +23,32 @@ public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQue
     private final SettlementRepository settlementRepository;
 
     @Override
-    public Page<MerchantSettlementListItemResponse> getMerchantSettlements(String loginMerchantId, String merchantId, Pageable pageable) {
+    public Page<MerchantSettlementListItemResponse> getMerchantSettlements(
+            String loginMerchantId,
+            String merchantId,
+            SettlementStatus status,
+            LocalDate from,
+            LocalDate to,
+            Pageable pageable
+    ) {
         validateMerchantAccess(loginMerchantId, merchantId);
-        return settlementRepository.searchMerchantSettlements(merchantId, pageable);
+        validateDateRange(from, to);
+
+        return settlementRepository.searchMerchantSettlements(
+                merchantId,
+                status,
+                from,
+                to,
+                pageable
+        );
     }
 
     @Override
-    public MerchantSettlementDetailResponse getMerchantSettlementDetail(String loginMerchantId, String merchantId, String settlementId) {
+    public MerchantSettlementDetailResponse getMerchantSettlementDetail(
+            String loginMerchantId,
+            String merchantId,
+            String settlementId
+    ) {
         validateMerchantAccess(loginMerchantId, merchantId);
 
         if (settlementId == null || settlementId.isBlank()) {
@@ -56,11 +78,17 @@ public class MerchantSettlementQueryServiceImpl implements MerchantSettlementQue
         }
 
         if (merchantId == null || merchantId.isBlank()) {
-            throw new BadRequestException("merchantId must not be a null/blank");
+            throw new BadRequestException("merchantId must not be null/blank");
         }
 
         if (!loginMerchantId.equals(merchantId)) {
             throw new ForbiddenException("merchant mismatch");
+        }
+    }
+
+    private void validateDateRange(LocalDate from, LocalDate to) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("from must be before or equal to to");
         }
     }
 }

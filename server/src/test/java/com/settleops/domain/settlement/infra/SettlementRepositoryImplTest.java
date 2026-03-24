@@ -194,39 +194,69 @@ class SettlementRepositoryImplTest {
     }
 
     @Test
-    @DisplayName("Merchant 정산 리스트 조회 시 해당 merchant의 데이터만 반환한다")
-    void searchMerchantSettlements_filtersByMerchantId() {
+    @DisplayName("Merchant 정산 리스트 조회 시 merchantId, status, from, to 조건을 함께 적용한다")
+    void searchMerchantSettlements_filtersByMerchantIdStatusAndDateRange() {
         // given
-        LocalDate date1 = LocalDate.of(2099, 12, 23);
-        LocalDate date2 = LocalDate.of(2099, 12, 22);
-        LocalDate date3 = LocalDate.of(2099, 12, 21);
+        LocalDate includedDate1 = LocalDate.of(2099, 12, 23);
+        LocalDate includedDate2 = LocalDate.of(2099, 12, 22);
+        LocalDate excludedOldDate = LocalDate.of(2099, 12, 21);
+        LocalDate excludedOtherMerchantDate = LocalDate.of(2099, 12, 23);
+        LocalDate excludedOtherStatusDate = LocalDate.of(2099, 12, 24);
+
+        Long batchIdIncludedDate1 = createBatchId(includedDate1);
+        Long batchIdIncludedDate2 = createBatchId(includedDate2);
+        Long batchIdExcludedOldDate = createBatchId(excludedOldDate);
+        Long batchIdExcludedOtherStatusDate = createBatchId(excludedOtherStatusDate);
 
         Settlement target1 = createSettlement(
-                createBatchId(date1),
+                batchIdIncludedDate1,
                 "merchant-1",
-                date1,
+                includedDate1,
                 10000L
         );
         Settlement target2 = createSettlement(
-                createBatchId(date2),
+                batchIdIncludedDate2,
                 "merchant-1",
-                date2,
+                includedDate2,
                 9000L
         );
+        Settlement excludedOldDateSettlement = createSettlement(
+                batchIdExcludedOldDate,
+                "merchant-1",
+                excludedOldDate,
+                8000L
+        );
         Settlement otherMerchant = createSettlement(
-                createBatchId(date3),
+                batchIdIncludedDate1,
                 "merchant-2",
-                date3,
+                includedDate1,
                 11000L
         );
+        Settlement otherStatus = createSettlement(
+                batchIdExcludedOtherStatusDate,
+                "merchant-1",
+                excludedOtherStatusDate,
+                12000L
+        );
 
-        settlementRepository.saveAll(List.of(target1, target2, otherMerchant));
+        settlementRepository.saveAll(List.of(
+                target1,
+                target2,
+                excludedOldDateSettlement,
+                otherMerchant,
+                otherStatus
+        ));
         entityManager.flush();
+
+        forceStatus(otherStatus.getSettlementId(), SettlementStatus.PAY_REQUESTED);
         entityManager.clear();
 
         // when
         Page<MerchantSettlementListItemResponse> result = settlementRepository.searchMerchantSettlements(
                 "merchant-1",
+                SettlementStatus.READY,
+                LocalDate.of(2099, 12, 22),
+                LocalDate.of(2099, 12, 24),
                 PageRequest.of(0, 20)
         );
 
@@ -238,7 +268,11 @@ class SettlementRepositoryImplTest {
 
         assertThat(result.getContent())
                 .extracting(MerchantSettlementListItemResponse::baseDate)
-                .containsExactly(date1, date2);
+                .containsExactly(includedDate1, includedDate2);
+
+        assertThat(result.getContent())
+                .extracting(MerchantSettlementListItemResponse::status)
+                .containsOnly(SettlementStatus.READY);
     }
 
     @Test

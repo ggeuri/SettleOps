@@ -6,6 +6,7 @@ import com.settleops.domain.settlement.dto.MerchantSettlementListItemResponse;
 import com.settleops.domain.settlement.enums.SettlementLineType;
 import com.settleops.domain.settlement.enums.SettlementStatus;
 import com.settleops.domain.settlement.infra.SettlementRepository;
+import com.settleops.global.error.BadRequestException;
 import com.settleops.global.error.ForbiddenException;
 import com.settleops.global.error.NotFoundException;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +36,9 @@ public class MerchantSettlementQueryServiceImplTest {
                 service.getMerchantSettlements(
                         "merchant-1",
                         "merchant-2",
+                        SettlementStatus.READY,
+                        LocalDate.of(2026, 3, 1),
+                        LocalDate.of(2026, 3, 31),
                         PageRequest.of(0, 20)
                 )
         )
@@ -65,18 +69,59 @@ public class MerchantSettlementQueryServiceImplTest {
 
         Page<MerchantSettlementListItemResponse> page = new PageImpl<>(List.of(item), pageable, 1);
 
-        Mockito.when(settlementRepository.searchMerchantSettlements("merchant-1", pageable))
-                .thenReturn(page);
+        Mockito.when(
+                settlementRepository.searchMerchantSettlements(
+                        "merchant-1",
+                        SettlementStatus.READY,
+                        LocalDate.of(2026, 3, 1),
+                        LocalDate.of(2026, 3, 31),
+                        pageable
+                )
+        ).thenReturn(page);
 
         Page<MerchantSettlementListItemResponse> result =
-                service.getMerchantSettlements("merchant-1", "merchant-1", pageable);
+                service.getMerchantSettlements(
+                        "merchant-1",
+                        "merchant-1",
+                        SettlementStatus.READY,
+                        LocalDate.of(2026, 3, 1),
+                        LocalDate.of(2026, 3, 31),
+                        pageable
+                );
 
         assertThat(result.getTotalElements()).isEqualTo(1);
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).settlementId()).isEqualTo("settlement-1");
 
         Mockito.verify(settlementRepository)
-                .searchMerchantSettlements("merchant-1", pageable);
+                .searchMerchantSettlements(
+                        "merchant-1",
+                        SettlementStatus.READY,
+                        LocalDate.of(2026, 3, 1),
+                        LocalDate.of(2026, 3, 31),
+                        pageable
+                );
+    }
+
+    @Test
+    @DisplayName("Merchant 정산 리스트 조회 시 from이 to보다 크면 400을 반환한다")
+    void getMerchantSettlements_badRequestWhenFromAfterTo() {
+        SettlementRepository settlementRepository = Mockito.mock(SettlementRepository.class);
+        MerchantSettlementQueryServiceImpl service = new MerchantSettlementQueryServiceImpl(settlementRepository);
+
+        assertThatThrownBy(() ->
+                service.getMerchantSettlements(
+                        "merchant-1",
+                        "merchant-1",
+                        SettlementStatus.READY,
+                        LocalDate.of(2026, 4, 1),
+                        LocalDate.of(2026, 3, 1),
+                        PageRequest.of(0, 20)
+                )
+        )
+                .isInstanceOf(BadRequestException.class);
+
+        Mockito.verifyNoInteractions(settlementRepository);
     }
 
     @Test
