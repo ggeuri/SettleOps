@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
+import { getMe } from "../../api/meApi.js";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import PageLayout from "../../components/layout/PageLayout.jsx";
 import SectionCard from "../../components/layout/SectionCard.jsx";
 import ActionButton from "../../components/layout/ActionButton.jsx";
@@ -10,10 +12,7 @@ import {
     createRefund,
     getMyRefunds,
 } from "../../api/refundApi.js";
-import {
-    formatDateTime,
-    formatDateTimeWithSeconds,
-} from "../../utils/format.js";
+import { formatDateTime } from "../../utils/format.js";
 
 const INITIAL_FORM = {
     paymentId: "",
@@ -33,6 +32,35 @@ const INITIAL_SORT = {
     direction: "desc",
 };
 
+function isMerchantRole(me) {
+    if (!me) {
+        return false;
+    }
+
+    if (me.role === "MERCHANT" || me.role === "ROLE_MERCHANT") {
+        return true;
+    }
+
+    if (
+        Array.isArray(me.authorities) &&
+        me.authorities.includes("ROLE_MERCHANT")
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function buildErrorInfo(error, fallbackMessage) {
+    return {
+        status: error?.status ?? null,
+        message:
+            error?.body?.message ||
+            error?.body?.reason ||
+            fallbackMessage,
+    };
+}
+
 function formatShortId(value, head = 8, tail = 4) {
     if (!value) return "-";
     if (value.length <= head + tail + 3) return value;
@@ -42,36 +70,6 @@ function formatShortId(value, head = 8, tail = 4) {
 function formatAmount(value) {
     if (value === null || value === undefined || value === "") return "-";
     return Number(value).toLocaleString("ko-KR");
-}
-
-function getDerivedLabel(row) {
-    if (
-        row.status === "APPROVED" &&
-        row.capturedAmount != null &&
-        Number(row.amount) === Number(row.capturedAmount)
-    ) {
-        return "전액 환불(파생)";
-    }
-
-    return "-";
-}
-
-function compareValues(a, b) {
-    if (a === b) return 0;
-    if (a === null || a === undefined || a === "") return 1;
-    if (b === null || b === undefined || b === "") return -1;
-
-    const aNumber = Number(a);
-    const bNumber = Number(b);
-
-    if (!Number.isNaN(aNumber) && !Number.isNaN(bNumber)) {
-        return aNumber - bNumber;
-    }
-
-    return String(a).localeCompare(String(b), "ko-KR", {
-        numeric: true,
-        sensitivity: "base",
-    });
 }
 
 function SortHeader({ label, columnKey, sort, onSortChange }) {
@@ -89,7 +87,7 @@ function SortHeader({ label, columnKey, sort, onSortChange }) {
 
         onSortChange({
             key: columnKey,
-            direction: "asc",
+            direction: columnKey === "requestedAt" ? "desc" : "asc",
         });
     }
 
@@ -143,9 +141,7 @@ function ContextRow({ label, value, isStatus = false }) {
                 fontSize: "13px",
             }}
         >
-            <span style={{ color: "#667085", fontWeight: 600 }}>
-                {label}
-            </span>
+            <span style={{ color: "#667085", fontWeight: 600 }}>{label}</span>
 
             <span
                 style={{
@@ -154,7 +150,7 @@ function ContextRow({ label, value, isStatus = false }) {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                 }}
-                title={displayValue}
+                title={String(displayValue)}
             >
                 {isStatus && displayValue !== "-" ? (
                     <StatusBadge status={displayValue} />
@@ -168,19 +164,38 @@ function ContextRow({ label, value, isStatus = false }) {
 
 export default function RefundPage() {
     const [form, setForm] = useState(INITIAL_FORM);
-    const [filter, setFilter] = useState(INITIAL_FILTER);
+    const [draftFilter, setDraftFilter] = useState(INITIAL_FILTER);
+    const [appliedFilter, setAppliedFilter] = useState(INITIAL_FILTER);
     const [sort, setSort] = useState(INITIAL_SORT);
+
     const [refundContext, setRefundContext] = useState(null);
     const [refunds, setRefunds] = useState([]);
+
+    const [loading, setLoading] = useState(true);
     const [loadingContext, setLoadingContext] = useState(false);
     const [loadingRefunds, setLoadingRefunds] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    const [errorInfo, setErrorInfo] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
-    const [searchParams] = useSearchParams();
-    const location = useLocation();
+
+    const [selectedRefundId, setSelectedRefundId] = useState("");
+
+    const [pageInfo, setPageInfo] = useState({
+        page: 0,
+        size: 7,
+        totalElements: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false,
+    });
+
     const [page, setPage] = useState(0);
     const pageSize = 7;
+
+    const [searchParams] = useSearchParams();
+    const location = useLocation();
 
     const initialPaymentId =
         searchParams.get("paymentId")?.trim() ||
@@ -188,21 +203,131 @@ export default function RefundPage() {
         "";
 
     useEffect(() => {
-        loadMyRefunds();
-    }, []);
+        async function loadPage() {
+            try {
+                setLoading(true);
+                setErrorInfo(null);
+                setErrorMessage("");
+                setSuccessMessage("");
 
-    useEffect(() => {
-        if (!initialPaymentId) return;
+                const meData = await getMe();
 
-        setForm((prev) => ({
-            ...prev,
-            paymentId: initialPaymentId,
-        }));
+                if (!isMerchantRole(meData)) {
+                    setRefunds([]);
+                    setRefundContext(null);
+                    setErrorInfo({
+                        status: 403,
+                        message: "Merchant 권한이 필요한 페이지입니다.",
+                    });
+                    return;
+                }
+
+                if (initialPaymentId) {
+                    setForm({
+                        paymentId: initialPaymentId,
+                        amount: "",
+                        reasonText: "",
+                    });
+                    await loadRefundContextByPaymentId(initialPaymentId);
+                } else {
+                    setForm(INITIAL_FORM);
+                    setRefundContext(null);
+                }
+            } catch (error) {
+                setRefunds([]);
+                setRefundContext(null);
+                setErrorInfo(
+                    buildErrorInfo(error, "환불 요청 · 현황 화면을 불러오지 못했습니다.")
+                );
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadPage();
     }, [initialPaymentId]);
 
     useEffect(() => {
-        setPage(0);
-    }, [filter, sort]);
+        if (loading || errorInfo) {
+            return;
+        }
+
+        loadMyRefunds(page);
+    }, [loading, errorInfo, page, appliedFilter, sort]);
+
+    async function loadMyRefunds(targetPage = 0) {
+        setLoadingRefunds(true);
+
+        try {
+            const response = await getMyRefunds({
+                status: appliedFilter.status,
+                from: appliedFilter.from,
+                to: appliedFilter.to,
+                keyword: appliedFilter.keyword,
+                sortKey: sort.key,
+                sortDirection: sort.direction,
+                page: targetPage,
+                size: pageSize,
+            });
+
+            const items = Array.isArray(response?.items) ? response.items : [];
+            setRefunds(items);
+
+            setPageInfo({
+                page: response?.page ?? targetPage,
+                size: response?.size ?? pageSize,
+                totalElements: response?.totalElements ?? items.length,
+                totalPages: response?.totalPages ?? 0,
+                hasNext: response?.hasNext ?? false,
+                hasPrevious: response?.hasPrevious ?? false,
+            });
+
+            if (selectedRefundId) {
+                const exists = items.some((row) => row.refundId === selectedRefundId);
+                if (!exists) {
+                    setSelectedRefundId("");
+                }
+            }
+        } catch (error) {
+            setRefunds([]);
+            setPageInfo({
+                page: targetPage,
+                size: pageSize,
+                totalElements: 0,
+                totalPages: 0,
+                hasNext: false,
+                hasPrevious: false,
+            });
+            setErrorMessage(
+                error?.body?.message || "내 환불 내역 조회에 실패했습니다."
+            );
+        } finally {
+            setLoadingRefunds(false);
+        }
+    }
+
+    async function loadRefundContextByPaymentId(paymentId) {
+        if (!paymentId) {
+            setRefundContext(null);
+            return;
+        }
+
+        setLoadingContext(true);
+
+        try {
+            const response = await getRefundContext(paymentId);
+            setRefundContext(response);
+        } catch (error) {
+            setRefundContext(null);
+            setErrorMessage(
+                error?.body?.message ||
+                error?.body?.reason ||
+                "refund-context 조회에 실패했습니다."
+            );
+        } finally {
+            setLoadingContext(false);
+        }
+    }
 
     function handleChange(event) {
         const { name, value } = event.target;
@@ -212,16 +337,32 @@ export default function RefundPage() {
         }));
     }
 
-    function handleFilterChange(event) {
+    function handleDraftFilterChange(event) {
         const { name, value } = event.target;
-        setFilter((prev) => ({
+        setDraftFilter((prev) => ({
             ...prev,
             [name]: value,
         }));
     }
 
     function handleFilterReset() {
-        setFilter(INITIAL_FILTER);
+        setDraftFilter(INITIAL_FILTER);
+        setAppliedFilter(INITIAL_FILTER);
+        setPage(0);
+    }
+
+    function handleFilterSubmit(event) {
+        event.preventDefault();
+        setAppliedFilter({
+            ...draftFilter,
+            keyword: String(draftFilter.keyword || "").trim(),
+        });
+        setPage(0);
+    }
+
+    function handleSortChange(nextSort) {
+        setSort(nextSort);
+        setPage(0);
     }
 
     async function handleLoadContext() {
@@ -234,128 +375,29 @@ export default function RefundPage() {
             return;
         }
 
-        setLoadingContext(true);
+        setErrorMessage("");
+        setSuccessMessage("");
+        await loadRefundContextByPaymentId(paymentId);
+    }
+
+    async function handleSelectRefund(row) {
+        setSelectedRefundId(row.refundId);
         setErrorMessage("");
         setSuccessMessage("");
 
-        try {
-            const response = await getRefundContext(paymentId);
-            setRefundContext(response);
-        } catch (error) {
-            setRefundContext(null);
-            setErrorMessage(
-                error?.body?.message || "refund-context 조회에 실패했습니다."
-            );
-        } finally {
-            setLoadingContext(false);
-        }
+        setForm((prev) => ({
+            ...prev,
+            paymentId: row.paymentId || "",
+            amount: row.amount != null ? String(row.amount) : prev.amount,
+            reasonText: row.reasonText || prev.reasonText,
+        }));
+
+        await loadRefundContextByPaymentId(row.paymentId || "");
     }
 
-    async function loadMyRefunds() {
-        setLoadingRefunds(true);
-
-        try {
-            const response = await getMyRefunds();
-            setRefunds(Array.isArray(response) ? response : []);
-        } catch (error) {
-            setErrorMessage(
-                error?.body?.message || "내 환불 내역 조회에 실패했습니다."
-            );
-        } finally {
-            setLoadingRefunds(false);
-        }
+    function handleClearSelectedRefund() {
+        setSelectedRefundId("");
     }
-
-    const filteredRefunds = useMemo(() => {
-        return refunds.filter((row) => {
-            const rowStatus = row.status || "";
-            const rowRequestedAt = row.requestedAt || "";
-            const keyword = filter.keyword.trim().toLowerCase();
-
-            const matchesStatus =
-                filter.status === "ALL" || rowStatus === filter.status;
-
-            const requestedDate = rowRequestedAt ? rowRequestedAt.slice(0, 10) : "";
-
-            const matchesFrom =
-                !filter.from || (requestedDate && requestedDate >= filter.from);
-
-            const matchesTo =
-                !filter.to || (requestedDate && requestedDate <= filter.to);
-
-            const matchesKeyword =
-                !keyword ||
-                [row.refundId, row.paymentId, row.orderId]
-                    .filter(Boolean)
-                    .some((value) =>
-                        String(value).toLowerCase().includes(keyword)
-                    );
-
-            return matchesStatus && matchesFrom && matchesTo && matchesKeyword;
-        });
-    }, [refunds, filter]);
-
-    const sortedRefunds = useMemo(() => {
-        const copied = [...filteredRefunds];
-
-        copied.sort((a, b) => {
-            let leftValue;
-            let rightValue;
-
-            switch (sort.key) {
-                case "refundId":
-                    leftValue = a.refundId;
-                    rightValue = b.refundId;
-                    break;
-                case "paymentId":
-                    leftValue = a.paymentId;
-                    rightValue = b.paymentId;
-                    break;
-                case "amount":
-                    leftValue = Number(a.amount ?? 0);
-                    rightValue = Number(b.amount ?? 0);
-                    break;
-                case "status":
-                    leftValue = a.status;
-                    rightValue = b.status;
-                    break;
-                case "derived":
-                    leftValue = getDerivedLabel(a);
-                    rightValue = getDerivedLabel(b);
-                    break;
-                case "requestedAt":
-                    leftValue = a.requestedAt;
-                    rightValue = b.requestedAt;
-                    break;
-                case "decidedAt":
-                    leftValue = a.decidedAt;
-                    rightValue = b.decidedAt;
-                    break;
-                default:
-                    leftValue = a.requestedAt;
-                    rightValue = b.requestedAt;
-                    break;
-            }
-
-            const compared = compareValues(leftValue, rightValue);
-            return sort.direction === "asc" ? compared : compared * -1;
-        });
-
-        return copied;
-    }, [filteredRefunds, sort]);
-
-    const totalPages = Math.max(1, Math.ceil(sortedRefunds.length / pageSize));
-
-    const pagedRefunds = useMemo(() => {
-        const start = page * pageSize;
-        return sortedRefunds.slice(start, start + pageSize);
-    }, [sortedRefunds, page]);
-
-    useEffect(() => {
-        if (page > totalPages - 1) {
-            setPage(0);
-        }
-    }, [page, totalPages]);
 
     async function handleSubmit(event) {
         event.preventDefault();
@@ -394,6 +436,13 @@ export default function RefundPage() {
             return;
         }
 
+        if (paymentId !== refundContext.paymentId) {
+            setErrorMessage(
+                "paymentId를 변경한 경우 refund-context를 다시 조회해 주세요."
+            );
+            return;
+        }
+
         if (amount > refundContext.refundableAmount) {
             setErrorMessage("refundableAmount를 초과할 수 없습니다.");
             return;
@@ -409,12 +458,16 @@ export default function RefundPage() {
             });
 
             setSuccessMessage("환불 요청이 등록되었습니다.");
+            setSelectedRefundId("");
             setForm((prev) => ({
                 ...prev,
                 amount: "",
                 reasonText: "",
             }));
-            await loadMyRefunds();
+
+            await loadRefundContextByPaymentId(paymentId);
+            await loadMyRefunds(0);
+            setPage(0);
         } catch (error) {
             if (error?.body?.reason) {
                 setErrorMessage(`환불 요청 실패: ${error.body.reason}`);
@@ -426,6 +479,65 @@ export default function RefundPage() {
         } finally {
             setSubmitting(false);
         }
+    }
+
+    if (loading) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">로딩 중</div>
+                    <div className="guard-notice__description">
+                        환불 요청 · 현황 화면을 불러오는 중입니다.
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo?.status === 401) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <RequireLoginNotice />
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo?.status === 403) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">접근 불가</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
+    }
+
+    if (errorInfo) {
+        return (
+            <PageLayout
+                title="환불 요청 · 현황"
+                description="상단에서 환불 요청을 등록하고, 하단에서 내 환불 현황을 조회합니다."
+            >
+                <div className="guard-notice">
+                    <div className="guard-notice__title">조회 실패</div>
+                    <div className="guard-notice__description">
+                        {errorInfo.message}
+                    </div>
+                </div>
+            </PageLayout>
+        );
     }
 
     return (
@@ -509,7 +621,15 @@ export default function RefundPage() {
                             />
                         </div>
 
-                        <div className="button-row" style={{ marginTop: "10px" }}>
+                        <div
+                            className="button-row"
+                            style={{
+                                marginTop: "10px",
+                                display: "flex",
+                                gap: "8px",
+                                flexWrap: "wrap",
+                            }}
+                        >
                             <ActionButton
                                 type="button"
                                 onClick={handleSubmit}
@@ -517,7 +637,28 @@ export default function RefundPage() {
                             >
                                 {submitting ? "요청 중..." : "환불 요청"}
                             </ActionButton>
+
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={handleClearSelectedRefund}
+                                disabled={!selectedRefundId}
+                            >
+                                선택 해제
+                            </ActionButton>
                         </div>
+
+                        {selectedRefundId ? (
+                            <div
+                                style={{
+                                    marginTop: "10px",
+                                    fontSize: "12px",
+                                    color: "#667085",
+                                }}
+                            >
+                                선택된 환불: {selectedRefundId}
+                            </div>
+                        ) : null}
                     </div>
 
                     <div style={{ alignSelf: "start" }}>
@@ -541,8 +682,15 @@ export default function RefundPage() {
                                 refund-context
                             </h3>
 
-                            <ContextRow label="paymentId" value={refundContext?.paymentId} />
-                            <ContextRow label="status" value={refundContext?.status} isStatus />
+                            <ContextRow
+                                label="paymentId"
+                                value={refundContext?.paymentId}
+                            />
+                            <ContextRow
+                                label="status"
+                                value={refundContext?.status}
+                                isStatus
+                            />
                             <ContextRow
                                 label="capturedAmount"
                                 value={formatAmount(refundContext?.capturedAmount)}
@@ -551,9 +699,17 @@ export default function RefundPage() {
                                 label="refundableAmount"
                                 value={formatAmount(refundContext?.refundableAmount)}
                             />
-                            <ContextRow label="currency" value={refundContext?.currency} />
-                            <ContextRow label="merchantId" value={refundContext?.merchantId} />
-                            <ContextRow label="capturedAt" value={formatDateTime(refundContext?.capturedAt)}
+                            <ContextRow
+                                label="currency"
+                                value={refundContext?.currency}
+                            />
+                            <ContextRow
+                                label="merchantId"
+                                value={refundContext?.merchantId}
+                            />
+                            <ContextRow
+                                label="capturedAt"
+                                value={formatDateTime(refundContext?.capturedAt)}
                             />
                         </div>
                     </div>
@@ -567,72 +723,77 @@ export default function RefundPage() {
             ) : null}
 
             <SectionCard title="조회 필터">
-                <div
-                    style={{
-                        display: "flex",
-                        gap: "10px",
-                        alignItems: "flex-end",
-                        flexWrap: "wrap",
-                    }}
-                >
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">from</label>
-                        <input
-                            className="input"
-                            type="date"
-                            name="from"
-                            value={filter.from}
-                            onChange={handleFilterChange}
-                        />
-                    </div>
+                <form onSubmit={handleFilterSubmit}>
+                    <div
+                        style={{
+                            display: "flex",
+                            gap: "10px",
+                            alignItems: "flex-end",
+                            flexWrap: "wrap",
+                        }}
+                    >
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">from</label>
+                            <input
+                                className="input"
+                                type="date"
+                                name="from"
+                                value={draftFilter.from}
+                                onChange={handleDraftFilterChange}
+                            />
+                        </div>
 
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">to</label>
-                        <input
-                            className="input"
-                            type="date"
-                            name="to"
-                            value={filter.to}
-                            onChange={handleFilterChange}
-                        />
-                    </div>
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">to</label>
+                            <input
+                                className="input"
+                                type="date"
+                                name="to"
+                                value={draftFilter.to}
+                                onChange={handleDraftFilterChange}
+                            />
+                        </div>
 
-                    <div style={{ minWidth: "132px" }}>
-                        <label className="form-field__label">status</label>
-                        <select
-                            className="input"
-                            name="status"
-                            value={filter.status}
-                            onChange={handleFilterChange}
-                        >
-                            <option value="ALL">ALL</option>
-                            <option value="REQUESTED">REQUESTED</option>
-                            <option value="APPROVED">APPROVED</option>
-                            <option value="REJECTED">REJECTED</option>
-                        </select>
-                    </div>
+                        <div style={{ minWidth: "132px" }}>
+                            <label className="form-field__label">status</label>
+                            <select
+                                className="input"
+                                name="status"
+                                value={draftFilter.status}
+                                onChange={handleDraftFilterChange}
+                            >
+                                <option value="ALL">ALL</option>
+                                <option value="REQUESTED">REQUESTED</option>
+                                <option value="APPROVED">APPROVED</option>
+                                <option value="REJECTED">REJECTED</option>
+                            </select>
+                        </div>
 
-                    <div style={{ flex: 1, minWidth: "260px" }}>
-                        <label className="form-field__label">keyword</label>
-                        <input
-                            className="input"
-                            name="keyword"
-                            value={filter.keyword}
-                            onChange={handleFilterChange}
-                            placeholder="refundId / paymentId"
-                        />
-                    </div>
+                        <div style={{ flex: 1, minWidth: "260px" }}>
+                            <label className="form-field__label">keyword</label>
+                            <input
+                                className="input"
+                                name="keyword"
+                                value={draftFilter.keyword}
+                                onChange={handleDraftFilterChange}
+                                placeholder="refundId / paymentId"
+                            />
+                        </div>
 
-                    <div>
-                        <ActionButton
-                            type="button"
-                            variant="secondary"
-                            onClick={handleFilterReset}
-                        >
-                            초기화
-                        </ActionButton>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                            <ActionButton type="submit">
+                                조회
+                            </ActionButton>
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={handleFilterReset}
+                            >
+                                초기화
+                            </ActionButton>
+                        </div>
                     </div>
-                </div>
+                </form>
             </SectionCard>
 
             <SectionCard title="내 환불 현황">
@@ -643,7 +804,7 @@ export default function RefundPage() {
                             환불 내역을 불러오고 있습니다.
                         </div>
                     </div>
-                ) : filteredRefunds.length === 0 ? (
+                ) : refunds.length === 0 ? (
                     <div className="state-block">
                         <div className="state-block__title">환불 내역 없음</div>
                         <div className="state-block__description">
@@ -655,82 +816,131 @@ export default function RefundPage() {
                         <table className="data-table">
                             <thead>
                             <tr>
+                                <th style={{ width: "52px", padding: "12px 12px" }}>
+                                    선택
+                                </th>
                                 <SortHeader
                                     label="refundId"
                                     columnKey="refundId"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="paymentId"
                                     columnKey="paymentId"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="refundAmount"
                                     columnKey="amount"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="status"
                                     columnKey="status"
                                     sort={sort}
-                                    onSortChange={setSort}
-                                />
-                                <SortHeader
-                                    label="derived"
-                                    columnKey="derived"
-                                    sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="requestedAt"
                                     columnKey="requestedAt"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                                 <SortHeader
                                     label="decidedAt"
                                     columnKey="decidedAt"
                                     sort={sort}
-                                    onSortChange={setSort}
+                                    onSortChange={handleSortChange}
                                 />
                             </tr>
                             </thead>
                             <tbody>
-                            {pagedRefunds.map((row) => (
-                                <tr key={row.refundId}>
-                                    <td
-                                        title={row.refundId}
-                                        style={{ padding: "10px 18px", lineHeight: 1.2 }}
+                            {refunds.map((row) => {
+                                const isSelected = selectedRefundId === row.refundId;
+
+                                return (
+                                    <tr
+                                        key={row.refundId}
+                                        onClick={() => handleSelectRefund(row)}
+                                        style={{
+                                            background: isSelected
+                                                ? "#eff6ff"
+                                                : "#ffffff",
+                                            cursor: "pointer",
+                                        }}
                                     >
-                                        {formatShortId(row.refundId)}
-                                    </td>
-                                    <td
-                                        title={row.paymentId}
-                                        style={{ padding: "10px 18px", lineHeight: 1.2 }}
-                                    >
-                                        {formatShortId(row.paymentId, 10, 6)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatAmount(row.amount)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        <StatusBadge status={row.status} />
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {getDerivedLabel(row)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatDateTime(row.requestedAt)}
-                                    </td>
-                                    <td style={{ padding: "10px 18px", lineHeight: 1.2 }}>
-                                        {formatDateTime(row.decidedAt)}
-                                    </td>
-                                </tr>
-                            ))}
+                                        <td
+                                            style={{
+                                                padding: "10px 12px",
+                                                textAlign: "center",
+                                            }}
+                                        >
+                                            <input
+                                                type="radio"
+                                                name="selectedRefund"
+                                                checked={isSelected}
+                                                onChange={() => handleSelectRefund(row)}
+                                                onClick={(event) =>
+                                                    event.stopPropagation()
+                                                }
+                                            />
+                                        </td>
+                                        <td
+                                            title={row.refundId}
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatShortId(row.refundId)}
+                                        </td>
+                                        <td
+                                            title={row.paymentId}
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatShortId(row.paymentId, 10, 6)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatAmount(row.amount)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            <StatusBadge status={row.status} />
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatDateTime(row.requestedAt)}
+                                        </td>
+                                        <td
+                                            style={{
+                                                padding: "10px 18px",
+                                                lineHeight: 1.2,
+                                            }}
+                                        >
+                                            {formatDateTime(row.decidedAt)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                             </tbody>
                         </table>
 
@@ -750,8 +960,8 @@ export default function RefundPage() {
                                 }}
                             >
                                 <Pagination
-                                    page={page}
-                                    totalPages={totalPages}
+                                    page={pageInfo.page}
+                                    totalPages={pageInfo.totalPages}
                                     onPageChange={setPage}
                                     disabled={loadingRefunds}
                                 />

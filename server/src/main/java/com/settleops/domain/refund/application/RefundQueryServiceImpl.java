@@ -1,12 +1,16 @@
 package com.settleops.domain.refund.application;
 
-import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
-import com.settleops.domain.refund.domain.Refund;
+import com.settleops.domain.refund.api.dto.RefundRowDTO;
+import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.domain.refund.infra.RefundReadRepository;
+import com.settleops.global.error.BadRequestException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -15,21 +19,48 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     private final RefundReadRepository refundReadRepository;
 
     @Override
-    public List<AdminRefundListItemDTO> myRefunds() {
-        // 1) 우선 개발 확인용: 전체 조회(최근순)
-        List<Refund> refunds = refundReadRepository.findAllByOrderByCreatedAtDesc();
+    public Page<RefundRowDTO> myRefunds(
+            String loginMerchantId,
+            String status,
+            LocalDate from,
+            LocalDate to,
+            String keyword,
+            String sortKey,
+            String sortDirection,
+            Pageable pageable
+    ) {
+        RefundStatus refundStatus = parseStatus(status);
 
-        // 2) 엔티티 -> DTO 매핑 (AdminRefundListItemDTO 필드에 맞춰 수정)
-        return refunds.stream()
-                .map(r -> new AdminRefundListItemDTO(
-                        r.getRefundId(),
-                        r.getPaymentId(),
-                        r.getMerchantId(),
-                        r.getAmount(),
-                        r.getStatus(),
-                        r.getRequestedAt(),
-                        r.getDecidedAt()
-                ))
-                .toList();
+        LocalDateTime fromDateTime = from == null ? null : from.atStartOfDay();
+        LocalDateTime toDateTime = to == null ? null : to.plusDays(1).atStartOfDay().minusNanos(1);
+
+        return refundReadRepository.findMyRefunds(
+                loginMerchantId,
+                refundStatus,
+                fromDateTime,
+                toDateTime,
+                keyword,
+                sortKey,
+                sortDirection,
+                pageable
+        );
+    }
+
+    private RefundStatus parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+
+        String normalized = status.trim().toUpperCase();
+
+        if ("ALL".equals(normalized)) {
+            return null;
+        }
+
+        try {
+            return RefundStatus.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException("invalid refund status: " + status);
+        }
     }
 }

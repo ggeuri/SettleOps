@@ -31,12 +31,16 @@ class AdminRefundControllerPaginationTest {
                 new AdminRefundController(refundAdminService, refundAdminQueryService, requestIdResolver);
 
         AdminRefundListItemDTO item = new AdminRefundListItemDTO(
-                "refund-1",
-                "payment-1",
+                "rfd-1",
+                "pay-1",
+                "stl-1",
                 "merchant-1",
                 1000L,
+                10000L,
+                9000L,
                 RefundStatus.REQUESTED,
-                LocalDateTime.of(2026, 3, 20, 10, 0),
+                "test reason",
+                LocalDateTime.now(),
                 null
         );
 

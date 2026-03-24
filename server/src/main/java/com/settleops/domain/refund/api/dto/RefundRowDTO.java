@@ -7,32 +7,23 @@ import lombok.Getter;
 import java.time.LocalDateTime;
 
 @Getter
-public class AdminRefundListItemDTO {
+public class RefundRowDTO {
 
     private final String refundId;
     private final String paymentId;
-    private final String settlementId;
     private final String merchantId;
-
     private final long amount;
-    private final long capturedAmount;
-    private final long refundableAmount;
-
     private final RefundStatus status;
     private final String reasonText;
-
     private final LocalDateTime requestedAt;
     private final LocalDateTime decidedAt;
 
     @QueryProjection
-    public AdminRefundListItemDTO(
+    public RefundRowDTO(
             String refundId,
             String paymentId,
-            String settlementId,
             String merchantId,
             long amount,
-            long capturedAmount,
-            long refundableAmount,
             RefundStatus status,
             String reasonText,
             LocalDateTime requestedAt,
@@ -40,11 +31,8 @@ public class AdminRefundListItemDTO {
     ) {
         this.refundId = refundId;
         this.paymentId = paymentId;
-        this.settlementId = settlementId;
         this.merchantId = merchantId;
         this.amount = amount;
-        this.capturedAmount = capturedAmount;
-        this.refundableAmount = refundableAmount;
         this.status = status;
         this.reasonText = reasonText;
         this.requestedAt = requestedAt;
