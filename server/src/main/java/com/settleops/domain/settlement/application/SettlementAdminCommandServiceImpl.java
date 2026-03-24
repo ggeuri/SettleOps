@@ -218,6 +218,11 @@ public class SettlementAdminCommandServiceImpl implements SettlementAdminCommand
 
             settlementLineRepository.saveAll(refundLines);
 
+            // LOCKED:
+            // - C(RefundSettlementAssembler)는 "approved refund -> next batch input set"만 산출한다.
+            // - A(batch)는 그 입력을 소비해 settlement_line(REFUND)와 refund_settlement_link를 동일 트랜잭션으로 적재한다.
+            // - 반영 완료 증거 SoT는 refund_settlement_link 단일이다.
+
             List<RefundSettlementLink> refundLinks = refundAdjustments.stream()
                     .map(refund -> {
                         String settlementId = settlementIdByMerchant.get(refund.merchantId());

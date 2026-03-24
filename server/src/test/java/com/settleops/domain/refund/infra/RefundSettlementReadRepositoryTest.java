@@ -12,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
 import com.settleops.domain.settlement.entity.SettlementLine;
 import com.settleops.domain.settlement.enums.SettlementLineType;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -20,6 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Transactional
 @DataJpaTest
 @ActiveProfiles("test-db")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)

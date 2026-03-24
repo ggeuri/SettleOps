@@ -3,8 +3,10 @@ package com.settleops.domain.refund.api;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -24,18 +26,16 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/refunds")
 public class AdminRefundController {
-    //GET /api/admin/refunds?status=&from=&to=
-    //PATCH /api/admin/refunds/{refundId}/approve
-    //PATCH /api/admin/refunds/{refundId}/reject
 
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
     private final RequestIdResolver requestIdResolver;
+    private final RefundTraceEntryQueryService refundTraceEntryQueryService;
 
     /**
      * A6 운영 큐 조회(READ).
      * - status/from/to는 옵션.
-     * - 기준 시각: requestedAt (DB requested_at)
+     * - 기준 시각: requestedAt
      */
     @GetMapping
     public ResponseEntity<PageResponse<AdminRefundListItemDTO>> list(
@@ -51,6 +51,19 @@ public class AdminRefundController {
                 refundAdminQueryService.list(status, from, to, pageable);
 
         return ResponseEntity.ok(PageResponse.from(result));
+    }
+
+    /**
+     * A6 상세에서 A1 Trace 진입용 requestId를 조회한다.
+     * 기본 기준은 최신 non-no-op refund audit requestId 이다.
+     */
+    @GetMapping("/{refundId}/trace-entry")
+    public ResponseEntity<RefundTraceEntryResponseDTO> getRefundTraceEntry(
+            @PathVariable String refundId
+    ) {
+        return ResponseEntity.ok(
+                refundTraceEntryQueryService.getRefundTraceEntry(refundId)
+        );
     }
 
     @PatchMapping("/{refundId}/approve")
