@@ -565,9 +565,9 @@ export default function RefundQueuePage() {
 
                 .refund-queue-detail-grid {
                     display: grid;
-                    grid-template-columns: repeat(4, minmax(0, 1fr));
-                    gap: 8px 10px;
-                    margin-bottom: 10px;
+                    grid-template-columns: repeat(3, minmax(0, 1fr));
+                    gap: 10px;
+                    margin-bottom: 12px;
                 }
 
                 .refund-queue-detail-item {
@@ -575,26 +575,15 @@ export default function RefundQueuePage() {
                     align-items: center;
                     gap: 10px;
                     min-width: 0;
-                    padding: 9px 12px;
+                    min-height: 60px;
+                    padding: 10px 12px;
                     border: 1px solid var(--color-border);
                     border-radius: 10px;
                     background: #fcfcfd;
                 }
 
-                .refund-queue-detail-item--wide {
-                    grid-column: span 2;
-                }
-
-                .refund-queue-detail-item--memo {
-                    grid-column: span 3;
-                }
-
-                .refund-queue-detail-item--compact .refund-queue-detail-value {
-                    white-space: nowrap;
-                }
-
                 .refund-queue-detail-label {
-                    flex: 0 0 88px;
+                    flex: 0 0 92px;
                     font-size: 12px;
                     font-weight: 700;
                     color: #667085;
@@ -602,6 +591,7 @@ export default function RefundQueuePage() {
 
                 .refund-queue-detail-value {
                     min-width: 0;
+                    flex: 1 1 auto;
                     font-size: 14px;
                     font-weight: 700;
                     color: #101828;
@@ -631,10 +621,6 @@ export default function RefundQueuePage() {
 
                 .refund-queue-detail-value .amount-text {
                     font-size: 14px;
-                }
-
-                .refund-queue-detail-value .status-badge {
-                    vertical-align: middle;
                 }
 
                 .refund-queue-comment-block {
@@ -779,7 +765,7 @@ export default function RefundQueuePage() {
                 .refund-queue-id-col {
                     width: 190px;
                 }
-                
+
                 .refund-queue-merchant-col {
                     width: 140px;
                 }
@@ -842,11 +828,6 @@ export default function RefundQueuePage() {
                     .refund-queue-detail-grid {
                         grid-template-columns: repeat(2, minmax(0, 1fr));
                     }
-
-                    .refund-queue-detail-item--wide,
-                    .refund-queue-detail-item--memo {
-                        grid-column: 1 / -1;
-                    }
                 }
 
                 @media (max-width: 1080px) {
@@ -871,12 +852,6 @@ export default function RefundQueuePage() {
 
                     .refund-queue-detail-grid {
                         grid-template-columns: 1fr;
-                    }
-
-                    .refund-queue-detail-item,
-                    .refund-queue-detail-item--wide,
-                    .refund-queue-detail-item--memo {
-                        grid-column: auto;
                     }
 
                     .refund-queue-table {
@@ -909,24 +884,23 @@ export default function RefundQueuePage() {
                                         <span>{lastActionResult.status || "-"}</span>
                                     </div>
                                     <div className="refund-queue-result-item">
-                                        <strong>decidedAt</strong>
-                                        <span>{renderDate(lastActionResult.decidedAt)}</span>
+                                        <strong>requestId</strong>
+                                        <span>{lastActionResult.requestId || "-"}</span>
                                     </div>
                                 </div>
-
                             </div>
                         ) : null}
 
                         <div className="refund-queue-card">
                             <div className="refund-queue-detail-grid">
-                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">refundId</span>
                                     <span className="refund-queue-detail-value">
                                         {selectedRow ? <CopyableId value={selectedRow.refundId} /> : "-"}
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">captured</span>
                                     <span className="refund-queue-detail-value">
                                         <AmountText value={getAmountValue(selectedRow, "capturedAmount")} />
@@ -940,14 +914,14 @@ export default function RefundQueuePage() {
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--wide">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">paymentId</span>
                                     <span className="refund-queue-detail-value">
                                         {selectedRow ? <CopyableId value={selectedRow.paymentId} /> : "-"}
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">refund</span>
                                     <span className="refund-queue-detail-value">
                                         <AmountText
@@ -956,38 +930,31 @@ export default function RefundQueuePage() {
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">status</span>
                                     <span className="refund-queue-detail-value">
                                         {selectedRow ? <StatusBadge status={selectedRow.status} /> : "-"}
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
-                                    <span className="refund-queue-detail-label">refundable</span>
-                                    <span className="refund-queue-detail-value">
-                                        <AmountText value={getAmountValue(selectedRow, "refundableAmount")} />
-                                    </span>
-                                </div>
-
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
-                                    <span className="refund-queue-detail-label">requestedAt</span>
-                                    <span className="refund-queue-detail-value">
-                                        {renderDate(selectedRow?.requestedAt)}
-                                    </span>
-                                </div>
-
-                                <div className="refund-queue-detail-item refund-queue-detail-item--memo">
+                                <div className="refund-queue-detail-item">
                                     <span className="refund-queue-detail-label">요청 메모</span>
                                     <span className="refund-queue-detail-value">
                                         {renderText(selectedRow?.reasonText)}
                                     </span>
                                 </div>
 
-                                <div className="refund-queue-detail-item refund-queue-detail-item--compact">
-                                    <span className="refund-queue-detail-label">decidedAt</span>
+                                <div className="refund-queue-detail-item">
+                                    <span className="refund-queue-detail-label">refundable</span>
                                     <span className="refund-queue-detail-value">
-                                        {renderDate(selectedRow?.decidedAt)}
+                                        <AmountText value={getAmountValue(selectedRow, "refundableAmount")} />
+                                    </span>
+                                </div>
+
+                                <div className="refund-queue-detail-item">
+                                    <span className="refund-queue-detail-label">requestedAt</span>
+                                    <span className="refund-queue-detail-value">
+                                        {renderDate(selectedRow?.requestedAt)}
                                     </span>
                                 </div>
                             </div>
@@ -1006,6 +973,18 @@ export default function RefundQueuePage() {
                             </div>
 
                             <div className="refund-queue-actions">
+                                <ActionButton
+                                    type="button"
+                                    variant="secondary"
+                                    disabled={
+                                        !selectedRow ||
+                                        traceLoading ||
+                                        (!lastActionResult?.requestId && !traceRequestId)
+                                    }
+                                    onClick={moveToTrace}
+                                >
+                                    {traceLoading ? "Trace 확인 중..." : "Trace로 보기(A1)"}
+                                </ActionButton>
 
                                 <ActionButton
                                     type="button"
@@ -1024,15 +1003,6 @@ export default function RefundQueuePage() {
                                     {acting ? "처리 중..." : "거절(Reject)"}
                                 </ActionButton>
                             </div>
-
-                            <ActionButton
-                                type="button"
-                                variant="secondary"
-                                disabled={!selectedRow || traceLoading || (!lastActionResult?.requestId && !traceRequestId)}
-                                onClick={moveToTrace}
-                            >
-                                {traceLoading ? "Trace 확인 중..." : "Trace로 보기(A1)"}
-                            </ActionButton>
 
                             <div className="refund-queue-meta-note">
                                 * 409 포맷: {"{`{\"code\":\"RULE_VIOLATION\",\"reason\":\"INSUFFICIENT_REFUNDABLE\"}`}"}
@@ -1099,8 +1069,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     refundId
                                                     <span className="refund-queue-sort-arrow">
-                                                            {renderSortArrow("refundId")}
-                                                        </span>
+                                                        {renderSortArrow("refundId")}
+                                                    </span>
                                                 </button>
                                             </th>
 
@@ -1114,8 +1084,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     amount
                                                     <span className="refund-queue-sort-arrow">
-                                                            {renderSortArrow("amount")}
-                                                        </span>
+                                                        {renderSortArrow("amount")}
+                                                    </span>
                                                 </button>
                                             </th>
 
@@ -1130,8 +1100,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     requestedAt
                                                     <span className="refund-queue-sort-arrow">
-                                                            {renderSortArrow("requestedAt")}
-                                                        </span>
+                                                        {renderSortArrow("requestedAt")}
+                                                    </span>
                                                 </button>
                                             </th>
                                         </tr>
