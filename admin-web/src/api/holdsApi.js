@@ -52,3 +52,10 @@ export async function releaseHold(holdId, comment = "") {
     }),
   });
 }
+
+export async function createHold(payload) {
+  return requestJson("/api/admin/holds", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
