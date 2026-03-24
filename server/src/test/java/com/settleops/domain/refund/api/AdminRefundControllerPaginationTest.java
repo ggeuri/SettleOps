@@ -3,6 +3,7 @@ package com.settleops.domain.refund.api;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -17,18 +18,26 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 class AdminRefundControllerPaginationTest {
 
     @Test
     @DisplayName("환불 큐 조회는 PageResponse 형태로 반환한다")
     void list_returnsPageResponse() {
-        RefundAdminService refundAdminService = Mockito.mock(RefundAdminService.class);
-        RefundAdminQueryService refundAdminQueryService = Mockito.mock(RefundAdminQueryService.class);
-        RequestIdResolver requestIdResolver = Mockito.mock(RequestIdResolver.class);
+        RefundAdminService refundAdminService = mock(RefundAdminService.class);
+        RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
+        RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
+        RefundTraceEntryQueryService refundTraceEntryQueryService =
+                mock(RefundTraceEntryQueryService.class);
 
         AdminRefundController controller =
-                new AdminRefundController(refundAdminService, refundAdminQueryService, requestIdResolver);
+                new AdminRefundController(
+                        refundAdminService,
+                        refundAdminQueryService,
+                        requestIdResolver,
+                        refundTraceEntryQueryService
+                );
 
         AdminRefundListItemDTO item = new AdminRefundListItemDTO(
                 "rfd-1",
