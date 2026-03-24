@@ -155,7 +155,7 @@ public class RefundReadRepository {
                         ))
                         .from(refund)
                         .where(where)
-                        .orderBy(resolveSort(sortKey, sortDirection))
+                        .orderBy(resolveMyRefundSort(sortKey, sortDirection))
                         .offset(pageable.getOffset())
                         .limit(pageable.getPageSize())
                         .fetch();
@@ -173,19 +173,19 @@ public class RefundReadRepository {
         );
     }
 
-    private OrderSpecifier<?> resolveSort(String sortKey, String sortDirection) {
-        Order order = "asc".equalsIgnoreCase(sortDirection) ? Order.ASC : Order.DESC;
+    private OrderSpecifier<?> resolveMyRefundSort(String sortKey, String sortDirection) {
+        boolean asc = "asc".equalsIgnoreCase(sortDirection);
+        Order order = asc ? Order.ASC : Order.DESC;
 
         ComparableExpressionBase<?> expression = switch (sortKey) {
             case "refundId" -> refund.refundId;
-            case "paymentId" -> refund.paymentId;
-            case "amount" -> refund.amount;
-            case "status" -> refund.status;
-            case "decidedAt" -> refund.decidedAt;
+            case "amount", "refundAmount" -> refund.amount;
             case "requestedAt" -> refund.requestedAt;
+            case "decidedAt" -> refund.decidedAt;
             default -> refund.requestedAt;
         };
 
         return new OrderSpecifier<>(order, expression);
     }
+
 }

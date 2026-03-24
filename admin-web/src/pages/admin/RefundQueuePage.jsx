@@ -17,7 +17,6 @@ import {
     getAdminRefunds,
     approveRefund,
     rejectRefund,
-    getSettlementTraceEntry,
 } from "../../api/refundApi.js";
 import { formatDateTime } from "../../utils/format.js";
 
@@ -110,7 +109,6 @@ export default function RefundQueuePage() {
 
     const [loading, setLoading] = useState(false);
     const [acting, setActing] = useState(false);
-    const [traceLoading, setTraceLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
@@ -376,40 +374,16 @@ export default function RefundQueuePage() {
         navigate(`/admin/settlements/${selectedRow.settlementId}`);
     }
 
-    async function moveToTrace() {
-        const requestIdFromAction = lastActionResult?.requestId;
+    function moveToTrace() {
+        const requestId = lastActionResult?.requestId;
 
-        if (requestIdFromAction) {
-            navigate(`/admin/audit?requestId=${encodeURIComponent(requestIdFromAction)}`);
+        if (!requestId) {
+            setErrorMessage("방금 처리한 환불의 requestId가 없어 Trace로 이동할 수 없습니다.");
             return;
         }
 
-        const settlementId = selectedRow?.settlementId;
-        if (!settlementId) {
-            setErrorMessage("연결된 settlementId가 없어 Trace로 이동할 수 없습니다.");
-            return;
-        }
-
-        setTraceLoading(true);
         setErrorMessage("");
-
-        try {
-            const response = await getSettlementTraceEntry(settlementId);
-            const traceRequestId = response?.traceRequestId;
-
-            if (!traceRequestId) {
-                setErrorMessage("Trace 진입용 requestId를 찾지 못했습니다.");
-                return;
-            }
-
-            navigate(`/admin/audit?requestId=${encodeURIComponent(traceRequestId)}`);
-        } catch (error) {
-            setErrorMessage(
-                error?.body?.message || "Trace 진입 정보 조회에 실패했습니다."
-            );
-        } finally {
-            setTraceLoading(false);
-        }
+        navigate(`/admin/audit?requestId=${encodeURIComponent(requestId)}`);
     }
 
     if (meLoading) {
@@ -913,9 +887,9 @@ export default function RefundQueuePage() {
                                         type="button"
                                         variant="secondary"
                                         onClick={moveToTrace}
-                                        disabled={!lastActionResult.requestId || traceLoading}
+                                        disabled={!lastActionResult?.requestId}
                                     >
-                                        {traceLoading ? "조회 중..." : "Trace로 보기(A1)"}
+                                        Trace로 보기(A1)
                                     </ActionButton>
                                 </div>
                             </div>

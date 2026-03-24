@@ -31,8 +31,8 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     ) {
         RefundStatus refundStatus = parseStatus(status);
 
-        LocalDateTime fromDateTime = (from == null) ? null : from.atStartOfDay();
-        LocalDateTime toDateTime = (to == null) ? null : to.atTime(23, 59, 59, 999_999_999);
+        LocalDateTime fromDateTime = from == null ? null : from.atStartOfDay();
+        LocalDateTime toDateTime = to == null ? null : to.plusDays(1).atStartOfDay().minusNanos(1);
 
         return refundReadRepository.findMyRefunds(
                 loginMerchantId,
@@ -47,14 +47,20 @@ public class RefundQueryServiceImpl implements RefundQueryService {
     }
 
     private RefundStatus parseStatus(String status) {
-        if (status == null || status.isBlank() || "ALL".equalsIgnoreCase(status)) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+
+        String normalized = status.trim().toUpperCase();
+
+        if ("ALL".equals(normalized)) {
             return null;
         }
 
         try {
-            return RefundStatus.valueOf(status.toUpperCase());
+            return RefundStatus.valueOf(normalized);
         } catch (IllegalArgumentException e) {
-            throw new BadRequestException("status is invalid");
+            throw new BadRequestException("invalid refund status: " + status);
         }
     }
 }

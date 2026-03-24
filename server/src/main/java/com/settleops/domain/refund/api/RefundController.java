@@ -41,8 +41,10 @@ public class RefundController {
     @GetMapping("/me/refunds")
     public ResponseEntity<PageResponse<RefundRowDTO>> myRefunds(
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "requestedAt") String sortKey,
             @RequestParam(required = false, defaultValue = "desc") String sortDirection,

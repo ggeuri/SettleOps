@@ -64,7 +64,3 @@ export function rejectRefund(refundId, comment) {
         body: JSON.stringify({ comment }),
     });
 }
-
-export function getSettlementTraceEntry(settlementId) {
-    return requestJson(`/api/admin/settlements/${settlementId}/trace-entry`);
-}

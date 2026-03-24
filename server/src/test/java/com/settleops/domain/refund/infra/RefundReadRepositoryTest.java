@@ -1,6 +1,7 @@
 package com.settleops.domain.refund.infra;
 
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundRowDTO;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.support.QuerydslTestConfig;
 import org.junit.jupiter.api.DisplayName;
@@ -187,6 +188,50 @@ class RefundReadRepositoryTest {
                 now,
                 now
         );
+    }
+
+    @Test
+    @DisplayName("U6 내 환불 목록 조회는 로그인 merchant 범위만 반환한다")
+    void findMyRefunds_filtersByMerchantId() {
+        // given
+        LocalDateTime base = LocalDateTime.of(2026, 3, 22, 12, 0, 0);
+
+        insertPaymentAndRefund(
+                "refund-m1-1", "payment-m1-1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
+                base.minusMinutes(1), null
+        );
+        insertPaymentAndRefund(
+                "refund-m1-2", "payment-m1-2", "merchant-1", "buyer-2", 2000L, "APPROVED",
+                base.minusMinutes(2), base.minusMinutes(1)
+        );
+        insertPaymentAndRefund(
+                "refund-m2-1", "payment-m2-1", "merchant-2", "buyer-3", 3000L, "REQUESTED",
+                base.minusMinutes(3), null
+        );
+
+        PageRequest pageable = PageRequest.of(0, 10);
+
+        // when
+        Page<RefundRowDTO> result = refundReadRepository.findMyRefunds(
+                "merchant-1",
+                null,
+                null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        );
+
+        // then
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getMerchantId)
+                .containsOnly("merchant-1");
+
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getRefundId)
+                .containsExactly("refund-m1-1", "refund-m1-2");
     }
 
     @SuppressWarnings("unused")
