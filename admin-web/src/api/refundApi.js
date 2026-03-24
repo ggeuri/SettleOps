@@ -59,3 +59,9 @@ export function rejectRefund(refundId, comment) {
         body: JSON.stringify({ comment }),
     });
 }
+
+export function getAdminRefundTraceEntry(refundId) {
+    return requestJson(`/api/admin/refunds/${refundId}/trace-entry`, {
+        method: "GET",
+    });
+}

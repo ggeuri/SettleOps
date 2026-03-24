@@ -17,6 +17,7 @@ import {
     getAdminRefunds,
     approveRefund,
     rejectRefund,
+    getAdminRefundTraceEntry,
 } from "../../api/refundApi.js";
 import { formatDateTime } from "../../utils/format.js";
 
@@ -106,6 +107,8 @@ export default function RefundQueuePage() {
     const [selectedRefundId, setSelectedRefundId] = useState("");
     const [comment, setComment] = useState("");
     const [lastActionResult, setLastActionResult] = useState(null);
+    const [traceRequestId, setTraceRequestId] = useState("");
+    const [traceLoading, setTraceLoading] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [acting, setActing] = useState(false);
@@ -225,6 +228,40 @@ export default function RefundQueuePage() {
     const selectedRow =
         refunds.find((row) => row.refundId === selectedRefundId) || null;
 
+    useEffect(() => {
+        if (!selectedRow?.refundId) {
+            setTraceRequestId("");
+            setTraceLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadTraceEntry() {
+            try {
+                setTraceLoading(true);
+
+                const response = await getAdminRefundTraceEntry(selectedRow.refundId);
+
+                if (cancelled) return;
+                setTraceRequestId(response?.traceRequestId || "");
+            } catch (error) {
+                if (cancelled) return;
+                setTraceRequestId("");
+            } finally {
+                if (!cancelled) {
+                    setTraceLoading(false);
+                }
+            }
+        }
+
+        loadTraceEntry();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedRow?.refundId]);
+
     const selectedStatus = String(selectedRow?.status || "").toUpperCase();
     const canAct =
         !!selectedRow &&
@@ -262,6 +299,7 @@ export default function RefundQueuePage() {
         setComment("");
         setErrorMessage("");
         setLastActionResult(null);
+        setTraceRequestId("");
     }
 
     function handleClearSelection() {
@@ -269,6 +307,8 @@ export default function RefundQueuePage() {
         setComment("");
         setErrorMessage("");
         setLastActionResult(null);
+        setTraceRequestId("");
+        setTraceLoading(false);
     }
 
     function handleSort(sortKey) {
@@ -368,10 +408,10 @@ export default function RefundQueuePage() {
     }
 
     function moveToTrace() {
-        const requestId = lastActionResult?.requestId;
+        const requestId = lastActionResult?.requestId || traceRequestId;
 
         if (!requestId) {
-            setErrorMessage("방금 처리한 환불의 requestId가 없어 Trace로 이동할 수 없습니다.");
+            setErrorMessage("이 환불 건의 requestId를 찾을 수 없어 Trace로 이동할 수 없습니다.");
             return;
         }
 
@@ -874,16 +914,6 @@ export default function RefundQueuePage() {
                                     </div>
                                 </div>
 
-                                <div className="refund-queue-actions" style={{ marginTop: 0 }}>
-                                    <ActionButton
-                                        type="button"
-                                        variant="secondary"
-                                        onClick={moveToTrace}
-                                        disabled={!lastActionResult?.requestId}
-                                    >
-                                        Trace로 보기(A1)
-                                    </ActionButton>
-                                </div>
                             </div>
                         ) : null}
 
@@ -994,6 +1024,15 @@ export default function RefundQueuePage() {
                                     {acting ? "처리 중..." : "거절(Reject)"}
                                 </ActionButton>
                             </div>
+
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                disabled={!selectedRow || traceLoading || (!lastActionResult?.requestId && !traceRequestId)}
+                                onClick={moveToTrace}
+                            >
+                                {traceLoading ? "Trace 확인 중..." : "Trace로 보기(A1)"}
+                            </ActionButton>
 
                             <div className="refund-queue-meta-note">
                                 * 409 포맷: {"{`{\"code\":\"RULE_VIOLATION\",\"reason\":\"INSUFFICIENT_REFUNDABLE\"}`}"}

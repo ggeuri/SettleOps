@@ -3,6 +3,8 @@ package com.settleops.domain.refund.api;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
 import com.settleops.global.auth.annotation.LoginAdmin;
@@ -31,6 +33,7 @@ public class AdminRefundController {
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
     private final RequestIdResolver requestIdResolver;
+    private final RefundTraceEntryQueryService refundTraceEntryQueryService;
 
     /**
      * A6 운영 큐 조회(READ).
@@ -51,6 +54,15 @@ public class AdminRefundController {
                 refundAdminQueryService.list(status, from, to, pageable);
 
         return ResponseEntity.ok(PageResponse.from(result));
+    }
+
+    @GetMapping("/{refundId}/trace-entry")
+    public ResponseEntity<RefundTraceEntryResponseDTO> getRefundTraceEntry(
+            @PathVariable String refundId
+    ) {
+        return ResponseEntity.ok(
+                refundTraceEntryQueryService.getRefundTraceEntry(refundId)
+        );
     }
 
     @PatchMapping("/{refundId}/approve")
