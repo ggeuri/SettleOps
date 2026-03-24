@@ -7,15 +7,22 @@ import HoldTable from "../../components/hold/HoldTable.jsx";
 import HoldDetailPanel from "../../components/hold/HoldDetailPanel.jsx";
 import {
   fetchHolds,
+  createHold,
   approveHold,
   releaseHold,
 } from "../../api/holdsApi.js";
 import { showToast } from "../../utils/toast.js";
 import { getMe } from "../../api/meApi.js";
 import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+import "../../style/admin-hold-page.css";
 
 const DEFAULT_PAGE = 0;
 const DEFAULT_SIZE = 20;
+
+const HOLD_REASON_OPTIONS = [
+  { value: "MANUAL_REVIEW", label: "MANUAL_REVIEW" },
+  { value: "RISK_SUSPECTED", label: "RISK_SUSPECTED" },
+];
 
 const EMPTY_RESULT = {
   items: [],
@@ -25,6 +32,12 @@ const EMPTY_RESULT = {
   totalPages: 0,
 };
 
+const EMPTY_CREATE_FORM = {
+  settlementId: "",
+  reasonCode: "MANUAL_REVIEW",
+  comment: "",
+};
+
 function parseQuery(search) {
   const params = new URLSearchParams(search);
 
@@ -32,6 +45,7 @@ function parseQuery(search) {
     status: params.get("status") || "",
     settlementId: params.get("settlementId") || "",
     merchantId: params.get("merchantId") || "",
+    mode: params.get("mode") || "",
     page: Number(params.get("page") || DEFAULT_PAGE),
     size: Number(params.get("size") || DEFAULT_SIZE),
   };
@@ -43,6 +57,7 @@ function buildQuery(params) {
   if (params.status) searchParams.set("status", params.status);
   if (params.settlementId) searchParams.set("settlementId", params.settlementId);
   if (params.merchantId) searchParams.set("merchantId", params.merchantId);
+  if (params.mode) searchParams.set("mode", params.mode);
 
   searchParams.set("page", String(params.page ?? DEFAULT_PAGE));
   searchParams.set("size", String(params.size ?? DEFAULT_SIZE));
@@ -71,11 +86,39 @@ function isAdminRole(me) {
 function buildErrorInfo(error, fallbackMessage) {
   return {
     status: error?.status ?? null,
-    message:
-      error?.body?.message ||
-      error?.body?.reason ||
-      fallbackMessage,
+    message: error?.body?.message || error?.body?.reason || fallbackMessage,
   };
+}
+
+function mapCreateHoldErrorMessage(error) {
+  const status = error?.status;
+  const reason = error?.body?.reason;
+  const message = error?.body?.message || error?.message;
+
+  if (status === 401) {
+    return "인증이 만료되었거나 로그인되지 않았습니다. Admin 세션으로 다시 로그인해 주세요.";
+  }
+
+  if (status === 403) {
+    return "Admin 권한이 없어 Hold를 생성할 수 없습니다.";
+  }
+
+  if (status === 409) {
+    switch (reason) {
+      case "PAID_ALREADY":
+        return "이미 지급 완료된 정산에는 Hold를 생성할 수 없습니다.";
+      case "HOLD_ALREADY_EXISTS":
+        return "이미 Hold가 존재하는 정산입니다.";
+      default:
+        return message || "현재 상태에서는 Hold를 생성할 수 없습니다.";
+    }
+  }
+
+  if (status === 400) {
+    return message || "Hold 생성 요청값이 올바르지 않습니다.";
+  }
+
+  return message || "Hold 생성 중 오류가 발생했습니다.";
 }
 
 export default function AdminHoldPage() {
@@ -83,6 +126,7 @@ export default function AdminHoldPage() {
   const navigate = useNavigate();
 
   const queryState = useMemo(() => parseQuery(location.search), [location.search]);
+  const isCreateMode = queryState.mode === "create";
 
   const [me, setMe] = useState(null);
   const [meLoading, setMeLoading] = useState(true);
@@ -96,6 +140,11 @@ export default function AdminHoldPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionErrorMessage, setActionErrorMessage] = useState("");
   const [actionSuccessMessage, setActionSuccessMessage] = useState("");
+
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE_FORM);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createErrorMessage, setCreateErrorMessage] = useState("");
+  const [createSuccessMessage, setCreateSuccessMessage] = useState("");
 
   const items = Array.isArray(result.items) ? result.items : [];
 
@@ -137,6 +186,20 @@ export default function AdminHoldPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    setCreateForm((prev) => ({
+      ...prev,
+      settlementId: queryState.settlementId || "",
+    }));
+  }, [queryState.settlementId]);
+
+  useEffect(() => {
+    if (!isCreateMode) {
+      setCreateErrorMessage("");
+      setCreateSuccessMessage("");
+    }
+  }, [isCreateMode]);
 
   useEffect(() => {
     if (meLoading || meErrorInfo || !isAdminRole(me)) {
@@ -224,6 +287,7 @@ export default function AdminHoldPage() {
   function handlePageChange(nextPage) {
     const nextQuery = buildQuery({
       ...queryState,
+      mode: isCreateMode ? "create" : "",
       page: nextPage,
       size: queryState.size || DEFAULT_SIZE,
     });
@@ -237,6 +301,28 @@ export default function AdminHoldPage() {
     setActionSuccessMessage("");
   }
 
+  function handleCreateFieldChange(event) {
+    const { name, value } = event.target;
+    setCreateForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setCreateErrorMessage("");
+    setCreateSuccessMessage("");
+  }
+
+  function handleCancelCreateMode() {
+    const nextQuery = buildQuery({
+      status: queryState.status,
+      settlementId: queryState.settlementId,
+      merchantId: queryState.merchantId,
+      page: DEFAULT_PAGE,
+      size: queryState.size || DEFAULT_SIZE,
+    });
+
+    navigate(`/admin/holds${nextQuery ? `?${nextQuery}` : ""}`);
+  }
+
   async function reloadCurrentPage() {
     const data = await fetchHolds({
       status: queryState.status || undefined,
@@ -247,6 +333,68 @@ export default function AdminHoldPage() {
     });
 
     setResult(data ?? EMPTY_RESULT);
+    return data ?? EMPTY_RESULT;
+  }
+
+  async function handleCreateHold(event) {
+    event.preventDefault();
+
+    if (createLoading) return;
+
+    const settlementId = createForm.settlementId.trim();
+    const reasonCode = createForm.reasonCode.trim();
+    const comment = createForm.comment.trim();
+
+    if (!settlementId) {
+      setCreateErrorMessage("settlementId는 필수입니다.");
+      return;
+    }
+
+    if (!reasonCode) {
+      setCreateErrorMessage("reasonCode는 필수입니다.");
+      return;
+    }
+
+    if (!comment) {
+      setCreateErrorMessage("comment는 필수입니다.");
+      return;
+    }
+
+    try {
+      setCreateLoading(true);
+      setCreateErrorMessage("");
+      setCreateSuccessMessage("");
+
+      const response = await createHold({
+        settlementId,
+        reasonCode,
+        comment,
+      });
+
+      const successMessage = "Hold 생성이 완료되었습니다.";
+      setCreateSuccessMessage(successMessage);
+      showToast(successMessage);
+
+      const nextQuery = buildQuery({
+        status: queryState.status,
+        settlementId,
+        merchantId: queryState.merchantId,
+        page: DEFAULT_PAGE,
+        size: queryState.size || DEFAULT_SIZE,
+      });
+
+      navigate(`/admin/holds?${nextQuery}`);
+
+      if (response?.holdId) {
+        setSelectedRowKey("");
+      }
+    } catch (error) {
+      const message = mapCreateHoldErrorMessage(error);
+      setCreateErrorMessage(message);
+      showToast(message);
+    } finally {
+      setCreateLoading(false);
+    }
   }
 
   async function handleApprove() {
@@ -378,6 +526,93 @@ export default function AdminHoldPage() {
       title="Hold Queue"
       description="A5 운영통제 큐. Hold 목록을 조회하고 승인/해제를 수행합니다."
     >
+      {isCreateMode ? (
+        <SectionCard title="Hold 생성">
+          <form className="form-stack" onSubmit={handleCreateHold}>
+            <div className="form-field">
+              <label className="form-field__label" htmlFor="hold-settlement-id">
+                settlementId
+              </label>
+              <input
+                id="hold-settlement-id"
+                name="settlementId"
+                className="input"
+                value={createForm.settlementId}
+                onChange={handleCreateFieldChange}
+                placeholder="settlementId를 입력하세요."
+              />
+            </div>
+
+            <div className="form-field">
+              <label className="form-field__label" htmlFor="hold-reason-code">
+                reasonCode
+              </label>
+              <select
+                id="hold-reason-code"
+                name="reasonCode"
+                className="select hold-create-select"
+                value={createForm.reasonCode}
+                onChange={handleCreateFieldChange}
+              >
+                {HOLD_REASON_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-field">
+              <label className="form-field__label" htmlFor="hold-comment">
+                comment <span className="form-required">(필수)</span>
+              </label>
+              <textarea
+                id="hold-comment"
+                name="comment"
+                className="textarea"
+                value={createForm.comment}
+                onChange={handleCreateFieldChange}
+                placeholder="Hold 생성 사유를 입력하세요."
+                rows={4}
+              />
+            </div>
+
+            {createErrorMessage ? (
+              <div className="guard-notice">
+                <div className="guard-notice__title">생성 실패</div>
+                <div className="guard-notice__description">{createErrorMessage}</div>
+              </div>
+            ) : null}
+
+            {createSuccessMessage ? (
+              <div className="guard-notice">
+                <div className="guard-notice__title">생성 완료</div>
+                <div className="guard-notice__description">{createSuccessMessage}</div>
+              </div>
+            ) : null}
+
+            <div className="button-row action-panel">
+              <button
+                type="submit"
+                className="btn btn--primary"
+                disabled={createLoading}
+              >
+                {createLoading ? "생성 중..." : "Hold 생성"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={handleCancelCreateMode}
+                disabled={createLoading}
+              >
+                생성 취소
+              </button>
+            </div>
+          </form>
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="검색 조건">
         <HoldSearchForm
           initialValues={{
@@ -390,7 +625,7 @@ export default function AdminHoldPage() {
         />
       </SectionCard>
 
-      <SectionCard title="A5 Hold 큐 목록">
+      <SectionCard title="목록">
         {errorMessage && (
           <div className="info-list" style={{ marginBottom: "16px" }}>
             <div>
@@ -399,15 +634,8 @@ export default function AdminHoldPage() {
           </div>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 2fr) minmax(320px, 1fr)",
-            gap: "16px",
-            alignItems: "start",
-          }}
-        >
-          <div>
+        <div className="hold-queue-layout hold-queue-layout--toned">
+          <div className="hold-queue-table-scope">
             <HoldTable
               loading={loading}
               items={items}
