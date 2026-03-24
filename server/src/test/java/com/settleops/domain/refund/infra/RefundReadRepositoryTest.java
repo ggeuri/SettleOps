@@ -1,6 +1,7 @@
 package com.settleops.domain.refund.infra;
 
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundRowDTO;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.support.QuerydslTestConfig;
 import org.junit.jupiter.api.DisplayName;
@@ -42,23 +43,23 @@ class RefundReadRepositoryTest {
         // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 10, 0, 0);
 
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-001", "payment-001", "merchant-1", "buyer-1", 1000L, "REQUESTED",
                 base.minusMinutes(1), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-002", "payment-002", "merchant-1", "buyer-2", 2000L, "REQUESTED",
                 base.minusMinutes(2), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-003", "payment-003", "merchant-1", "buyer-3", 3000L, "REQUESTED",
                 base.minusMinutes(3), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-004", "payment-004", "merchant-1", "buyer-4", 4000L, "REQUESTED",
                 base.minusMinutes(4), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-005", "payment-005", "merchant-1", "buyer-5", 5000L, "REQUESTED",
                 base.minusMinutes(5), null
         );
@@ -93,23 +94,23 @@ class RefundReadRepositoryTest {
         // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 11, 0, 0);
 
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a1", "payment-a1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
                 base.minusMinutes(1), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a2", "payment-a2", "merchant-1", "buyer-2", 2000L, "REQUESTED",
                 base.minusMinutes(2), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-a3", "payment-a3", "merchant-1", "buyer-3", 3000L, "REQUESTED",
                 base.minusMinutes(3), null
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-b1", "payment-b1", "merchant-1", "buyer-4", 4000L, "APPROVED",
                 base.minusMinutes(4), base.minusMinutes(3)
         );
-        insertRefund(
+        insertPaymentAndRefund(
                 "refund-b2", "payment-b2", "merchant-1", "buyer-5", 5000L, "REJECTED",
                 base.minusMinutes(5), base.minusMinutes(4)
         );
@@ -138,7 +139,7 @@ class RefundReadRepositoryTest {
                 .containsExactly("refund-a1", "refund-a2");
     }
 
-    private void insertRefund(
+    private void insertPaymentAndRefund(
             String refundId,
             String paymentId,
             String merchantId,
@@ -151,13 +152,31 @@ class RefundReadRepositoryTest {
         String now = LocalDateTime.now().format(MYSQL_DT6);
 
         jdbcTemplate.update("""
-                insert into refund (
-                    refund_id, payment_id, merchant_id, buyer_id,
-                    amount, currency, status, reason_text,
-                    requested_at, decided_at, created_at, updated_at
-                )
-                values (?, ?, ?, ?, ?, 'KRW', ?, 'test reason', ?, ?, ?, ?)
-                """,
+            insert into payment (
+                payment_id, order_id, merchant_id, buyer_id,
+                currency, requested_amount, captured_amount, status,
+                created_at, updated_at
+            )
+            values (?, ?, ?, ?, 'KRW', ?, ?, 'CAPTURED', ?, ?)
+            """,
+                paymentId,
+                "order-" + paymentId,
+                merchantId,
+                buyerId,
+                amount * 10,
+                amount * 10,
+                now,
+                now
+        );
+
+        jdbcTemplate.update("""
+            insert into refund (
+                refund_id, payment_id, merchant_id, buyer_id,
+                amount, currency, status, reason_text,
+                requested_at, decided_at, created_at, updated_at
+            )
+            values (?, ?, ?, ?, ?, 'KRW', ?, 'test reason', ?, ?, ?, ?)
+            """,
                 refundId,
                 paymentId,
                 merchantId,
@@ -169,6 +188,50 @@ class RefundReadRepositoryTest {
                 now,
                 now
         );
+    }
+
+    @Test
+    @DisplayName("U6 내 환불 목록 조회는 로그인 merchant 범위만 반환한다")
+    void findMyRefunds_filtersByMerchantId() {
+        // given
+        LocalDateTime base = LocalDateTime.of(2026, 3, 22, 12, 0, 0);
+
+        insertPaymentAndRefund(
+                "refund-m1-1", "payment-m1-1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
+                base.minusMinutes(1), null
+        );
+        insertPaymentAndRefund(
+                "refund-m1-2", "payment-m1-2", "merchant-1", "buyer-2", 2000L, "APPROVED",
+                base.minusMinutes(2), base.minusMinutes(1)
+        );
+        insertPaymentAndRefund(
+                "refund-m2-1", "payment-m2-1", "merchant-2", "buyer-3", 3000L, "REQUESTED",
+                base.minusMinutes(3), null
+        );
+
+        PageRequest pageable = PageRequest.of(0, 10);
+
+        // when
+        Page<RefundRowDTO> result = refundReadRepository.findMyRefunds(
+                "merchant-1",
+                null,
+                null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        );
+
+        // then
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getMerchantId)
+                .containsOnly("merchant-1");
+
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getRefundId)
+                .containsExactly("refund-m1-1", "refund-m1-2");
     }
 
     @SuppressWarnings("unused")
