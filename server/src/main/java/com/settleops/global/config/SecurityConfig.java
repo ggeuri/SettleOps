@@ -1,6 +1,7 @@
 package com.settleops.global.config;
 
 import com.settleops.global.auth.SessionAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -21,6 +22,12 @@ import java.util.List;
 @Configuration
 public class SecurityConfig {
 
+    @Value("${app.cors.deploy-origin}")
+    private String deployOrigin;
+
+    @Value("${app.cors.deploy-origin-www}")
+    private String deployOriginWww;
+
     private final SessionAuthenticationFilter sessionAuthenticationFilter;
 
     public SecurityConfig(SessionAuthenticationFilter sessionAuthenticationFilter) {
@@ -37,7 +44,11 @@ public class SecurityConfig {
         http.cors(cors -> cors.configurationSource(request -> {
             CorsConfiguration config = new CorsConfiguration();
 
-            config.setAllowedOriginPatterns(List.of("http://localhost:*"));
+            config.setAllowedOriginPatterns(List.of(
+                    "http://localhost:*",
+                    deployOrigin,
+                    deployOriginWww
+            ));
             config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
             config.setAllowedHeaders(List.of(
                     "Content-Type","X-Request-Id","X-Idempotency-Key","Accept","Origin","X-Requested-With"
