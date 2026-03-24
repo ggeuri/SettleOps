@@ -10,7 +10,10 @@ import GuardNotice from "../../components/common/GuardNotice.jsx";
 import EmptyState from "../../components/feedback/EmptyState.jsx";
 import ErrorState from "../../components/feedback/ErrorState.jsx";
 import LoadingBlock from "../../components/feedback/LoadingBlock.jsx";
+import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
+
 import { formatNumber } from "../../utils/format.js";
+import { getMe } from "../../api/meApi.js";
 import { getAdminSettlements } from "../../api/adminSettlementListApi.js";
 
 const STATUS_OPTIONS = [
@@ -33,7 +36,39 @@ function normalizeSettlementList(payload) {
   if (Array.isArray(payload?.data)) return payload.data;
   if (Array.isArray(payload?.items)) return payload.items;
   if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.page?.content)) return payload.page.content;
   return [];
+}
+
+function extractRole(payload) {
+  return (
+    payload?.role ||
+    payload?.data?.role ||
+    payload?.user?.role ||
+    payload?.principal?.role ||
+    null
+  );
+}
+
+function buildAuthErrorMessage(error) {
+  const status = error?.status;
+  const message =
+    error?.body?.message ||
+    error?.body?.reason ||
+    error?.message;
+
+  if (status === 401) {
+    return "로그인이 필요합니다. 개발용 로그인 페이지에서 세션을 생성해주세요.";
+  }
+
+  if (status === 403) {
+    return "Admin 권한이 없어 정산 관리 화면에 접근할 수 없습니다.";
+  }
+
+  return (
+    message ||
+    "현재 세션의 역할을 확인할 수 없습니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
+  );
 }
 
 function buildErrorMessage(error) {
@@ -74,6 +109,10 @@ export default function SettlementManagePage() {
     searchParams.get("merchantId") ?? ""
   );
 
+  const [authChecking, setAuthChecking] = useState(true);
+  const [isAllowed, setIsAllowed] = useState(false);
+  const [authErrorMessage, setAuthErrorMessage] = useState("");
+
   const pageTitle = useMemo(() => "A3 정산 관리", []);
 
   const fetchSettlements = useCallback(
@@ -100,15 +139,58 @@ export default function SettlementManagePage() {
   );
 
   useEffect(() => {
+    let mounted = true;
+
+    async function checkAdminRole() {
+      try {
+        setAuthChecking(true);
+        setAuthErrorMessage("");
+        setIsAllowed(false);
+
+        const me = await getMe();
+        const role = String(extractRole(me) || "").toUpperCase();
+
+        if (!mounted) return;
+
+        if (role === "ADMIN") {
+          setIsAllowed(true);
+          return;
+        }
+
+        setIsAllowed(false);
+        setAuthErrorMessage(
+          "Admin 전용 정산 관리 화면입니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setIsAllowed(false);
+        setAuthErrorMessage(buildAuthErrorMessage(error));
+      } finally {
+        if (mounted) {
+          setAuthChecking(false);
+        }
+      }
+    }
+
+    checkAdminRole();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAllowed) return;
+
     const nextStatus = searchParams.get("status") ?? "";
     const nextMerchantId = searchParams.get("merchantId") ?? "";
 
     setStatus(nextStatus);
     setMerchantId(nextMerchantId);
     fetchSettlements(nextStatus, nextMerchantId);
-  }, [searchParams, fetchSettlements]);
+  }, [searchParams, fetchSettlements, isAllowed]);
 
-  const handleSearch = (event) => {
+  function handleSearch(event) {
     event.preventDefault();
 
     const nextParams = {};
@@ -116,18 +198,67 @@ export default function SettlementManagePage() {
     if (merchantId.trim()) nextParams.merchantId = merchantId.trim();
 
     setSearchParams(nextParams);
-  };
+  }
 
-  const handleReset = () => {
+  function handleReset() {
     setStatus("");
     setMerchantId("");
     setSearchParams({});
-  };
+  }
 
-  const handleRowClick = (settlementId) => {
+  function handleRowClick(settlementId) {
     if (!settlementId) return;
     navigate(`/admin/settlements/${settlementId}`);
-  };
+  }
+
+  if (authChecking) {
+    return (
+      <PageLayout
+        title={pageTitle}
+        description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
+      >
+        <SectionCard title="세션 확인 중">
+          <LoadingBlock
+            title="세션 확인 중"
+            description="현재 로그인 세션의 역할을 확인하고 있습니다."
+          />
+        </SectionCard>
+      </PageLayout>
+    );
+  }
+
+  if (!isAllowed) {
+    if (
+      authErrorMessage.includes("로그인") ||
+      authErrorMessage.includes("인증")
+    ) {
+      return (
+        <PageLayout
+          title={pageTitle}
+          description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
+        >
+          <RequireLoginNotice
+            title="인증 필요"
+            message={authErrorMessage}
+          />
+        </PageLayout>
+      );
+    }
+
+    return (
+      <PageLayout
+        title={pageTitle}
+        description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
+      >
+        <GuardNotice
+          title="접근 불가"
+          message={authErrorMessage}
+          tone="danger"
+        />
+        <ErrorState message={authErrorMessage} />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout
@@ -223,14 +354,21 @@ export default function SettlementManagePage() {
       {errorMessage ? (
         <>
           <GuardNotice title="조회 실패" message={errorMessage} tone="danger" />
-          <ErrorState
-            title="정산 리스트 조회 실패"
-            description={errorMessage}
-          />
+          <ErrorState message={errorMessage} />
         </>
       ) : null}
 
-      <SectionCard title="정산 리스트" description={`총 ${rows.length}건`}>
+      <SectionCard title="정산 리스트">
+        <div
+          style={{
+            marginBottom: "12px",
+            color: "var(--color-text-muted, #6b7280)",
+            fontSize: "14px",
+          }}
+        >
+          총 {rows.length}건
+        </div>
+
         {loading ? (
           <LoadingBlock
             title="로딩 중"
