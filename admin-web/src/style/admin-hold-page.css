@@ -1,0 +1,59 @@
+.hold-queue-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.hold-create-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: #fff;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' fill='none'><path d='M5 7.5L10 12.5L15 7.5' stroke='%23111827' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 18px 18px;
+  padding-right: 44px;
+  cursor: pointer;
+}
+
+.form-required {
+  color: #dc2626;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.hold-queue-layout--toned .table-toolbar {
+  margin-bottom: 12px;
+}
+
+.hold-queue-table-scope .table-toolbar:first-of-type {
+  color: var(--color-text-muted, #9ca3af);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.hold-queue-table-scope .table-toolbar:first-of-type > div:first-child {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted, #9ca3af);
+}
+
+.hold-queue-table-scope .table-toolbar:first-of-type .action-panel {
+  gap: 12px;
+  color: var(--color-text-muted, #9ca3af);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.hold-queue-table-scope .table-toolbar:last-of-type {
+  margin-top: 12px;
+  color: var(--color-text-muted, #9ca3af);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hold-queue-table-scope .table-toolbar:last-of-type > div {
+  color: var(--color-text-muted, #9ca3af);
+}
