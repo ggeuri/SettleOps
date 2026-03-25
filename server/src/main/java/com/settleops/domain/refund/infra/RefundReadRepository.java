@@ -37,6 +37,10 @@ public class RefundReadRepository {
             RefundStatus status,
             LocalDateTime from,
             LocalDateTime to,
+            String settlementId,
+            String keyword,
+            String sortKey,
+            String sortDirection,
             Pageable pageable
     ) {
         BooleanBuilder where = new BooleanBuilder();
@@ -53,9 +57,31 @@ public class RefundReadRepository {
             where.and(refund.requestedAt.loe(to));
         }
 
+        if (keyword != null && !keyword.isBlank()) {
+            String trimmedKeyword = keyword.trim();
+            where.and(
+                    refund.refundId.containsIgnoreCase(trimmedKeyword)
+                            .or(refund.paymentId.containsIgnoreCase(trimmedKeyword))
+            );
+        }
+
         QPayment payment = QPayment.payment;
         QSettlementLine settlementLine = QSettlementLine.settlementLine;
         QRefund approvedRefund = new QRefund("approvedRefund");
+
+        if (settlementId != null && !settlementId.isBlank()) {
+            where.and(
+                    refund.paymentId.in(
+                            JPAExpressions
+                                    .select(settlementLine.paymentId)
+                                    .from(settlementLine)
+                                    .where(
+                                            settlementLine.settlementId.eq(settlementId),
+                                            settlementLine.lineType.eq(SettlementLineType.PAYMENT)
+                                    )
+                    )
+            );
+        }
 
         List<AdminRefundListItemDTO> content =
                 queryFactory
@@ -89,7 +115,7 @@ public class RefundReadRepository {
                         .from(refund)
                         .join(payment).on(payment.paymentId.eq(refund.paymentId))
                         .where(where)
-                        .orderBy(refund.requestedAt.desc())
+                        .orderBy(resolveAdminRefundSort(sortKey, sortDirection))
                         .offset(pageable.getOffset())
                         .limit(pageable.getPageSize())
                         .fetch();
@@ -173,7 +199,7 @@ public class RefundReadRepository {
         );
     }
 
-    private OrderSpecifier<?> resolveMyRefundSort(String sortKey, String sortDirection) {
+    private OrderSpecifier<?> resolveAdminRefundSort(String sortKey, String sortDirection) {
         boolean asc = "asc".equalsIgnoreCase(sortDirection);
         Order order = asc ? Order.ASC : Order.DESC;
 
@@ -188,4 +214,18 @@ public class RefundReadRepository {
         return new OrderSpecifier<>(order, expression);
     }
 
+    private OrderSpecifier<?> resolveMyRefundSort(String sortKey, String sortDirection) {
+        boolean asc = "asc".equalsIgnoreCase(sortDirection);
+        Order order = asc ? Order.ASC : Order.DESC;
+
+        ComparableExpressionBase<?> expression = switch (sortKey) {
+            case "refundId" -> refund.refundId;
+            case "amount", "refundAmount" -> refund.amount;
+            case "requestedAt" -> refund.requestedAt;
+            case "decidedAt" -> refund.decidedAt;
+            default -> refund.requestedAt;
+        };
+
+        return new OrderSpecifier<>(order, expression);
+    }
 }

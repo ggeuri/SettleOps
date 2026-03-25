@@ -40,7 +40,6 @@ class RefundReadRepositoryTest {
     @Test
     @DisplayName("A6 환불 큐 조회는 offset/limit/count 기준으로 pagination 된다")
     void findAdminRefundQueue_appliesPagination() {
-        // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 10, 0, 0);
 
         insertPaymentAndRefund(
@@ -64,25 +63,23 @@ class RefundReadRepositoryTest {
                 base.minusMinutes(5), null
         );
 
-        PageRequest pageable = PageRequest.of(1, 2); // 두 번째 페이지, 2개씩
+        PageRequest pageable = PageRequest.of(1, 2);
 
-        // when
         Page<AdminRefundListItemDTO> result = refundReadRepository.findAdminRefundQueue(
                 RefundStatus.REQUESTED,
                 null,
                 null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
                 pageable
         );
 
-        // then
-        // total count
         assertThat(result.getTotalElements()).isEqualTo(5);
         assertThat(result.getTotalPages()).isEqualTo(3);
-
-        // limit
         assertThat(result.getContent()).hasSize(2);
 
-        // offset + 정렬(requestedAt desc) 기준
         List<AdminRefundListItemDTO> content = result.getContent();
         assertThat(content.get(0).getRefundId()).isEqualTo("refund-003");
         assertThat(content.get(1).getRefundId()).isEqualTo("refund-004");
@@ -91,7 +88,6 @@ class RefundReadRepositoryTest {
     @Test
     @DisplayName("A6 환불 큐 조회는 status 조건과 pagination을 함께 적용한다")
     void findAdminRefundQueue_filtersByStatus_withPagination() {
-        // given
         LocalDateTime base = LocalDateTime.of(2026, 3, 22, 11, 0, 0);
 
         insertPaymentAndRefund(
@@ -117,15 +113,17 @@ class RefundReadRepositoryTest {
 
         PageRequest pageable = PageRequest.of(0, 2);
 
-        // when
         Page<AdminRefundListItemDTO> result = refundReadRepository.findAdminRefundQueue(
                 RefundStatus.REQUESTED,
                 null,
                 null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
                 pageable
         );
 
-        // then
         assertThat(result.getTotalElements()).isEqualTo(3);
         assertThat(result.getTotalPages()).isEqualTo(2);
         assertThat(result.getContent()).hasSize(2);
@@ -137,6 +135,94 @@ class RefundReadRepositoryTest {
         assertThat(result.getContent())
                 .extracting(AdminRefundListItemDTO::getRefundId)
                 .containsExactly("refund-a1", "refund-a2");
+    }
+
+    @Test
+    @DisplayName("A4→A6 settlementId 앵커 조회는 settlement_line PAYMENT 기준으로 refund 후보를 필터한다")
+    void findAdminRefundQueue_filtersBySettlementId_anchor() {
+        LocalDateTime base = LocalDateTime.now();
+
+        insertPaymentAndRefund(
+                "refund-s1",
+                "payment-s1",
+                "merchant-1",
+                "buyer-1",
+                1000L,
+                "REQUESTED",
+                base,
+                null
+        );
+
+        insertPaymentAndRefund(
+                "refund-s2",
+                "payment-s2",
+                "merchant-1",
+                "buyer-2",
+                1000L,
+                "REQUESTED",
+                base.minusMinutes(1),
+                null
+        );
+
+        insertSettlementLinePayment("S1", "payment-s1", 1000L);
+        insertSettlementLinePayment("S2", "payment-s2", 1000L);
+
+        Page<AdminRefundListItemDTO> result =
+                refundReadRepository.findAdminRefundQueue(
+                        RefundStatus.REQUESTED,
+                        null,
+                        null,
+                        "S1",
+                        null,
+                        "requestedAt",
+                        "desc",
+                        PageRequest.of(0, 10)
+                );
+
+        assertThat(result.getContent())
+                .extracting(AdminRefundListItemDTO::getRefundId)
+                .containsExactly("refund-s1");
+    }
+
+    @Test
+    @DisplayName("U6 내 환불 목록 조회는 로그인 merchant 범위만 반환한다")
+    void findMyRefunds_filtersByMerchantId() {
+        LocalDateTime base = LocalDateTime.of(2026, 3, 22, 12, 0, 0);
+
+        insertPaymentAndRefund(
+                "refund-m1-1", "payment-m1-1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
+                base.minusMinutes(1), null
+        );
+        insertPaymentAndRefund(
+                "refund-m1-2", "payment-m1-2", "merchant-1", "buyer-2", 2000L, "APPROVED",
+                base.minusMinutes(2), base.minusMinutes(1)
+        );
+        insertPaymentAndRefund(
+                "refund-m2-1", "payment-m2-1", "merchant-2", "buyer-3", 3000L, "REQUESTED",
+                base.minusMinutes(3), null
+        );
+
+        PageRequest pageable = PageRequest.of(0, 10);
+
+        Page<RefundRowDTO> result = refundReadRepository.findMyRefunds(
+                "merchant-1",
+                null,
+                null,
+                null,
+                null,
+                "requestedAt",
+                "desc",
+                pageable
+        );
+
+        assertThat(result.getTotalElements()).isEqualTo(2);
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getMerchantId)
+                .containsOnly("merchant-1");
+
+        assertThat(result.getContent())
+                .extracting(RefundRowDTO::getRefundId)
+                .containsExactly("refund-m1-1", "refund-m1-2");
     }
 
     private void insertPaymentAndRefund(
@@ -190,48 +276,24 @@ class RefundReadRepositoryTest {
         );
     }
 
-    @Test
-    @DisplayName("U6 내 환불 목록 조회는 로그인 merchant 범위만 반환한다")
-    void findMyRefunds_filtersByMerchantId() {
-        // given
-        LocalDateTime base = LocalDateTime.of(2026, 3, 22, 12, 0, 0);
+    private void insertSettlementLinePayment(
+            String settlementId,
+            String paymentId,
+            long amount
+    ) {
+        String now = LocalDateTime.now().format(MYSQL_DT6);
 
-        insertPaymentAndRefund(
-                "refund-m1-1", "payment-m1-1", "merchant-1", "buyer-1", 1000L, "REQUESTED",
-                base.minusMinutes(1), null
+        jdbcTemplate.update("""
+            insert into settlement_line (
+                settlement_id, line_type, payment_id, amount, created_at
+            )
+            values (?, 'PAYMENT', ?, ?, ?)
+            """,
+                settlementId,
+                paymentId,
+                amount,
+                now
         );
-        insertPaymentAndRefund(
-                "refund-m1-2", "payment-m1-2", "merchant-1", "buyer-2", 2000L, "APPROVED",
-                base.minusMinutes(2), base.minusMinutes(1)
-        );
-        insertPaymentAndRefund(
-                "refund-m2-1", "payment-m2-1", "merchant-2", "buyer-3", 3000L, "REQUESTED",
-                base.minusMinutes(3), null
-        );
-
-        PageRequest pageable = PageRequest.of(0, 10);
-
-        // when
-        Page<RefundRowDTO> result = refundReadRepository.findMyRefunds(
-                "merchant-1",
-                null,
-                null,
-                null,
-                null,
-                "requestedAt",
-                "desc",
-                pageable
-        );
-
-        // then
-        assertThat(result.getTotalElements()).isEqualTo(2);
-        assertThat(result.getContent())
-                .extracting(RefundRowDTO::getMerchantId)
-                .containsOnly("merchant-1");
-
-        assertThat(result.getContent())
-                .extracting(RefundRowDTO::getRefundId)
-                .containsExactly("refund-m1-1", "refund-m1-2");
     }
 
     @SuppressWarnings("unused")
