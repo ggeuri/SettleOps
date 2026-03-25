@@ -12,6 +12,8 @@ function resolvePageTitle(pathname) {
 
   if (pathname === "/merchant/payments") return "결제 조회";
   if (pathname.startsWith("/merchant/payments/")) return "결제 상세";
+  if (pathname === "/merchant/settlements") return "정산 리스트";
+  if (pathname.startsWith("/merchant/settlements/")) return "정산 상세";
   if (pathname === "/merchant/refunds") return "환불 현황";
 
   if (pathname === "/admin/audit") return "Trace / Audit";

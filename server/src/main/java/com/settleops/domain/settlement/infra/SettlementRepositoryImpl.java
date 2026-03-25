@@ -2,7 +2,6 @@ package com.settleops.domain.settlement.infra;
 
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
-import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import com.settleops.domain.settlement.dto.AdminSettlementListItemResponse;
 import com.settleops.domain.settlement.dto.MerchantSettlementDetailResponse;
@@ -18,6 +17,7 @@ import org.springframework.data.support.PageableExecutionUtils;
 import org.springframework.stereotype.Repository;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -78,8 +78,29 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
     }
 
     @Override
-    public Page<MerchantSettlementListItemResponse> searchMerchantSettlements(String merchantId, Pageable pageable) {
+    public Page<MerchantSettlementListItemResponse> searchMerchantSettlements(
+            String merchantId,
+            SettlementStatus status,
+            LocalDate from,
+            LocalDate to,
+            Pageable pageable
+    ) {
         QSettlement settlement = QSettlement.settlement;
+
+        BooleanBuilder where = new BooleanBuilder();
+        where.and(settlement.merchantId.eq(merchantId));
+
+        if (status != null) {
+            where.and(settlement.status.eq(status));
+        }
+
+        if (from != null) {
+            where.and(settlement.baseDate.goe(from));
+        }
+
+        if (to != null) {
+            where.and(settlement.baseDate.loe(to));
+        }
 
         List<MerchantSettlementListItemResponse> content = queryFactory
                 .select(Projections.constructor(
@@ -94,7 +115,7 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
                         settlement.createdAt
                 ))
                 .from(settlement)
-                .where(settlement.merchantId.eq(merchantId))
+                .where(where)
                 .orderBy(
                         settlement.baseDate.desc(),
                         settlement.createdAt.desc(),
@@ -107,7 +128,7 @@ public class SettlementRepositoryImpl implements SettlementRepositoryCustom {
         var countQuery = queryFactory
                 .select(settlement.count())
                 .from(settlement)
-                .where(settlement.merchantId.eq(merchantId));
+                .where(where);
 
         return PageableExecutionUtils.getPage(content, pageable, countQuery::fetchOne);
     }
