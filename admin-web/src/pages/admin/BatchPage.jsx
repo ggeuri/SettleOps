@@ -407,40 +407,20 @@ export default function BatchPage() {
     );
   }
 
-  if (authErrorInfo?.status === 403) {
-    return (
-      <PageLayout
-        title="배치 실행 · 이력"
-        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
-      >
-        <GuardNotice
-          title="접근 불가"
-          message={authErrorInfo.message}
-          tone="danger"
-        />
-        <ErrorState message={authErrorInfo.message} />
-      </PageLayout>
-    );
-  }
-
-  if (authErrorInfo) {
-    return (
-      <PageLayout
-        title="배치 실행 · 이력"
-        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
-      >
-        <GuardNotice
-          title="조회 실패"
-          message={authErrorInfo.message}
-          tone="danger"
-        />
-        <ErrorState message={authErrorInfo.message} />
-      </PageLayout>
-    );
-  }
-
   if (!isAllowed) {
-    return null;
+    return (
+      <PageLayout
+        title="배치 실행 · 이력"
+        description="baseDate 기준으로 정산 배치를 실행하고 OK / FAIL / SKIP 이력을 운영 관점에서 확인합니다."
+      >
+        <div className="guard-notice">
+          <div className="guard-notice__title">접근 불가</div>
+          <div className="guard-notice__description">
+            {authErrorInfo?.message || "Admin 권한이 필요한 페이지입니다."}
+          </div>
+        </div>
+      </PageLayout>
+    );
   }
 
   return (

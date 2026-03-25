@@ -53,7 +53,9 @@ function normalizeSettlementResponse(payload) {
       page: Number(payload.page ?? DEFAULT_PAGE),
       size: Number(payload.size ?? DEFAULT_SIZE),
       totalElements: Number(payload.totalElements ?? payload.items.length ?? 0),
-      totalPages: Number(payload.totalPages ?? (payload.items.length > 0 ? 1 : 0)),
+      totalPages: Number(
+        payload.totalPages ?? (payload.items.length > 0 ? 1 : 0)
+      ),
       hasNext: Boolean(payload.hasNext),
       hasPrevious: Boolean(payload.hasPrevious),
     };
@@ -64,8 +66,12 @@ function normalizeSettlementResponse(payload) {
       items: payload.content,
       page: Number(payload.number ?? payload.page ?? DEFAULT_PAGE),
       size: Number(payload.size ?? DEFAULT_SIZE),
-      totalElements: Number(payload.totalElements ?? payload.content.length ?? 0),
-      totalPages: Number(payload.totalPages ?? (payload.content.length > 0 ? 1 : 0)),
+      totalElements: Number(
+        payload.totalElements ?? payload.content.length ?? 0
+      ),
+      totalPages: Number(
+        payload.totalPages ?? (payload.content.length > 0 ? 1 : 0)
+      ),
       hasNext: Boolean(payload.hasNext),
       hasPrevious: Boolean(payload.hasPrevious),
     };
@@ -132,7 +138,7 @@ function buildAuthErrorMessage(error) {
   }
 
   if (status === 403) {
-    return "Admin 권한이 없어 정산 관리 화면에 접근할 수 없습니다.";
+    return "Admin 권한이 필요한 페이지입니다.";
   }
 
   return (
@@ -189,6 +195,7 @@ export default function SettlementManagePage() {
   const [authChecking, setAuthChecking] = useState(true);
   const [isAllowed, setIsAllowed] = useState(false);
   const [authErrorMessage, setAuthErrorMessage] = useState("");
+  const [authErrorStatus, setAuthErrorStatus] = useState(null);
 
   const pageTitle = useMemo(() => "A3 정산 관리", []);
 
@@ -245,6 +252,7 @@ export default function SettlementManagePage() {
       try {
         setAuthChecking(true);
         setAuthErrorMessage("");
+        setAuthErrorStatus(null);
         setIsAllowed(false);
 
         const me = await getMe();
@@ -258,12 +266,12 @@ export default function SettlementManagePage() {
         }
 
         setIsAllowed(false);
-        setAuthErrorMessage(
-          "Admin 전용 정산 관리 화면입니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
-        );
+        setAuthErrorStatus(403);
+        setAuthErrorMessage("Admin 권한이 필요한 페이지입니다.");
       } catch (error) {
         if (!mounted) return;
         setIsAllowed(false);
+        setAuthErrorStatus(error?.status ?? null);
         setAuthErrorMessage(buildAuthErrorMessage(error));
       } finally {
         if (mounted) {
@@ -340,21 +348,18 @@ export default function SettlementManagePage() {
         title={pageTitle}
         description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
       >
-        <SectionCard title="세션 확인 중">
-          <LoadingBlock
-            title="세션 확인 중"
-            description="현재 로그인 세션의 역할을 확인하고 있습니다."
-          />
-        </SectionCard>
+        <div className="guard-notice">
+          <div className="guard-notice__title">로딩 중</div>
+          <div className="guard-notice__description">
+            권한 정보를 확인하는 중입니다.
+          </div>
+        </div>
       </PageLayout>
     );
   }
 
   if (!isAllowed) {
-    if (
-      authErrorMessage.includes("로그인") ||
-      authErrorMessage.includes("인증")
-    ) {
+    if (authErrorStatus === 401) {
       return (
         <PageLayout
           title={pageTitle}
@@ -373,12 +378,12 @@ export default function SettlementManagePage() {
         title={pageTitle}
         description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
       >
-        <GuardNotice
-          title="접근 불가"
-          message={authErrorMessage}
-          tone="danger"
-        />
-        <ErrorState message={authErrorMessage} />
+        <div className="guard-notice">
+          <div className="guard-notice__title">접근 불가</div>
+          <div className="guard-notice__description">
+            Admin 권한이 필요한 페이지입니다.
+          </div>
+        </div>
       </PageLayout>
     );
   }
