@@ -6,9 +6,12 @@ import com.settleops.domain.refund.domain.Refund;
 import com.settleops.domain.refund.domain.RefundSettlementLink;
 import com.settleops.domain.refund.domain.RefundStatus;
 import jakarta.persistence.EntityManager;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import com.settleops.domain.settlement.entity.SettlementLine;
 import com.settleops.domain.settlement.enums.SettlementLineType;
@@ -32,6 +35,8 @@ class RefundSettlementReadRepositoryTest {
 
     @jakarta.annotation.Resource
     private RefundSettlementReadRepository repository;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @org.springframework.boot.test.context.TestConfiguration
     static class TestConfig {
@@ -425,4 +430,12 @@ class RefundSettlementReadRepositoryTest {
 
         assertThat(result).isFalse();
     }
+
+    @BeforeEach
+    void cleanUp() {
+        jdbcTemplate.update("delete from refund_settlement_link");
+        jdbcTemplate.update("delete from refund");
+        jdbcTemplate.update("delete from payment");
+    }
+
 }

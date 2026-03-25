@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { getMe } from "../../api/meApi.js";
 import RequireLoginNotice from "../../components/feedback/RequireLoginNotice.jsx";
 import PageLayout from "../../components/layout/PageLayout.jsx";
@@ -50,10 +50,7 @@ function isAdminRole(me) {
 function buildErrorInfo(error, fallbackMessage) {
     return {
         status: error?.status ?? null,
-        message:
-            error?.body?.message ||
-            error?.body?.reason ||
-            fallbackMessage,
+        message: error?.body?.message || error?.body?.reason || fallbackMessage,
     };
 }
 
@@ -84,7 +81,13 @@ function renderDate(value) {
 
 export default function RefundQueuePage() {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { page, size, setPage, resetPage } = usePagination(0, 7);
+
+    const anchorSettlementId = useMemo(() => {
+        const value = searchParams.get("settlementId");
+        return value && value.trim() ? value.trim() : "";
+    }, [searchParams]);
 
     const [draftFilters, setDraftFilters] = useState(INITIAL_FILTERS);
     const [appliedFilters, setAppliedFilters] = useState(INITIAL_FILTERS);
@@ -104,7 +107,8 @@ export default function RefundQueuePage() {
         hasPrevious: false,
     });
 
-    const [selectedRefundId, setSelectedRefundId] = useState("");
+    const [selectedRefund, setSelectedRefund] = useState(null);
+
     const [comment, setComment] = useState("");
     const [lastActionResult, setLastActionResult] = useState(null);
     const [traceRequestId, setTraceRequestId] = useState("");
@@ -113,6 +117,12 @@ export default function RefundQueuePage() {
     const [loading, setLoading] = useState(false);
     const [acting, setActing] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+
+    const selectedRow = selectedRefund;
+    const selectedRefundId = selectedRefund?.refundId || "";
+    const selectedStatus = String(selectedRow?.status || "").toUpperCase();
+
+    const prevAnchorSettlementIdRef = useRef(anchorSettlementId);
 
     useEffect(() => {
         let cancelled = false;
@@ -154,6 +164,37 @@ export default function RefundQueuePage() {
     }, []);
 
     useEffect(() => {
+        const prevAnchorSettlementId = prevAnchorSettlementIdRef.current;
+
+        if (prevAnchorSettlementId === anchorSettlementId) {
+            return;
+        }
+
+        prevAnchorSettlementIdRef.current = anchorSettlementId;
+
+        setSelectedRefund(null);
+        setComment("");
+        setLastActionResult(null);
+        setTraceRequestId("");
+        setTraceLoading(false);
+        setErrorMessage("");
+
+        setDraftFilters((prev) => ({
+            ...prev,
+            keyword: "",
+        }));
+
+        setAppliedFilters((prev) => ({
+            ...prev,
+            keyword: "",
+        }));
+
+        if (page !== 0) {
+            resetPage();
+        }
+    }, [anchorSettlementId, page, resetPage]);
+
+    useEffect(() => {
         if (meLoading || meErrorInfo || !isAdminRole(me)) {
             return;
         }
@@ -169,6 +210,7 @@ export default function RefundQueuePage() {
                     status: appliedFilters.status,
                     from: appliedFilters.from,
                     to: appliedFilters.to,
+                    settlementId: anchorSettlementId || undefined,
                     keyword: appliedFilters.keyword,
                     sortKey: sortState.key,
                     sortDirection: sortState.direction,
@@ -190,27 +232,35 @@ export default function RefundQueuePage() {
                     hasPrevious: response?.hasPrevious ?? false,
                 });
 
-                if (selectedRefundId) {
-                    const exists = items.some((row) => row.refundId === selectedRefundId);
-                    if (!exists) {
-                        setSelectedRefundId("");
-                        setComment("");
+                setSelectedRefund((prev) => {
+                    if (prev?.refundId) {
+                        const matched = items.find((row) => row.refundId === prev.refundId);
+                        return matched || null;
                     }
-                }
+
+                    if (anchorSettlementId && items.length === 1) {
+                        return items[0];
+                    }
+
+                    return null;
+                });
             } catch (error) {
                 if (cancelled) return;
 
                 setErrorMessage(error?.body?.message || "환불 큐 조회에 실패했습니다.");
                 setRefunds([]);
                 setPageInfo({
-                    page,
+                    page: targetPage,
                     size,
                     totalElements: 0,
                     totalPages: 0,
                     hasNext: false,
                     hasPrevious: false,
                 });
-                setSelectedRefundId("");
+                setSelectedRefund(null);
+                setComment("");
+                setTraceRequestId("");
+                setTraceLoading(false);
             } finally {
                 if (!cancelled) {
                     setLoading(false);
@@ -223,10 +273,16 @@ export default function RefundQueuePage() {
         return () => {
             cancelled = true;
         };
-    }, [meLoading, meErrorInfo, me, page, size, appliedFilters, sortState, selectedRefundId]);
-
-    const selectedRow =
-        refunds.find((row) => row.refundId === selectedRefundId) || null;
+    }, [
+        meLoading,
+        meErrorInfo,
+        me,
+        page,
+        size,
+        appliedFilters,
+        sortState,
+        anchorSettlementId,
+    ]);
 
     useEffect(() => {
         if (!selectedRow?.refundId) {
@@ -244,7 +300,14 @@ export default function RefundQueuePage() {
                 const response = await getAdminRefundTraceEntry(selectedRow.refundId);
 
                 if (cancelled) return;
-                setTraceRequestId(response?.traceRequestId || "");
+
+                const requestId =
+                    response?.traceRequestId ||
+                    response?.requestId ||
+                    response?.resolvedRequestId ||
+                    "";
+
+                setTraceRequestId(requestId);
             } catch (error) {
                 if (cancelled) return;
                 setTraceRequestId("");
@@ -262,7 +325,6 @@ export default function RefundQueuePage() {
         };
     }, [selectedRow?.refundId]);
 
-    const selectedStatus = String(selectedRow?.status || "").toUpperCase();
     const canAct =
         !!selectedRow &&
         selectedStatus === "REQUESTED" &&
@@ -279,14 +341,14 @@ export default function RefundQueuePage() {
 
     function handleSearch(event) {
         event.preventDefault();
-        setErrorMessage("");
-        setLastActionResult(null);
 
         const nextFilters = {
             ...draftFilters,
             keyword: String(draftFilters.keyword || "").trim(),
         };
 
+        setErrorMessage("");
+        setLastActionResult(null);
         setAppliedFilters(nextFilters);
 
         if (page !== 0) {
@@ -295,7 +357,7 @@ export default function RefundQueuePage() {
     }
 
     function handleSelectRefund(row) {
-        setSelectedRefundId(row.refundId);
+        setSelectedRefund(row);
         setComment("");
         setErrorMessage("");
         setLastActionResult(null);
@@ -303,7 +365,7 @@ export default function RefundQueuePage() {
     }
 
     function handleClearSelection() {
-        setSelectedRefundId("");
+        setSelectedRefund(null);
         setComment("");
         setErrorMessage("");
         setLastActionResult(null);
@@ -325,6 +387,10 @@ export default function RefundQueuePage() {
                 direction: sortKey === "requestedAt" ? "desc" : "asc",
             };
         });
+
+        if (page !== 0) {
+            resetPage();
+        }
     }
 
     function renderSortArrow(sortKey) {
@@ -337,6 +403,7 @@ export default function RefundQueuePage() {
             status: appliedFilters.status,
             from: appliedFilters.from,
             to: appliedFilters.to,
+            settlementId: anchorSettlementId || undefined,
             keyword: appliedFilters.keyword,
             sortKey: sortState.key,
             sortDirection: sortState.direction,
@@ -353,6 +420,12 @@ export default function RefundQueuePage() {
             totalPages: response?.totalPages ?? 0,
             hasNext: response?.hasNext ?? false,
             hasPrevious: response?.hasPrevious ?? false,
+        });
+
+        setSelectedRefund((prev) => {
+            if (!prev?.refundId) return null;
+            const matched = items.find((row) => row.refundId === prev.refundId);
+            return matched || null;
         });
     }
 
@@ -395,7 +468,8 @@ export default function RefundQueuePage() {
 
             setComment("");
             await reloadCurrentPage();
-            setSelectedRefundId("");
+            setSelectedRefund(null);
+            setTraceRequestId(result?.requestId || "");
         } catch (error) {
             if (error?.body?.reason) {
                 setErrorMessage(`환불 처리 실패: ${error.body.reason}`);
@@ -692,6 +766,30 @@ export default function RefundQueuePage() {
                     flex: 0 0 auto;
                 }
 
+                .refund-queue-anchor-banner {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: 12px;
+                    margin-bottom: 12px;
+                    padding: 12px 14px;
+                    border: 1px solid var(--color-border);
+                    border-radius: 10px;
+                    background: #f8fafc;
+                }
+
+                .refund-queue-anchor-banner strong {
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: #344054;
+                }
+
+                .refund-queue-anchor-banner span {
+                    flex: 1 1 auto;
+                    font-size: 13px;
+                    color: #475467;
+                }
+
                 .refund-queue-table-wrap {
                     width: 100%;
                     overflow-x: auto;
@@ -834,6 +932,11 @@ export default function RefundQueuePage() {
                     .refund-queue-result-grid,
                     .refund-queue-actions {
                         grid-template-columns: 1fr;
+                    }
+
+                    .refund-queue-anchor-banner {
+                        flex-direction: column;
+                        align-items: flex-start;
                     }
                 }
 
@@ -1010,6 +1113,23 @@ export default function RefundQueuePage() {
                         </div>
                     </SectionCard>
 
+                    {anchorSettlementId ? (
+                        <div className="refund-queue-anchor-banner">
+                            <strong>A4 정산 상세에서 이동됨</strong>
+                            <span>
+                                settlementId 기준으로 연결된 환불만 표시 중{" "}
+                                <CopyableId value={anchorSettlementId} short />
+                            </span>
+                            <ActionButton
+                                type="button"
+                                variant="secondary"
+                                onClick={() => navigate("/admin/refunds")}
+                            >
+                                전체 환불 큐 보기
+                            </ActionButton>
+                        </div>
+                    ) : null}
+
                     <SectionCard title="대기 큐(REQUESTED)">
                         <form onSubmit={handleSearch}>
                             <div className="refund-queue-toolbar">
@@ -1069,8 +1189,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     refundId
                                                     <span className="refund-queue-sort-arrow">
-                                                        {renderSortArrow("refundId")}
-                                                    </span>
+                                                            {renderSortArrow("refundId")}
+                                                        </span>
                                                 </button>
                                             </th>
 
@@ -1084,8 +1204,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     amount
                                                     <span className="refund-queue-sort-arrow">
-                                                        {renderSortArrow("amount")}
-                                                    </span>
+                                                            {renderSortArrow("amount")}
+                                                        </span>
                                                 </button>
                                             </th>
 
@@ -1100,8 +1220,8 @@ export default function RefundQueuePage() {
                                                 >
                                                     requestedAt
                                                     <span className="refund-queue-sort-arrow">
-                                                        {renderSortArrow("requestedAt")}
-                                                    </span>
+                                                            {renderSortArrow("requestedAt")}
+                                                        </span>
                                                 </button>
                                             </th>
                                         </tr>
@@ -1145,11 +1265,15 @@ export default function RefundQueuePage() {
                                                     </td>
 
                                                     <td className="refund-queue-captured-col">
-                                                        <AmountText value={getAmountValue(row, "capturedAmount")} />
+                                                        <AmountText
+                                                            value={getAmountValue(row, "capturedAmount")}
+                                                        />
                                                     </td>
 
                                                     <td className="refund-queue-refundable-col">
-                                                        <AmountText value={getAmountValue(row, "refundableAmount")} />
+                                                        <AmountText
+                                                            value={getAmountValue(row, "refundableAmount")}
+                                                        />
                                                     </td>
 
                                                     <td className="refund-queue-datetime-col">

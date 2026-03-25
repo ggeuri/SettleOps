@@ -16,12 +16,12 @@ public class RefundTraceEntryQueryService {
     private final RefundTraceQueryRepository refundTraceQueryRepository;
 
     public RefundTraceEntryResponseDTO getRefundTraceEntry(String refundId) {
+
         if (refundId == null || refundId.isBlank()) {
             throw new BadRequestException("refundId must not be null/blank");
         }
 
-        boolean exists = refundTraceQueryRepository.existsRefund(refundId);
-        if (!exists) {
+        if (!refundTraceQueryRepository.existsRefund(refundId)) {
             throw new NotFoundException("refund not found");
         }
 
