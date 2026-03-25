@@ -1,8 +1,10 @@
 package com.settleops.domain.refund.api;
 
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.domain.refund.domain.RefundStatus;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -22,30 +24,32 @@ import static org.mockito.Mockito.mock;
 class AdminRefundControllerPaginationTest {
 
     @Test
-    @DisplayName("환불 큐 조회는 PageResponse 형태로 반환한다")
+    @DisplayName("환불 큐 조회는 페이지 응답을 반환한다")
     void list_returnsPageResponse() {
         RefundAdminService refundAdminService = mock(RefundAdminService.class);
         RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
         RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
+        RefundTraceEntryQueryService refundTraceEntryQueryService = mock(RefundTraceEntryQueryService.class);
 
         AdminRefundController controller =
                 new AdminRefundController(
                         refundAdminService,
                         refundAdminQueryService,
-                        requestIdResolver
+                        requestIdResolver,
+                        refundTraceEntryQueryService
                 );
 
         AdminRefundListItemDTO item = new AdminRefundListItemDTO(
-                "rfd-1",
-                "pay-1",
-                "stl-1",
+                "refund-1",
+                "payment-1",
+                "settlement-1",
                 "merchant-1",
                 1000L,
-                10000L,
-                9000L,
+                1000L,
+                1000L,
                 RefundStatus.REQUESTED,
-                "test reason",
-                LocalDateTime.now(),
+                "reason-text",
+                LocalDateTime.of(2026, 3, 25, 1, 0),
                 null
         );
 
@@ -94,12 +98,14 @@ class AdminRefundControllerPaginationTest {
         RefundAdminService refundAdminService = mock(RefundAdminService.class);
         RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
         RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
+        RefundTraceEntryQueryService refundTraceEntryQueryService = mock(RefundTraceEntryQueryService.class);
 
         AdminRefundController controller =
                 new AdminRefundController(
                         refundAdminService,
                         refundAdminQueryService,
-                        requestIdResolver
+                        requestIdResolver,
+                        refundTraceEntryQueryService
                 );
 
         PageRequest pageable = PageRequest.of(0, 20);
@@ -140,5 +146,32 @@ class AdminRefundControllerPaginationTest {
                 "desc",
                 pageable
         );
+    }
+
+    @Test
+    @DisplayName("A6 trace-entry 조회는 traceRequestId를 반환한다")
+    void getRefundTraceEntry_returnsTraceRequestId() {
+        RefundAdminService refundAdminService = mock(RefundAdminService.class);
+        RefundAdminQueryService refundAdminQueryService = mock(RefundAdminQueryService.class);
+        RequestIdResolver requestIdResolver = mock(RequestIdResolver.class);
+        RefundTraceEntryQueryService refundTraceEntryQueryService = mock(RefundTraceEntryQueryService.class);
+
+        AdminRefundController controller =
+                new AdminRefundController(
+                        refundAdminService,
+                        refundAdminQueryService,
+                        requestIdResolver,
+                        refundTraceEntryQueryService
+                );
+
+        Mockito.when(refundTraceEntryQueryService.getRefundTraceEntry("refund-1"))
+                .thenReturn(new RefundTraceEntryResponseDTO("req-123"));
+
+        ResponseEntity<RefundTraceEntryResponseDTO> response =
+                controller.getRefundTraceEntry("refund-1");
+
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getTraceRequestId()).isEqualTo("req-123");
     }
 }

@@ -1,10 +1,14 @@
+// 수정 파일: server/src/main/java/com/settleops/domain/refund/api/AdminRefundController.java
+
 package com.settleops.domain.refund.api;
 
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -28,6 +32,7 @@ public class AdminRefundController {
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
     private final RequestIdResolver requestIdResolver;
+    private final RefundTraceEntryQueryService refundTraceEntryQueryService;
 
     @GetMapping
     public ResponseEntity<PageResponse<AdminRefundListItemDTO>> list(
@@ -57,31 +62,40 @@ public class AdminRefundController {
         return ResponseEntity.ok(PageResponse.from(result));
     }
 
+    @GetMapping("/{refundId}/trace-entry")
+    public ResponseEntity<RefundTraceEntryResponseDTO> getRefundTraceEntry(
+            @PathVariable String refundId
+    ) {
+        return ResponseEntity.ok(
+                refundTraceEntryQueryService.getRefundTraceEntry(refundId)
+        );
+    }
+
     @PatchMapping("/{refundId}/approve")
     public ResponseEntity<AdminRefundDecisionResponseDTO> approve(
             @PathVariable String refundId,
-            @RequestBody @Valid AdminRefundDecisionRequestDTO req,
+            @Valid @RequestBody AdminRefundDecisionRequestDTO request,
             @LoginAdmin String adminId,
-            HttpServletRequest request
+            HttpServletRequest httpServletRequest
     ) {
-        String requestId = requestIdResolver.resolve(request);
+        String requestId = requestIdResolver.resolve(httpServletRequest);
 
         return ResponseEntity.ok(
-                refundAdminService.approve(refundId, adminId, req.getComment(), requestId)
+                refundAdminService.approve(refundId, adminId, request.getComment(), requestId)
         );
     }
 
     @PatchMapping("/{refundId}/reject")
     public ResponseEntity<AdminRefundDecisionResponseDTO> reject(
             @PathVariable String refundId,
-            @RequestBody @Valid AdminRefundDecisionRequestDTO req,
+            @Valid @RequestBody AdminRefundDecisionRequestDTO request,
             @LoginAdmin String adminId,
-            HttpServletRequest request
+            HttpServletRequest httpServletRequest
     ) {
-        String requestId = requestIdResolver.resolve(request);
+        String requestId = requestIdResolver.resolve(httpServletRequest);
 
         return ResponseEntity.ok(
-                refundAdminService.reject(refundId, adminId, req.getComment(), requestId)
+                refundAdminService.reject(refundId, adminId, request.getComment(), requestId)
         );
     }
 }

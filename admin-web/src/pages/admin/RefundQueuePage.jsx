@@ -300,7 +300,14 @@ export default function RefundQueuePage() {
                 const response = await getAdminRefundTraceEntry(selectedRow.refundId);
 
                 if (cancelled) return;
-                setTraceRequestId(response?.traceRequestId || "");
+
+                const requestId =
+                    response?.traceRequestId ||
+                    response?.requestId ||
+                    response?.resolvedRequestId ||
+                    "";
+
+                setTraceRequestId(requestId);
             } catch (error) {
                 if (cancelled) return;
                 setTraceRequestId("");
@@ -462,6 +469,7 @@ export default function RefundQueuePage() {
             setComment("");
             await reloadCurrentPage();
             setSelectedRefund(null);
+            setTraceRequestId(result?.requestId || "");
         } catch (error) {
             if (error?.body?.reason) {
                 setErrorMessage(`환불 처리 실패: ${error.body.reason}`);
@@ -1257,7 +1265,9 @@ export default function RefundQueuePage() {
                                                     </td>
 
                                                     <td className="refund-queue-captured-col">
-                                                        <AmountText value={getAmountValue(row, "capturedAmount")} />
+                                                        <AmountText
+                                                            value={getAmountValue(row, "capturedAmount")}
+                                                        />
                                                     </td>
 
                                                     <td className="refund-queue-refundable-col">
