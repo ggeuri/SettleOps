@@ -7,6 +7,7 @@ import com.settleops.domain.settlement.enums.SettlementStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.time.LocalDate;
 import java.util.Optional;
 
 public interface SettlementRepositoryCustom {
@@ -18,6 +19,9 @@ public interface SettlementRepositoryCustom {
 
     Page<MerchantSettlementListItemResponse> searchMerchantSettlements(
             String merchantId,
+            SettlementStatus status,
+            LocalDate from,
+            LocalDate to,
             Pageable pageable
     );
 

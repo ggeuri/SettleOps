@@ -157,6 +157,68 @@ class AdminRefundControllerNoOpIT {
                 .andExpect(status().isBadRequest());
     }
 
+    @Test
+    @WithMockUser(username = "admin01", roles = "ADMIN")
+    void reject_noOp200_whenAlreadyApproved_returnsApprovedStatusAndKeepsDecidedAt() throws Exception {
+        String refundId = uuid();
+        String paymentId = uuid();
+        String merchantId = "MRC_0001";
+        String buyerId = "BUY_0001";
+        long amount = 1000L;
+
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 3, 5, 10, 0, 0, 0);
+        LocalDateTime decidedAt = LocalDateTime.of(2026, 3, 5, 11, 0, 0, 0);
+
+        insertRefund(refundId, paymentId, merchantId, buyerId, amount,
+                "APPROVED", requestedAt, decidedAt);
+
+        String requestId = uuid();
+
+        mockMvc.perform(
+                        patch("/api/admin/refunds/{refundId}/reject", refundId)
+                                .header("X-Request-Id", requestId)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                    { "comment": "retry reject on approved refund" }
+                                    """)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.decidedAt").isNotEmpty())
+                .andExpect(jsonPath("$.requestId").value(requestId));
+    }
+
+    @Test
+    @WithMockUser(username = "admin01", roles = "ADMIN")
+    void approve_noOp200_whenAlreadyRejected_returnsRejectedStatusAndKeepsDecidedAt() throws Exception {
+        String refundId = uuid();
+        String paymentId = uuid();
+        String merchantId = "MRC_0001";
+        String buyerId = "BUY_0001";
+        long amount = 1000L;
+
+        LocalDateTime requestedAt = LocalDateTime.of(2026, 3, 5, 10, 0, 0, 0);
+        LocalDateTime decidedAt = LocalDateTime.of(2026, 3, 5, 11, 0, 0, 0);
+
+        insertRefund(refundId, paymentId, merchantId, buyerId, amount,
+                "REJECTED", requestedAt, decidedAt);
+
+        String requestId = uuid();
+
+        mockMvc.perform(
+                        patch("/api/admin/refunds/{refundId}/approve", refundId)
+                                .header("X-Request-Id", requestId)
+                                .contentType(APPLICATION_JSON)
+                                .content("""
+                                    { "comment": "retry approve on rejected refund" }
+                                    """)
+                )
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.decidedAt").isNotEmpty())
+                .andExpect(jsonPath("$.requestId").value(requestId));
+    }
+
     private void insertRefund(
             String refundId,
             String paymentId,

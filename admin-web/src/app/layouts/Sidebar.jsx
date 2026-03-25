@@ -51,6 +51,7 @@ const menuGroups = [
     title: "Merchant",
     items: [
       groupItem("결제 조회", "/merchant/payments"),
+      groupItem("정산 리스트", "/merchant/settlements"),
       groupItem("환불 현황", "/merchant/refunds"),
     ],
   },

@@ -20,3 +20,10 @@ export function requestAdminSettlementPaid(settlementId) {
     body: JSON.stringify({}),
   });
 }
+
+export function approveAdminSettlementPaid(settlementId) {
+  return requestJson(`/api/admin/settlements/${settlementId}/approve-paid`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+  });
+}

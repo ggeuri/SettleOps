@@ -16,6 +16,9 @@ import { formatNumber } from "../../utils/format.js";
 import { getMe } from "../../api/meApi.js";
 import { getAdminSettlements } from "../../api/adminSettlementListApi.js";
 
+const DEFAULT_PAGE = 0;
+const DEFAULT_SIZE = 20;
+
 const STATUS_OPTIONS = [
   { value: "", label: "전체" },
   { value: "READY", label: "READY" },
@@ -31,13 +34,86 @@ function formatAmount(value) {
   return `${formatNumber(num)}원`;
 }
 
-function normalizeSettlementList(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.content)) return payload.content;
-  if (Array.isArray(payload?.page?.content)) return payload.page.content;
-  return [];
+function normalizeSettlementResponse(payload) {
+  if (Array.isArray(payload)) {
+    return {
+      items: payload,
+      page: DEFAULT_PAGE,
+      size: payload.length || DEFAULT_SIZE,
+      totalElements: payload.length,
+      totalPages: payload.length > 0 ? 1 : 0,
+      hasNext: false,
+      hasPrevious: false,
+    };
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return {
+      items: payload.items,
+      page: Number(payload.page ?? DEFAULT_PAGE),
+      size: Number(payload.size ?? DEFAULT_SIZE),
+      totalElements: Number(payload.totalElements ?? payload.items.length ?? 0),
+      totalPages: Number(
+        payload.totalPages ?? (payload.items.length > 0 ? 1 : 0)
+      ),
+      hasNext: Boolean(payload.hasNext),
+      hasPrevious: Boolean(payload.hasPrevious),
+    };
+  }
+
+  if (Array.isArray(payload?.content)) {
+    return {
+      items: payload.content,
+      page: Number(payload.number ?? payload.page ?? DEFAULT_PAGE),
+      size: Number(payload.size ?? DEFAULT_SIZE),
+      totalElements: Number(
+        payload.totalElements ?? payload.content.length ?? 0
+      ),
+      totalPages: Number(
+        payload.totalPages ?? (payload.content.length > 0 ? 1 : 0)
+      ),
+      hasNext: Boolean(payload.hasNext),
+      hasPrevious: Boolean(payload.hasPrevious),
+    };
+  }
+
+  if (Array.isArray(payload?.page?.content)) {
+    return {
+      items: payload.page.content,
+      page: Number(payload.page.number ?? DEFAULT_PAGE),
+      size: Number(payload.page.size ?? DEFAULT_SIZE),
+      totalElements: Number(
+        payload.page.totalElements ?? payload.page.content.length ?? 0
+      ),
+      totalPages: Number(
+        payload.page.totalPages ?? (payload.page.content.length > 0 ? 1 : 0)
+      ),
+      hasNext: Boolean(payload.page.hasNext),
+      hasPrevious: Boolean(payload.page.hasPrevious),
+    };
+  }
+
+  if (Array.isArray(payload?.data)) {
+    return {
+      items: payload.data,
+      page: DEFAULT_PAGE,
+      size: payload.data.length || DEFAULT_SIZE,
+      totalElements: payload.data.length,
+      totalPages: payload.data.length > 0 ? 1 : 0,
+      hasNext: false,
+      hasPrevious: false,
+    };
+  }
+
+  return {
+    items: [],
+    page: DEFAULT_PAGE,
+    size: DEFAULT_SIZE,
+    totalElements: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrevious: false,
+  };
 }
 
 function extractRole(payload) {
@@ -62,7 +138,7 @@ function buildAuthErrorMessage(error) {
   }
 
   if (status === 403) {
-    return "Admin 권한이 없어 정산 관리 화면에 접근할 수 없습니다.";
+    return "Admin 권한이 필요한 페이지입니다.";
   }
 
   return (
@@ -101,6 +177,13 @@ export default function SettlementManagePage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [rows, setRows] = useState([]);
+  const [page, setPage] = useState(DEFAULT_PAGE);
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -112,24 +195,48 @@ export default function SettlementManagePage() {
   const [authChecking, setAuthChecking] = useState(true);
   const [isAllowed, setIsAllowed] = useState(false);
   const [authErrorMessage, setAuthErrorMessage] = useState("");
+  const [authErrorStatus, setAuthErrorStatus] = useState(null);
 
   const pageTitle = useMemo(() => "A3 정산 관리", []);
 
   const fetchSettlements = useCallback(
-    async (nextStatus = "", nextMerchantId = "") => {
+    async ({
+      nextStatus = "",
+      nextMerchantId = "",
+      nextPage = DEFAULT_PAGE,
+      nextSize = DEFAULT_SIZE,
+    }) => {
       setLoading(true);
       setErrorMessage("");
 
       try {
-        const params = {};
+        const params = {
+          page: nextPage,
+          size: nextSize,
+        };
+
         if (nextStatus) params.status = nextStatus;
         if (nextMerchantId.trim()) params.merchantId = nextMerchantId.trim();
 
         const data = await getAdminSettlements(params);
-        setRows(normalizeSettlementList(data));
+        const normalized = normalizeSettlementResponse(data);
+
+        setRows(normalized.items);
+        setPage(normalized.page);
+        setSize(normalized.size);
+        setTotalElements(normalized.totalElements);
+        setTotalPages(normalized.totalPages);
+        setHasNext(normalized.hasNext);
+        setHasPrevious(normalized.hasPrevious);
       } catch (error) {
         console.error("정산 리스트 조회 실패", error);
         setRows([]);
+        setPage(DEFAULT_PAGE);
+        setSize(DEFAULT_SIZE);
+        setTotalElements(0);
+        setTotalPages(0);
+        setHasNext(false);
+        setHasPrevious(false);
         setErrorMessage(buildErrorMessage(error));
       } finally {
         setLoading(false);
@@ -145,6 +252,7 @@ export default function SettlementManagePage() {
       try {
         setAuthChecking(true);
         setAuthErrorMessage("");
+        setAuthErrorStatus(null);
         setIsAllowed(false);
 
         const me = await getMe();
@@ -158,12 +266,12 @@ export default function SettlementManagePage() {
         }
 
         setIsAllowed(false);
-        setAuthErrorMessage(
-          "Admin 전용 정산 관리 화면입니다. /auth/dev-login 에서 Admin 세션으로 다시 로그인해 주세요."
-        );
+        setAuthErrorStatus(403);
+        setAuthErrorMessage("Admin 권한이 필요한 페이지입니다.");
       } catch (error) {
         if (!mounted) return;
         setIsAllowed(false);
+        setAuthErrorStatus(error?.status ?? null);
         setAuthErrorMessage(buildAuthErrorMessage(error));
       } finally {
         if (mounted) {
@@ -184,10 +292,18 @@ export default function SettlementManagePage() {
 
     const nextStatus = searchParams.get("status") ?? "";
     const nextMerchantId = searchParams.get("merchantId") ?? "";
+    const nextPage = Number(searchParams.get("page") ?? DEFAULT_PAGE);
+    const nextSize = Number(searchParams.get("size") ?? DEFAULT_SIZE);
 
     setStatus(nextStatus);
     setMerchantId(nextMerchantId);
-    fetchSettlements(nextStatus, nextMerchantId);
+
+    fetchSettlements({
+      nextStatus,
+      nextMerchantId,
+      nextPage,
+      nextSize,
+    });
   }, [searchParams, fetchSettlements, isAllowed]);
 
   function handleSearch(event) {
@@ -196,6 +312,8 @@ export default function SettlementManagePage() {
     const nextParams = {};
     if (status) nextParams.status = status;
     if (merchantId.trim()) nextParams.merchantId = merchantId.trim();
+    nextParams.page = String(DEFAULT_PAGE);
+    nextParams.size = String(size || DEFAULT_SIZE);
 
     setSearchParams(nextParams);
   }
@@ -203,7 +321,20 @@ export default function SettlementManagePage() {
   function handleReset() {
     setStatus("");
     setMerchantId("");
-    setSearchParams({});
+    setSearchParams({
+      page: String(DEFAULT_PAGE),
+      size: String(DEFAULT_SIZE),
+    });
+  }
+
+  function handlePageChange(nextPage) {
+    const nextParams = {};
+    if (status) nextParams.status = status;
+    if (merchantId.trim()) nextParams.merchantId = merchantId.trim();
+    nextParams.page = String(nextPage);
+    nextParams.size = String(size || DEFAULT_SIZE);
+
+    setSearchParams(nextParams);
   }
 
   function handleRowClick(settlementId) {
@@ -217,21 +348,18 @@ export default function SettlementManagePage() {
         title={pageTitle}
         description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
       >
-        <SectionCard title="세션 확인 중">
-          <LoadingBlock
-            title="세션 확인 중"
-            description="현재 로그인 세션의 역할을 확인하고 있습니다."
-          />
-        </SectionCard>
+        <div className="guard-notice">
+          <div className="guard-notice__title">로딩 중</div>
+          <div className="guard-notice__description">
+            권한 정보를 확인하는 중입니다.
+          </div>
+        </div>
       </PageLayout>
     );
   }
 
   if (!isAllowed) {
-    if (
-      authErrorMessage.includes("로그인") ||
-      authErrorMessage.includes("인증")
-    ) {
+    if (authErrorStatus === 401) {
       return (
         <PageLayout
           title={pageTitle}
@@ -250,12 +378,12 @@ export default function SettlementManagePage() {
         title={pageTitle}
         description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
       >
-        <GuardNotice
-          title="접근 불가"
-          message={authErrorMessage}
-          tone="danger"
-        />
-        <ErrorState message={authErrorMessage} />
+        <div className="guard-notice">
+          <div className="guard-notice__title">접근 불가</div>
+          <div className="guard-notice__description">
+            Admin 권한이 필요한 페이지입니다.
+          </div>
+        </div>
       </PageLayout>
     );
   }
@@ -265,23 +393,12 @@ export default function SettlementManagePage() {
       title={pageTitle}
       description="정산 상태와 판매자 기준으로 정산을 조회하고, settlementId 앵커로 A4 상세 화면으로 이동합니다."
     >
-      <SectionCard title="조회 조건">
+      <SectionCard title="검색 조건">
         <form onSubmit={handleSearch}>
-          <div
-            className="filter-bar"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "flex-end",
-              gap: "16px",
-            }}
-          >
-            <div
-              className="form-field"
-              style={{ minWidth: "220px", flex: "0 0 220px" }}
-            >
+          <div className="filter-bar">
+            <div className="form-field">
               <label className="form-field__label" htmlFor="status">
-                상태
+                status
               </label>
               <select
                 id="status"
@@ -297,10 +414,7 @@ export default function SettlementManagePage() {
               </select>
             </div>
 
-            <div
-              className="form-field"
-              style={{ minWidth: "240px", flex: "0 0 240px" }}
-            >
+            <div className="form-field">
               <label className="form-field__label" htmlFor="merchantId">
                 merchantId
               </label>
@@ -313,40 +427,29 @@ export default function SettlementManagePage() {
                 placeholder="merchantId 입력"
               />
             </div>
+          </div>
 
-            <div
-              className="button-row action-panel"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flexWrap: "wrap",
-              }}
+          <div className="button-row action-panel" style={{ marginTop: "16px" }}>
+            <ActionButton
+              type="submit"
+              variant="primary"
+              disabled={loading}
             >
-              <ActionButton
-                type="submit"
-                variant="primary"
-                disabled={loading}
-              >
-                {loading ? "조회 중..." : "조회"}
-              </ActionButton>
+              {loading ? "조회 중..." : "조회"}
+            </ActionButton>
 
-              <ActionButton
-                type="button"
-                variant="secondary"
-                onClick={handleReset}
-                disabled={loading}
-              >
-                초기화
-              </ActionButton>
+            <ActionButton
+              type="button"
+              variant="secondary"
+              onClick={handleReset}
+              disabled={loading}
+            >
+              초기화
+            </ActionButton>
 
-              <Link
-                to="/admin/settlement-batches"
-                className="btn btn--secondary"
-              >
-                배치 콘솔(A2)
-              </Link>
-            </div>
+            <Link to="/admin/settlement-batches" className="btn btn--secondary">
+              배치 콘솔(A2)
+            </Link>
           </div>
         </form>
       </SectionCard>
@@ -358,15 +461,29 @@ export default function SettlementManagePage() {
         </>
       ) : null}
 
-      <SectionCard title="정산 리스트">
-        <div
-          style={{
-            marginBottom: "12px",
-            color: "var(--color-text-muted, #6b7280)",
-            fontSize: "14px",
-          }}
-        >
-          총 {rows.length}건
+      <SectionCard title="목록">
+        <div className="table-toolbar">
+          <div>
+            <div>정산 관리 목록</div>
+            <div
+              style={{
+                marginTop: "4px",
+                color: "var(--color-text-muted, #6b7280)",
+                fontSize: "14px",
+              }}
+            >
+              status / merchantId 기준으로 정산을 조회하고 settlementId 앵커로 A4 상세 화면으로 이동합니다.
+            </div>
+          </div>
+
+          <div
+            style={{
+              color: "var(--color-text-muted, #6b7280)",
+              fontSize: "14px",
+            }}
+          >
+            총 {totalElements}건
+          </div>
         </div>
 
         {loading ? (
@@ -380,87 +497,113 @@ export default function SettlementManagePage() {
             description="검색 조건을 다시 확인하거나 필터를 초기화해 주세요."
           />
         ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>settlementId</th>
-                  <th>상태</th>
-                  <th>baseDate</th>
-                  <th>merchantId</th>
-                  <th>gross</th>
-                  <th>fee</th>
-                  <th>vat</th>
-                  <th>net</th>
-                  <th>상세</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => {
-                  const settlementId =
-                    row?.settlementId ?? row?.id ?? `row-${index}`;
-                  const rowMerchantId = row?.merchantId ?? "-";
+          <>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>settlementId</th>
+                    <th>status</th>
+                    <th>baseDate</th>
+                    <th>merchantId</th>
+                    <th>gross</th>
+                    <th>fee</th>
+                    <th>vat</th>
+                    <th>net</th>
+                    <th>상세</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, index) => {
+                    const settlementId =
+                      row?.settlementId ?? row?.id ?? `row-${index}`;
+                    const rowMerchantId = row?.merchantId ?? "-";
 
-                  return (
-                    <tr
-                      key={settlementId}
-                      onClick={() => handleRowClick(settlementId)}
-                      style={{ cursor: settlementId ? "pointer" : "default" }}
-                    >
-                      <td
-                        onClick={(event) => event.stopPropagation()}
-                        style={{ verticalAlign: "middle" }}
+                    return (
+                      <tr
+                        key={settlementId}
+                        onClick={() => handleRowClick(settlementId)}
+                        style={{ cursor: settlementId ? "pointer" : "default" }}
                       >
-                        <CopyableId value={settlementId} short />
-                      </td>
-
-                      <td style={{ verticalAlign: "middle" }}>
-                        <StatusBadge status={row?.status || "UNKNOWN"} />
-                      </td>
-
-                      <td style={{ verticalAlign: "middle" }}>
-                        {row?.baseDate ?? "-"}
-                      </td>
-
-                      <td
-                        onClick={(event) => event.stopPropagation()}
-                        style={{ verticalAlign: "middle" }}
-                      >
-                        <CopyableId value={rowMerchantId} short />
-                      </td>
-
-                      <td style={{ verticalAlign: "middle" }}>
-                        {formatAmount(row?.gross)}
-                      </td>
-                      <td style={{ verticalAlign: "middle" }}>
-                        {formatAmount(row?.fee)}
-                      </td>
-                      <td style={{ verticalAlign: "middle" }}>
-                        {formatAmount(row?.vat)}
-                      </td>
-                      <td style={{ verticalAlign: "middle" }}>
-                        {formatAmount(row?.net)}
-                      </td>
-
-                      <td
-                        onClick={(event) => event.stopPropagation()}
-                        style={{ verticalAlign: "middle" }}
-                      >
-                        <ActionButton
-                          type="button"
-                          variant="secondary"
-                          onClick={() => handleRowClick(settlementId)}
-                          disabled={!settlementId}
+                        <td
+                          onClick={(event) => event.stopPropagation()}
+                          style={{ verticalAlign: "middle" }}
                         >
-                          상세조회
-                        </ActionButton>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          <CopyableId value={settlementId} short />
+                        </td>
+
+                        <td style={{ verticalAlign: "middle" }}>
+                          <StatusBadge status={row?.status || "UNKNOWN"} />
+                        </td>
+
+                        <td style={{ verticalAlign: "middle" }}>
+                          {row?.baseDate ?? "-"}
+                        </td>
+
+                        <td
+                          onClick={(event) => event.stopPropagation()}
+                          style={{ verticalAlign: "middle" }}
+                        >
+                          <CopyableId value={rowMerchantId} short />
+                        </td>
+
+                        <td style={{ verticalAlign: "middle" }}>
+                          {formatAmount(row?.gross)}
+                        </td>
+                        <td style={{ verticalAlign: "middle" }}>
+                          {formatAmount(row?.fee)}
+                        </td>
+                        <td style={{ verticalAlign: "middle" }}>
+                          {formatAmount(row?.vat)}
+                        </td>
+                        <td style={{ verticalAlign: "middle" }}>
+                          {formatAmount(row?.net)}
+                        </td>
+
+                        <td
+                          onClick={(event) => event.stopPropagation()}
+                          style={{ verticalAlign: "middle" }}
+                        >
+                          <ActionButton
+                            type="button"
+                            variant="secondary"
+                            onClick={() => handleRowClick(settlementId)}
+                            disabled={!settlementId}
+                          >
+                            상세조회
+                          </ActionButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pagination">
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={loading || !hasPrevious || page <= 0}
+              >
+                이전
+              </button>
+
+              <button type="button" className="btn btn--primary" disabled>
+                {page + 1}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={loading || !hasNext || page + 1 >= totalPages}
+              >
+                다음
+              </button>
+            </div>
+          </>
         )}
       </SectionCard>
     </PageLayout>

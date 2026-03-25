@@ -198,7 +198,7 @@ class MerchantSettlementQueryControllerWebMvcTest {
     }
 
     @Test
-    @DisplayName("Merchant 정산 리스트 조회 성공 시 200과 페이지 응답을 반환한다")
+    @DisplayName("Merchant 정산 리스트 조회 성공 시 status/from/to 필터를 포함해 200과 페이지 응답을 반환한다")
     void getMerchantSettlements_success() throws Exception {
         MerchantSettlementListItemResponse item1 = new MerchantSettlementListItemResponse(
                 "settlement-1",
@@ -211,32 +211,27 @@ class MerchantSettlementQueryControllerWebMvcTest {
                 LocalDateTime.of(2026, 3, 11, 10, 0)
         );
 
-        MerchantSettlementListItemResponse item2 = new MerchantSettlementListItemResponse(
-                "settlement-2",
-                LocalDate.of(2026, 3, 11),
-                SettlementStatus.PAID,
-                20000L,
-                2000L,
-                200L,
-                17800L,
-                LocalDateTime.of(2026, 3, 12, 11, 0)
-        );
-
         when(sessionAuthProvider.getCurrentMerchantId()).thenReturn(MERCHANT_ID);
         when(merchantSettlementQueryService.getMerchantSettlements(
                 eq(MERCHANT_ID),
                 eq(MERCHANT_ID),
+                eq(SettlementStatus.READY),
+                eq(LocalDate.of(2026, 3, 1)),
+                eq(LocalDate.of(2026, 3, 31)),
                 eq(PageRequest.of(0, 20))
-        )).thenReturn(new PageImpl<>(List.of(item1, item2), PageRequest.of(0, 20), 2));
+        )).thenReturn(new PageImpl<>(List.of(item1), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/api/merchants/{merchantId}/settlements", MERCHANT_ID)
                         .sessionAttr(MeController.SessionKeys.ROLE, "MERCHANT")
                         .sessionAttr(MeController.SessionKeys.MERCHANT_ID, MERCHANT_ID)
+                        .param("status", "READY")
+                        .param("from", "2026-03-01")
+                        .param("to", "2026-03-31")
                         .param("page", "0")
                         .param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.content.length()").value(2))
+                .andExpect(jsonPath("$.content.length()").value(1))
                 .andExpect(jsonPath("$.content[0].settlementId").value("settlement-1"))
                 .andExpect(jsonPath("$.content[0].baseDate").value("2026-03-10"))
                 .andExpect(jsonPath("$.content[0].status").value("READY"))
@@ -244,15 +239,16 @@ class MerchantSettlementQueryControllerWebMvcTest {
                 .andExpect(jsonPath("$.content[0].fee").value(1000))
                 .andExpect(jsonPath("$.content[0].vat").value(100))
                 .andExpect(jsonPath("$.content[0].net").value(8900))
-                .andExpect(jsonPath("$.content[1].settlementId").value("settlement-2"))
-                .andExpect(jsonPath("$.content[1].status").value("PAID"))
                 .andExpect(jsonPath("$.number").value(0))
                 .andExpect(jsonPath("$.size").value(20))
-                .andExpect(jsonPath("$.totalElements").value(2));
+                .andExpect(jsonPath("$.totalElements").value(1));
 
         verify(merchantSettlementQueryService).getMerchantSettlements(
                 MERCHANT_ID,
                 MERCHANT_ID,
+                SettlementStatus.READY,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
                 PageRequest.of(0, 20)
         );
     }

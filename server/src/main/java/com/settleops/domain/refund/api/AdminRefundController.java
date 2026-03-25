@@ -1,10 +1,14 @@
+// 수정 파일: server/src/main/java/com/settleops/domain/refund/api/AdminRefundController.java
+
 package com.settleops.domain.refund.api;
 
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionRequestDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundDecisionResponseDTO;
 import com.settleops.domain.refund.api.dto.AdminRefundListItemDTO;
+import com.settleops.domain.refund.api.dto.RefundTraceEntryResponseDTO;
 import com.settleops.domain.refund.application.RefundAdminQueryService;
 import com.settleops.domain.refund.application.RefundAdminService;
+import com.settleops.domain.refund.application.RefundTraceEntryQueryService;
 import com.settleops.global.auth.annotation.LoginAdmin;
 import com.settleops.global.web.RequestIdResolver;
 import com.settleops.global.web.pagination.PageResponse;
@@ -24,60 +28,74 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 @RequestMapping("/api/admin/refunds")
 public class AdminRefundController {
-    //GET /api/admin/refunds?status=&from=&to=
-    //PATCH /api/admin/refunds/{refundId}/approve
-    //PATCH /api/admin/refunds/{refundId}/reject
 
     private final RefundAdminService refundAdminService;
     private final RefundAdminQueryService refundAdminQueryService;
     private final RequestIdResolver requestIdResolver;
+    private final RefundTraceEntryQueryService refundTraceEntryQueryService;
 
-    /**
-     * A6 운영 큐 조회(READ).
-     * - status/from/to는 옵션.
-     * - 기준 시각: requestedAt (DB requested_at)
-     */
     @GetMapping
     public ResponseEntity<PageResponse<AdminRefundListItemDTO>> list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String settlementId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "requestedAt") String sortKey,
+            @RequestParam(required = false, defaultValue = "desc") String sortDirection,
             @RequestParam(required = false, defaultValue = "0") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer size
     ) {
         Pageable pageable = PageableUtils.validateAndCreate(page, size);
 
-        Page<AdminRefundListItemDTO> result =
-                refundAdminQueryService.list(status, from, to, pageable);
+        Page<AdminRefundListItemDTO> result = refundAdminQueryService.list(
+                status,
+                from,
+                to,
+                settlementId,
+                keyword,
+                sortKey,
+                sortDirection,
+                pageable
+        );
 
         return ResponseEntity.ok(PageResponse.from(result));
+    }
+
+    @GetMapping("/{refundId}/trace-entry")
+    public ResponseEntity<RefundTraceEntryResponseDTO> getRefundTraceEntry(
+            @PathVariable String refundId
+    ) {
+        return ResponseEntity.ok(
+                refundTraceEntryQueryService.getRefundTraceEntry(refundId)
+        );
     }
 
     @PatchMapping("/{refundId}/approve")
     public ResponseEntity<AdminRefundDecisionResponseDTO> approve(
             @PathVariable String refundId,
-            @RequestBody @Valid AdminRefundDecisionRequestDTO req,
+            @Valid @RequestBody AdminRefundDecisionRequestDTO request,
             @LoginAdmin String adminId,
-            HttpServletRequest request
+            HttpServletRequest httpServletRequest
     ) {
-        String requestId = requestIdResolver.resolve(request);
+        String requestId = requestIdResolver.resolve(httpServletRequest);
 
         return ResponseEntity.ok(
-                refundAdminService.approve(refundId, adminId, req.getComment(), requestId)
+                refundAdminService.approve(refundId, adminId, request.getComment(), requestId)
         );
     }
 
     @PatchMapping("/{refundId}/reject")
     public ResponseEntity<AdminRefundDecisionResponseDTO> reject(
             @PathVariable String refundId,
-            @RequestBody @Valid AdminRefundDecisionRequestDTO req,
+            @Valid @RequestBody AdminRefundDecisionRequestDTO request,
             @LoginAdmin String adminId,
-            HttpServletRequest request
+            HttpServletRequest httpServletRequest
     ) {
-        String requestId = requestIdResolver.resolve(request);
+        String requestId = requestIdResolver.resolve(httpServletRequest);
 
         return ResponseEntity.ok(
-                refundAdminService.reject(refundId, adminId, req.getComment(), requestId)
+                refundAdminService.reject(refundId, adminId, request.getComment(), requestId)
         );
     }
 }

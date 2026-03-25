@@ -22,8 +22,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 public class MerchantSettlementQueryControllerTest {
 
     @Test
-    @DisplayName("Merchant 정산 리스트 조회 시 loginMerchantId와 path merchantId를 서비스로 전달한다")
-    void getMerchantSettlements_passesLoginMerchantIdAndPathMerchantId() {
+    @DisplayName("Merchant 정산 리스트 조회 시 loginMerchantId, path merchantId, 필터값을 서비스로 전달한다")
+    void getMerchantSettlements_passesLoginMerchantIdPathMerchantIdAndFilters() {
         MerchantSettlementQueryService merchantSettlementQueryService = Mockito.mock(MerchantSettlementQueryService.class);
         MerchantSettlementQueryController controller =
                 new MerchantSettlementQueryController(merchantSettlementQueryService);
@@ -44,11 +44,17 @@ public class MerchantSettlementQueryControllerTest {
         Mockito.when(merchantSettlementQueryService.getMerchantSettlements(
                 "merchant-1",
                 "merchant-1",
+                SettlementStatus.READY,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
                 PageRequest.of(0, 20)
         )).thenReturn(new PageImpl<>(List.of(item), pageable, 1));
 
         ResponseEntity<?> response = controller.getMerchantSettlements(
                 "merchant-1",
+                SettlementStatus.READY,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
                 pageable,
                 "merchant-1"
         );
@@ -59,6 +65,9 @@ public class MerchantSettlementQueryControllerTest {
         Mockito.verify(merchantSettlementQueryService).getMerchantSettlements(
                 "merchant-1",
                 "merchant-1",
+                SettlementStatus.READY,
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
                 PageRequest.of(0, 20)
         );
     }
