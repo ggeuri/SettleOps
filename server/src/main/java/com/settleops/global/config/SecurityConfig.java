@@ -1,6 +1,7 @@
 package com.settleops.global.config;
 
 import com.settleops.global.auth.SessionAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -16,10 +17,17 @@ import org.springframework.web.cors.CorsConfiguration;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 @Profile("!test")
 @Configuration
 public class SecurityConfig {
+
+    @Value("${app.cors.deploy-origin:}")
+    private String deployOrigin;
+
+    @Value("${app.cors.deploy-origin-www:}")
+    private String deployOriginWww;
 
     private final SessionAuthenticationFilter sessionAuthenticationFilter;
 
@@ -37,10 +45,18 @@ public class SecurityConfig {
         http.cors(cors -> cors.configurationSource(request -> {
             CorsConfiguration config = new CorsConfiguration();
 
-            config.setAllowedOriginPatterns(List.of("http://localhost:*"));
-            config.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
+            List<String> allowedOriginPatterns = Stream.of(
+                            "http://localhost:*",
+                            deployOrigin,
+                            deployOriginWww
+                    )
+                    .filter(origin -> origin != null && !origin.isBlank())
+                    .toList();
+
+            config.setAllowedOriginPatterns(allowedOriginPatterns);
+            config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
             config.setAllowedHeaders(List.of(
-                    "Content-Type","X-Request-Id","X-Idempotency-Key","Accept","Origin","X-Requested-With"
+                    "Content-Type", "X-Request-Id", "X-Idempotency-Key", "Accept", "Origin", "X-Requested-With"
             ));
             config.setExposedHeaders(List.of("X-Request-Id"));
             config.setAllowCredentials(true);
