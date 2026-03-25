@@ -51,18 +51,6 @@ function getDefaultTo() {
 }
 
 function normalizeSettlementPage(payload) {
-  if (Array.isArray(payload)) {
-    return {
-      items: payload,
-      page: DEFAULT_PAGE,
-      size: DEFAULT_SIZE,
-      totalElements: payload.length,
-      totalPages: payload.length > 0 ? 1 : 0,
-      hasNext: false,
-      hasPrevious: false,
-    };
-  }
-
   if (Array.isArray(payload?.items)) {
     return {
       items: payload.items,
@@ -312,16 +300,8 @@ export default function SettlementListPage() {
     if (nextFromDate) params.from = nextFromDate;
     if (nextToDate) params.to = nextToDate;
 
-    console.log("[U4] request merchantId =", resolvedMerchantId);
-    console.log("[U4] request params =", params);
-
     const data = await getMerchantSettlements(resolvedMerchantId, params);
-
-    console.log("[U4] raw response =", data);
-
     const normalized = normalizeSettlementPage(data);
-
-    console.log("[U4] normalized response =", normalized);
 
     applyPageResponse(normalized, nextSize);
   }
