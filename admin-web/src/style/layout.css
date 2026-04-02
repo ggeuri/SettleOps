@@ -1,17 +1,18 @@
 .page-layout {
-    max-width: 960px;
-    margin: 0 auto;
-    padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
 .page-header {
-    margin-bottom: 20px;
+  margin-bottom: 20px;
 }
 
 .page-content {
-    display: grid;
-    gap: 16px;
+  display: grid;
+  gap: 16px;
 }
+
 /* =========================================================
    AppLayout 전체 골격
    - src/layouts/AppLayout.jsx
@@ -29,10 +30,16 @@
 }
 
 .app-layout__sidebar {
+  --sidebar-bg: #0f2976;
+  --sidebar-text: #ffffff;
+  --sidebar-text-muted: rgba(255, 255, 255, 0.68);
+  --sidebar-hover: rgba(255, 255, 255, 0.1);
+  --sidebar-active: rgba(255, 255, 255, 0.18);
+
   width: 260px;
   min-width: 260px;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-surface);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--sidebar-bg);
 }
 
 .app-layout__main {
@@ -78,11 +85,27 @@
 }
 
 .sidebar__logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 24px;
-  color: var(--color-text-primary);
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.2;
+  padding: 2px 4px;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.sidebar__logo-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top:-16px
+}
+
+.sidebar__logo-text {
+  display: inline-block;
 }
 
 .sidebar__nav {
@@ -99,7 +122,7 @@
 
 .sidebar__group-title {
   margin: 0;
-  color: var(--color-text-secondary);
+  color: var(--sidebar-text-muted);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -116,7 +139,7 @@
   display: block;
   padding: 10px 12px;
   border-radius: 12px;
-  color: var(--color-text-primary);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
   line-height: 1.4;
   text-decoration: none;
@@ -124,12 +147,13 @@
 }
 
 .sidebar__link:hover {
-  background: var(--color-surface-muted);
+  background: var(--sidebar-hover);
+  color: var(--sidebar-text);
 }
 
 .sidebar__link--active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--sidebar-active);
+  color: var(--sidebar-text);
   font-weight: 600;
 }
 

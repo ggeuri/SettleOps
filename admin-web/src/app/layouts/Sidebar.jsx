@@ -30,9 +30,7 @@ const groupItem = (label, to, exactPaths = []) => ({
   label,
   to,
   isActive: (pathname) => {
-    // exact 우선 경로면 group active 제외
     if (exactPaths.includes(pathname)) return false;
-
     return pathname === to || pathname.startsWith(`${to}/`);
   },
 });
@@ -76,7 +74,17 @@ export default function Sidebar() {
 
   return (
     <div className="sidebar">
-      <div className="sidebar__logo">SettleOps</div>
+      <div className="sidebar__logo">
+        <img
+          src="/union-bl.svg"
+          alt=""
+          width={14}
+          height={14}
+          className="sidebar__logo-icon"
+          aria-hidden="true"
+        />
+        <span className="sidebar__logo-text">SettleOps</span>
+      </div>
 
       <nav className="sidebar__nav">
         {menuGroups.map((groupInfo) => (
