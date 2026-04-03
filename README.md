@@ -438,7 +438,7 @@ ERD 문서는 `docs/erd/` 경로를 참고합니다.
 
 ## 14. Demo Video
 
-- [SettleOps Demo Video](https://drive.google.com/file/d/18TgFpeZR8aLuSexfTh7XKPHsORkyrYz8/view?usp=drive_link)
+- [SettleOps Demo Video](https://drive.google.com/file/d/1t3vDtS_M5B1EI2acZ0hZpwu4rb620kS-/view?usp=drive_link)
 
 ---
 
