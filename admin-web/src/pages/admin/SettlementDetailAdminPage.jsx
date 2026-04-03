@@ -124,7 +124,7 @@ function mapTraceEntryErrorToMessage(error) {
   }
 
   if (status === 404) {
-    return "이 정산 건에 대한 Trace 진입 가능한 request_id가 아직 없습니다.";
+    return "이 정산 건에 대한 Trace 진입 정보가 아직 없습니다.";
   }
 
   return message || "Trace 진입 정보를 조회하는 중 오류가 발생했습니다.";
@@ -226,7 +226,7 @@ export default function SettlementDetailAdminPage() {
 
         if (!requestId) {
           setTraceEntryError(
-            "이 정산 건에 대한 Trace 진입 가능한 request_id가 아직 없습니다."
+            "이 정산 건에 대한 Trace 진입 정보가 아직 없습니다."
           );
           setTraceRequestId("");
           return;
@@ -645,22 +645,6 @@ export default function SettlementDetailAdminPage() {
             Batch 콘솔(A2)
           </Link>
         </div>
-
-        <div style={{ marginTop: "12px" }}>
-          {traceRequestId ? (
-            <GuardNotice
-              title="Trace 진입 정보"
-              tone="info"
-              message="현재 정산 건 기준 최신 운영 requestId입니다. 연결 정보의 requestId를 복사하거나 ‘Trace로 보기’ 버튼으로 A1에서 요청 단위 재현을 확인할 수 있습니다."
-            />
-          ) : (
-            <GuardNotice
-              title="Trace 진입 정보"
-              tone="info"
-              message="현재 정산 건에서 Trace 진입에 사용할 최신 requestId가 아직 없습니다."
-            />
-          )}
-        </div>
       </SectionCard>
 
       <SectionCard title="요약">
@@ -743,7 +727,6 @@ export default function SettlementDetailAdminPage() {
 
       <SectionCard title="연결 정보">
         <InfoRow label="settlementId" copyable value={currentSettlementId} />
-        <InfoRow label="requestId" copyable value={traceRequestId || "-"} />
         <InfoRow label="merchantId" copyable value={merchantId} />
 
         <InfoRow label="paymentIds">
@@ -797,10 +780,6 @@ export default function SettlementDetailAdminPage() {
           <InfoRow
             label="comment"
             value={hold?.requestedComment || hold?.comment || "-"}
-          />
-          <InfoRow
-            label="approvedBy"
-            value={hold?.approvedBy || hold?.decidedBy || "-"}
           />
           <InfoRow
             label="createdAt"
