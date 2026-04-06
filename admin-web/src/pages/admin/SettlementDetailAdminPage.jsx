@@ -167,6 +167,20 @@ function CopyableValue({ value }) {
   return <CopyableId value={value} short />;
 }
 
+function formatBooleanState(
+  value,
+  { trueLabel = "APPROVED", falseLabel = "-" } = {}
+) {
+  return value ? trueLabel : falseLabel;
+}
+
+function formatRefundStatusValue(value) {
+  if (value === null || value === undefined || value === "" || value === "NONE") {
+    return "-";
+  }
+  return value;
+}
+
 export default function SettlementDetailAdminPage() {
   const { settlementId } = useParams();
   const navigate = useNavigate();
@@ -549,29 +563,29 @@ export default function SettlementDetailAdminPage() {
       title="정산 상세"
       description="settlementId를 앵커로 settlement / settlement_line / hold / refund를 연결 조회하는 운영 허브입니다."
     >
-     {guardMessages.length > 0 ? (
-       <GuardNotice
-         title="가드레일 안내"
-         tone="warning"
-         message={
-           <div>
-             {guardMessages.map((message) => (
-               <div key={message}>{message}</div>
-             ))}
-           </div>
-         }
-       />
-     ) : (
-       <GuardNotice
-         title={status === "PAY_REQUESTED" ? "지급 승인 가능" : "지급 요청 가능"}
-         tone="info"
-         message={
-           status === "PAY_REQUESTED"
-             ? "현재 정산 건은 지급 승인 단계입니다. 요청자와 다른 Admin 계정으로 승인해야 합니다."
-             : "현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
-         }
-       />
-     )}
+      {guardMessages.length > 0 ? (
+        <GuardNotice
+          title="가드레일 안내"
+          tone="warning"
+          message={
+            <div>
+              {guardMessages.map((message) => (
+                <div key={message}>{message}</div>
+              ))}
+            </div>
+          }
+        />
+      ) : (
+        <GuardNotice
+          title={status === "PAY_REQUESTED" ? "지급 승인 가능" : "지급 요청 가능"}
+          tone="info"
+          message={
+            status === "PAY_REQUESTED"
+              ? "현재 정산 건은 지급 승인 단계입니다. 요청자와 다른 Admin 계정으로 승인해야 합니다."
+              : "현재 HOLD_ACTIVE 및 REFUND_ADJUSTMENT_PENDING 조건이 없어 지급 요청이 가능합니다."
+          }
+        />
+      )}
 
       {actionMessage ? (
         <GuardNotice title="처리 완료" message={actionMessage} tone="success" />
@@ -696,17 +710,27 @@ export default function SettlementDetailAdminPage() {
 
         <SectionCard title="운영 가드레일">
           <InfoRow label="hold">
-            {hold?.status ? <StatusBadge status={hold.status} /> : "없음"}
+            {hold?.status ? <StatusBadge status={hold.status} /> : "-"}
           </InfoRow>
           <InfoRow
             label="approved refund"
-            value={hasApprovedRefund(refund) ? "예" : "아니오"}
+            value={formatBooleanState(hasApprovedRefund(refund), {
+              trueLabel: "APPROVED",
+              falseLabel: "-",
+            })}
           />
           <InfoRow
             label="adjustment pending"
-            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+            value={formatBooleanState(isRefundAdjustmentPending(refund), {
+              trueLabel: "PENDING",
+              falseLabel: "-",
+            })}
           />
-          <InfoRow label="refund status" status value={refundStatus} />
+          <InfoRow
+            label="refund status"
+            status
+            value={formatRefundStatusValue(refundStatus)}
+          />
         </SectionCard>
       </div>
 
@@ -748,14 +772,14 @@ export default function SettlementDetailAdminPage() {
         </InfoRow>
 
         <InfoRow label="hold">
-          {hold?.holdId ? <CopyableValue value={hold.holdId} /> : "없음"}
+          {hold?.holdId ? <CopyableValue value={hold.holdId} /> : "-"}
         </InfoRow>
 
         <InfoRow label="refund">
           {hasApprovedRefund(refund) ? (
             <StatusBadge status={refundStatus} />
           ) : (
-            "없음"
+            "-"
           )}
         </InfoRow>
       </SectionCard>
@@ -790,13 +814,23 @@ export default function SettlementDetailAdminPage() {
         <SectionCard title="Refund 요약">
           <InfoRow
             label="approved refund"
-            value={hasApprovedRefund(refund) ? "예" : "아니오"}
+            value={formatBooleanState(hasApprovedRefund(refund), {
+              trueLabel: "APPROVED",
+              falseLabel: "-",
+            })}
           />
           <InfoRow
             label="adjustment pending"
-            value={isRefundAdjustmentPending(refund) ? "예" : "아니오"}
+            value={formatBooleanState(isRefundAdjustmentPending(refund), {
+              trueLabel: "PENDING",
+              falseLabel: "-",
+            })}
           />
-          <InfoRow label="status" status value={refundStatus} />
+          <InfoRow
+            label="status"
+            status
+            value={formatRefundStatusValue(refundStatus)}
+          />
           <InfoRow
             label="refund line amount"
             value={refundLineAmount > 0 ? formatAmount(refundLineAmount) : "-"}

@@ -22,7 +22,7 @@ export default function StatusBadge({ status }) {
     APPROVED: "success",
     REJECTED: "danger",
 
-    HOLD_ACTIVE: "warning",
+    HOLD_ACTIVE: "danger",
     HOLD_REQUESTED: "warning",
     RELEASED: "default",
 
