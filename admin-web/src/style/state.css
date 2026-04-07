@@ -1,6 +1,25 @@
 .state-error {
     color: #b42318;
 }
+.state-success {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--radius-md);
+  background: #f0fdf4;
+}
+
+.state-success__title {
+  color: #047857;
+  font-weight: 100;
+}
+
+.state-success__description {
+  color: #065f46;
+  font-size: var(--font-size-sm);
+}
 .state-block {
   display: flex;
   flex-direction: column;

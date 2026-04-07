@@ -457,7 +457,9 @@ export default function RefundPage() {
                 reasonText,
             });
 
-            setSuccessMessage("환불 요청이 등록되었습니다.");
+            setSuccessMessage(
+                "현재 상태는 REQUESTED입니다. 관리자 승인 전까지 환불 현황에서 확인할 수 있습니다."
+            );
             setSelectedRefundId("");
             setForm((prev) => ({
                 ...prev,
@@ -719,7 +721,10 @@ export default function RefundPage() {
             {errorMessage ? <div className="state-error">{errorMessage}</div> : null}
 
             {successMessage ? (
-                <div className="state-success">{successMessage}</div>
+                <div className="state-success">
+                    <strong>환불 요청 등록 완료</strong>
+                    <div>{successMessage}</div>
+                </div>
             ) : null}
 
             <SectionCard title="조회 필터">
