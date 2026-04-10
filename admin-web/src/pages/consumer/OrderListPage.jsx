@@ -145,10 +145,6 @@ export default function OrderListPage() {
     await runOrdersLoad(initialFilters);
   }
 
-  async function handleRefresh() {
-    await runOrdersLoad(filters);
-  }
-
   if (loading) {
     return (
       <PageLayout title={PAGE_TITLE} description={PAGE_DESCRIPTION}>
@@ -261,11 +257,6 @@ export default function OrderListPage() {
       <SectionCard title="주문 / 결제 목록">
         <div className="table-toolbar">
           <div>내 주문/결제 내역</div>
-          <div className="action-panel">
-            <button type="button" className="btn btn--secondary" onClick={handleRefresh}>
-              새로고침
-            </button>
-          </div>
         </div>
 
         <div className="table-wrap">
